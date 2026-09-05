@@ -1,0 +1,86 @@
+import { z } from 'zod';
+const text = z.string().trim().min(1).max(200);
+const list = z.array(text).max(50);
+export const registerSchema = z.object({
+  name: text,
+  email: z.email().toLowerCase(),
+  password: z.string().min(12).max(128),
+  role: z.enum(['student', 'employer']).default('student'),
+});
+export const loginSchema = z.object({
+  email: z.email().toLowerCase(),
+  password: z.string().min(1).max(128),
+});
+export const profileSchema = z.object({
+  name: text,
+  headline: z.string().max(200),
+  skills: list,
+  experience: z.number().min(0).max(70),
+  education: z.string().max(3000),
+  country: text,
+  city: text,
+  confirmed: z.boolean(),
+});
+export const preferencesSchema = z.object({
+  roles: list,
+  relatedRoles: list,
+  countries: list,
+  modes: z.array(z.enum(['Remote', 'Hybrid', 'On-site'])),
+  exclusions: list,
+  automation: z.boolean(),
+  dailyCap: z.number().int().min(0).max(100),
+  consentAt: z.string().optional(),
+});
+export const jobSchema = z
+  .object({
+    title: text,
+    category: text,
+    country: text,
+    state: z.string().max(100).default(''),
+    city: text,
+    skills: list,
+    mode: z.enum(['Remote', 'Hybrid', 'On-site']),
+    type: text,
+    salaryMin: z.number().min(0),
+    salaryMax: z.number().min(0),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+    experienceMin: z.number().min(0).max(70),
+    experienceMax: z.number().min(0).max(70),
+    description: z.string().min(30).max(15000),
+    requirements: z.string().min(10).max(10000),
+    method: z.enum(['direct', 'external', 'email']),
+    url: z.url().optional(),
+    email: z.email().optional(),
+  })
+  .refine(
+    (j) => j.salaryMax >= j.salaryMin && j.experienceMax >= j.experienceMin,
+    'Maximum values must be at least the minimum.',
+  )
+  .refine(
+    (j) => j.method !== 'external' || j.url?.startsWith('https://'),
+    'External applications require an HTTPS URL.',
+  )
+  .refine(
+    (j) => j.method !== 'email' || !!j.email,
+    'Email applications require a recruitment email.',
+  );
+export const contactSchema = z.object({
+  name: text,
+  email: z.email(),
+  subject: text,
+  message: z.string().min(10).max(5000),
+  consent: z.literal(true),
+  website: z.string().max(0).optional(),
+  source: z.string().max(200).optional(),
+});
+export const employerSchema = z.object({
+  name: text,
+  domain: z.string().regex(/^[a-z0-9.-]+\.[a-z]{2,}$/),
+  country: text,
+  description: z.string().max(3000),
+});
+export const templateSchema = z.object({
+  subject: z.string().min(1).max(300),
+  body: z.string().min(10).max(6000),
+  signature: z.string().max(1000),
+});

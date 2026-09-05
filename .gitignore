@@ -1,0 +1,12 @@
+**/node_modules/
+**/.next/
+**/.vinext/
+**/dist/
+**/.wrangler/
+**/.env*
+!**/.env.example
+**/.data/
+**/*.tsbuildinfo
+**/coverage/
+**/test-results/
+**/*.log

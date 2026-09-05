@@ -1,0 +1,39 @@
+name: Project validation
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      DEMO_MODE: 'true'
+      APP_URL: http://localhost:3000
+    defaults:
+      run:
+        working-directory: portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: portal/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --audit-level=high
+      - name: Scan source for common secret patterns
+        working-directory: .
+        run: node scripts/scan-secrets.mjs
+      - name: Run local API integration suite
+        run: |
+          npm run dev > /tmp/skillonit-dev.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID"' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://localhost:3000/api/v1/health > /dev/null; then break; fi
+            sleep 2
+          done
+          npm run test:integration
