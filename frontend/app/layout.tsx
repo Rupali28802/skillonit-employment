@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { BriefcaseBusiness, ArrowUpRight } from 'lucide-react';
 import './globals.css';
-import { currentUser } from '@/lib/api';
+import { api, currentUser } from '@/lib/api';
 
 export const metadata: Metadata = {
   icons: { icon: '/favicon.svg' },
@@ -20,6 +20,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const user = await currentUser();
+  const content = await api<{ announcement: string }>('public/configuration');
   const workspace =
     user?.role === 'admin'
       ? '/admin'
@@ -59,6 +60,9 @@ export default async function RootLayout({
             </Link>
           </div>
         </header>
+        {content.announcement && (
+          <div className="site-announcement">{content.announcement}</div>
+        )}
         <main id="main">{children}</main>
         <footer>
           <Link className="brand" href="/">
@@ -71,6 +75,8 @@ export default async function RootLayout({
             <Link href="/contact">Contact</Link>
             <Link href="/privacy">Privacy</Link>
             <Link href="/terms">Terms</Link>
+            <Link href="/faq">FAQ</Link>
+            <Link href="/cookies">Cookies</Link>
           </div>
           <small>© {new Date().getFullYear()} SkillonIT Employment</small>
         </footer>

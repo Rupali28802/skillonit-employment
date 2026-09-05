@@ -12,6 +12,13 @@ export type Row = { id: string; [key: string]: unknown };
 export const demoMode = () => process.env.DEMO_MODE === 'true';
 type Query = Record<string, unknown>;
 export interface Repository {
+  count(collection: string, query?: Query): Promise<number>;
+  scan<T>(
+    collection: string,
+    query: Query,
+    after?: string,
+    limit?: number,
+  ): Promise<T[]>;
   find<T>(collection: string, query?: Query, limit?: number): Promise<T[]>;
   get<T>(collection: string, id: string): Promise<T | null>;
   put<T extends { id: string }>(collection: string, row: T): Promise<void>;
@@ -34,6 +41,28 @@ function mongo() {
 function mongoRepo(session?: ClientSession): Repository {
   const db = mongo().db(process.env.MONGODB_DATABASE || 'skillonit');
   return {
+    async count(c, q = {}) {
+      return db
+        .collection(c)
+        .countDocuments(q as Filter<Document>, { session });
+    },
+    async scan<T>(c: string, q: Query, after = '', limit = 250) {
+      return (await db
+        .collection(c)
+        .find(
+          {
+            ...q,
+            ...(after ? { id: { $gt: after } } : {}),
+          } as Filter<Document>,
+          {
+            session,
+            projection: { _id: 0 },
+          },
+        )
+        .sort({ id: 1 })
+        .limit(Math.min(500, Math.max(1, limit)))
+        .toArray()) as T[];
+    },
     async find<T>(c: string, q: Query = {}, limit = 100) {
       return (await db
         .collection(c)
@@ -57,10 +86,32 @@ function mongoRepo(session?: ClientSession): Repository {
   };
 }
 function localRepo(data: LocalData): Repository {
+  const matches = (row: Row, query: Query) =>
+    Object.entries(query).every(([key, value]) => {
+      if (value && typeof value === 'object') {
+        const range = value as Record<string, string>;
+        const actual = String(row[key] ?? '');
+        return (
+          (!('$gte' in range) || actual >= range.$gte) &&
+          (!('$lt' in range) || actual < range.$lt)
+        );
+      }
+      return row[key] === value;
+    });
   return {
+    async count(c, q = {}) {
+      return Object.values(data[c] || {}).filter((row) => matches(row, q))
+        .length;
+    },
+    async scan<T>(c: string, q: Query, after = '', limit = 250) {
+      return Object.values(data[c] || {})
+        .filter((row) => matches(row, q) && row.id > after)
+        .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+        .slice(0, Math.min(500, Math.max(1, limit))) as T[];
+    },
     async find<T>(c: string, q: Query = {}, limit = 100) {
       return Object.values(data[c] || {})
-        .filter((r) => Object.entries(q).every(([k, v]) => r[k] === v))
+        .filter((r) => matches(r, q))
         .slice(0, limit) as T[];
     },
     async get<T>(c: string, id: string) {
@@ -151,9 +202,23 @@ export async function bootstrapIndexes() {
     'workerRuns',
     'queue',
     'cvs',
+    'cvVersions',
+    'templateVersions',
+    'savedSearches',
+    'searchAlerts',
+    'notificationPreferences',
+    'entitlementUsage',
+    'leadNotes',
   ])
     await db.collection(c).createIndex({ id: 1 }, { unique: true });
   await db.collection('users').createIndex({ email: 1 }, { unique: true });
+  for (const collection of [
+    'cvVersions',
+    'templateVersions',
+    'savedSearches',
+    'notifications',
+  ])
+    await db.collection(collection).createIndex({ userId: 1, createdAt: -1 });
   await db.collection('jobs').createIndex({ status: 1, discoveredAt: -1 });
   await db
     .collection('jobs')
@@ -164,6 +229,7 @@ export async function bootstrapIndexes() {
   await db
     .collection('applications')
     .createIndex({ employerId: 1, createdAt: -1 });
+  await db.collection('applications').createIndex({ userId: 1, createdAt: -1 });
   await db
     .collection('sessions')
     .createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });

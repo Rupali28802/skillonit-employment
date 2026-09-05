@@ -2,6 +2,16 @@
 
 This file distinguishes executable local behavior, implementation scaffolding, unavailable integrations and incomplete requirements. It is not a production completion certificate.
 
+## Enterprise branch update on 5 September 2026
+
+The latest changes add saved-search create/pause/remove and explicit match checks; deduplicated in-app alerts; notification preferences/read status; confirmed profile-based CV versions and text download; immutable template history; a clearly labeled keyword search/support assistant; admin source permission records, public contact/announcement editing and supported feature switches. Application and recruiter status changes generate in-app notifications. The current UI keeps frontend/backend separation and adds the new workflows to the candidate navigation.
+
+Quota reservation now uses a transactional daily ledger with an indexed, unbounded-count bootstrap for existing records. Personal caps and plan caps are enforced. MongoDB integration exercises simultaneous applications competing for the last slot. Retention uses keyset traversal rather than stopping at 1,000 jobs; the MongoDB test expires 1,050 synthetic jobs, verifies idempotency and preserves application records. Expired jobs no longer appear in matches/saved inventory. Unsupported application action URLs return 404. Template signature variables are validated too. Authentication throttles no longer share the normal-write counter.
+
+These changes do **not** complete the entire enterprise contract. Scanned PDF/DOCX upload, extraction, production verification email/recovery, OAuth, application email dispatch, production ingestion/pub-sub, paid entitlement activation/reconciliation, complete employer teams/subscriptions, granular admin roles and high-scale infrastructure still need implementation and/or configured services. The guided assistant is not generative AI; alerts are checked explicitly, not a configured recurring notification worker.
+
+The original requirement table below records the earlier baseline; the update above supersedes its statements about quota tracking, retention batching, MongoDB testing, template history, manual CV versions, saved searches, in-app notifications, source policy entry, content/flags and the guided assistant. All other listed gaps remain open.
+
 ## Working local workflows
 
 Discovery and filters; sample job details; identity masking; role-specific sign-in; local test registration and email verification; candidate-confirmed profiles; preferences; deterministic match explanations; saved jobs; templates; direct demo applications and state history; duplicate suppression; recruiter status changes; withdrawal; employer organization review; review-to-publish moderation; closure; contact lead storage; fraud reports; admin records and plan editor; audit events; private export and deletion request capture.

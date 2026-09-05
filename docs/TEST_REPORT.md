@@ -1,5 +1,19 @@
 # Local validation report
 
+## Latest enterprise feature validation on 5 September 2026
+
+- Frontend optimized production build passed on Next.js 16.3.4, including TypeScript and page generation. Frontend lint/typecheck passed.
+- Backend TypeScript/build and all 11 domain tests passed.
+- The 36-assertion core API suite passed on the dedicated local backend.
+- New feature API suite passed with two isolated candidate identities: ownership denials, CV confirmation/limits/frozen facts, template signature validation/history, saved-search alert idempotency, notification access, guided-search projections, quota concurrency and admin policy controls.
+- The real MongoDB replica-set suite passed the core and new feature suites, transaction rollback and index checks. The extended retention test processed 1,050 expired jobs, found zero work on a second pass and retained application records.
+- Chrome showed the running homepage and candidate dashboard. Chrome tab reconnection became unreliable; the in-app browser verified saved-search form submission, the new match notification and candidate navigation. At 390×844, the document width was 375px, with no horizontal document overflow on the saved-search screen.
+- No real email, job application or payment was sent. Browser/test records use the explicitly labeled local demo.
+- The source secret-pattern scan passed. Private environment, local data, dependencies and build output are excluded from Git.
+- The expanded 51-route architecture/transport suite is wired into CI but has not yet been rerun against the final production frontend: automated approval review blocked restarting the preview after the successful build, including a localhost-only attempt. The review supplied only “blocked by policy.” Preview restart approval is pending. Earlier route-test results below are historical, not a result for the new routes.
+
+This update validates the listed work only. `IMPLEMENTATION_STATUS.md` and `ENTERPRISE_UPDATE.md` describe remaining implementation and provider gaps. No production deployment, million-user scale test or full-spec completion is claimed.
+
 The first sections record validation of the original hybrid implementation on 5 September 2026. The architecture separation verification at the end records the current frontend/backend project.
 
 | Check | Result |

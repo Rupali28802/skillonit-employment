@@ -17,12 +17,18 @@ import {
 } from 'lucide-react';
 import type { PublicJob } from '@/lib/domain';
 import { categories, countries, states } from '@/lib/domain';
-export function Discovery({ initialJobs }: { initialJobs: PublicJob[] }) {
+export function Discovery({
+  initialJobs,
+  initialFilters = {},
+}: {
+  initialJobs: PublicJob[];
+  initialFilters?: Record<string, string>;
+}) {
   const [jobs, setJobs] = useState(initialJobs),
-    [query, setQuery] = useState(''),
+    [query, setQuery] = useState(initialFilters.q || ''),
     [category, setCategory] = useState(''),
-    [country, setCountry] = useState(''),
-    [mode, setMode] = useState(''),
+    [country, setCountry] = useState(initialFilters.country || ''),
+    [mode, setMode] = useState(initialFilters.mode || ''),
     [experience, setExperience] = useState(''),
     [state, setState] = useState(''),
     [sort, setSort] = useState('recent'),
@@ -31,6 +37,7 @@ export function Discovery({ initialJobs }: { initialJobs: PublicJob[] }) {
     [paused, setPaused] = useState(false),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const sequence = useRef(0);
   const search = useCallback(
     async (e?: { preventDefault: () => void }) => {
@@ -52,9 +59,12 @@ export function Discovery({ initialJobs }: { initialJobs: PublicJob[] }) {
         const r = await fetch(`/api/v1/jobs?${p}`);
         const j = await r.json();
         if (!r.ok) throw Error(j.error?.message || 'Search unavailable');
-        if (requestId === sequence.current) setJobs(j.data.jobs);
+        if (requestId === sequence.current) {
+          setJobs(j.data.jobs);
+          setHasMore(j.data.hasMore);
+        }
       } catch (e) {
-        setMessage((e as Error).message);
+        if (requestId === sequence.current) setMessage((e as Error).message);
       } finally {
         if (requestId === sequence.current) setBusy(false);
       }
@@ -137,7 +147,11 @@ export function Discovery({ initialJobs }: { initialJobs: PublicJob[] }) {
             Location
             <select
               value={country}
-              onChange={(e) => setCountry(e.target.value)}
+              onChange={(e) => {
+                setCountry(e.target.value);
+                setState('');
+                setPage(1);
+              }}
             >
               <option value="">Anywhere in the world</option>
               {countries.map((c) => (
@@ -259,7 +273,11 @@ export function Discovery({ initialJobs }: { initialJobs: PublicJob[] }) {
                 Country
                 <select
                   value={country}
-                  onChange={(e) => setCountry(e.target.value)}
+                  onChange={(e) => {
+                    setCountry(e.target.value);
+                    setState('');
+                    setPage(1);
+                  }}
                 >
                   <option value="">All countries</option>
                   {countries.map((c) => (
@@ -401,7 +419,7 @@ export function Discovery({ initialJobs }: { initialJobs: PublicJob[] }) {
             <span>Page {page}</span>
             <button
               className="secondary"
-              disabled={jobs.length < 12}
+              disabled={!hasMore || busy}
               onClick={() => {
                 setPage(page + 1);
               }}

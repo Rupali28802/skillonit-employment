@@ -46,6 +46,22 @@ try {
       code === 0 ? resolve() : reject(new Error(`API suite exited ${code}`)),
     );
   });
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(process.execPath, ['tests/features.mjs'], {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        TEST_URL: `http://127.0.0.1:${address.port}`,
+        TEST_ORIGIN: 'http://localhost:3000',
+      },
+    });
+    child.on('error', reject);
+    child.on('exit', (code) =>
+      code === 0
+        ? resolve()
+        : reject(new Error(`Feature suite exited ${code}`)),
+    );
+  });
   assert.ok(
     await client
       .db('architecture_test')
@@ -57,6 +73,32 @@ try {
       .db('architecture_test')
       .collection('applications')
       .countDocuments()) > 0,
+  );
+  const { expireJobs } = await import('../src/lib/lifecycle.js');
+  const expired = sampleJobs()[0];
+  await client
+    .db('architecture_test')
+    .collection('jobs')
+    .insertMany(
+      Array.from({ length: 1050 }, (_, i) => ({
+        ...expired,
+        id: `retention-${String(i).padStart(5, '0')}`,
+        discoveredAt: '2020-01-01T00:00:00.000Z',
+        expiresAt: '2020-04-01T00:00:00.000Z',
+      })),
+    );
+  const before = await client
+    .db('architecture_test')
+    .collection('applications')
+    .countDocuments();
+  assert.equal(await expireJobs(), 1050);
+  assert.equal(await expireJobs(), 0, 'Retention must be idempotent');
+  assert.equal(
+    await client
+      .db('architecture_test')
+      .collection('applications')
+      .countDocuments(),
+    before,
   );
   console.log(
     'PASS: real MongoDB indexes, transaction rollback, API workflows and persisted contact/application records.',

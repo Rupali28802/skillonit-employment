@@ -314,6 +314,8 @@ export function eligibility(
   if (job.trust !== 'verified')
     reasons.push('Employer verification is required.');
   if (used >= plan.dailyCap) reasons.push('Daily plan allowance reached.');
+  if (used >= user.preferences.dailyCap)
+    reasons.push('Your personal daily application cap has been reached.');
   if (
     job.method === 'email' &&
     (!plan.autoApply ||

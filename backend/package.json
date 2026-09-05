@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
     "test:integration": "node tests/integration.mjs",
+    "test:features": "node tests/features.mjs",
     "test:mongo": "node --import tsx tests/mongo-integration.ts",
     "test:architecture": "node tests/architecture.mjs"
   },

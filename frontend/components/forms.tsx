@@ -2,6 +2,7 @@
 import { display } from '@/lib/display';
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 type Field = {
   name: string;
   label: string;
@@ -25,6 +26,7 @@ export function SmartForm({
   submit?: string;
   onSuccess?: () => void;
 }) {
+  const router = useRouter();
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState(''),
     [error, setError] = useState(false);
@@ -62,6 +64,7 @@ export function SmartForm({
           setError(false);
           setMessage(j.data?.message || 'Your changes have been saved.');
           onSuccess?.();
+          router.refresh();
         } catch (e) {
           setError(true);
           setMessage((e as Error).message);
@@ -99,7 +102,9 @@ export function SmartForm({
                     defaultValue={display(initial[f.name] || f.options[0])}
                   >
                     {f.options.map((o) => (
-                      <option key={o}>{o}</option>
+                      <option key={o} value={o}>
+                        {o || 'Any arrangement'}
+                      </option>
                     ))}
                   </select>
                 ) : f.type === 'textarea' ? (

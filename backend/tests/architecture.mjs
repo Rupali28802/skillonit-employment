@@ -47,6 +47,11 @@ const pages = [
     'login',
     'register',
     'jobs/sample-1',
+    'jobs',
+    'search',
+    'faq',
+    'cookies',
+    'employer-pricing',
   ],
   [
     'dashboard',
@@ -60,6 +65,9 @@ const pages = [
     'automation',
     'billing',
     'settings',
+    'saved-searches',
+    'notifications',
+    'assistant',
   ],
   [
     'employer',

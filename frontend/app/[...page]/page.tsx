@@ -1,8 +1,10 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { AuthForm, SmartForm, Action } from '@/components/forms';
 import { Workspace } from '@/components/workspace';
-import { demoMode, configuredPlans } from '@/lib/api';
+import { api, demoMode, configuredPlans } from '@/lib/api';
+import { Discovery } from '@/components/discovery';
+import type { PublicJob } from '@/lib/domain';
 export const dynamic = 'force-dynamic';
 export async function generateMetadata({
   params,
@@ -22,10 +24,45 @@ export async function generateMetadata({
 }
 export default async function Page({
   params,
+  searchParams,
 }: {
   params: Promise<{ page: string[] }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const page = (await params).page.join('/');
+  const aliases: Record<string, string> = {
+    signup: '/register',
+    safety: '/trust',
+    student: '/dashboard',
+    'student/dashboard': '/dashboard',
+    'student/profile': '/profile',
+    'student/onboarding': '/profile',
+    'student/cv': '/cvs',
+    'student/preferences': '/preferences',
+    'student/saved-jobs': '/saved',
+    'student/applications': '/applications',
+    'student/email': '/mail',
+    'student/templates': '/templates',
+    'student/billing': '/billing',
+    'student/notifications': '/notifications',
+    'student/settings': '/settings',
+    'employer/dashboard': '/employer',
+    'employer/profile': '/employer/organization',
+    'employer/verification': '/employer/organization',
+    'employer/jobs/new': '/employer/post',
+  };
+  if (aliases[page]) redirect(aliases[page]);
+  if (page === 'jobs' || page === 'search') {
+    const filters = Object.fromEntries(
+      Object.entries(await searchParams).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string',
+      ),
+    );
+    const result = await api<{ jobs: PublicJob[] }>(
+      'jobs?' + new URLSearchParams(filters),
+    );
+    return <Discovery initialJobs={result.jobs} initialFilters={filters} />;
+  }
   if (page === 'login' || page === 'register')
     return <AuthForm register={page === 'register'} demo={await demoMode()} />;
   if (
@@ -34,6 +71,9 @@ export default async function Page({
       'profile',
       'preferences',
       'saved',
+      'saved-searches',
+      'notifications',
+      'assistant',
       'applications',
       'cvs',
       'templates',
@@ -133,7 +173,79 @@ export default async function Page({
       </div>
     );
   }
-  if (page === 'contact')
+  if (page === 'faq')
+    return (
+      <div className="page-wrap prose">
+        <div className="eyebrow">HELP WITH YOUR NEXT STEP</div>
+        <h1>Frequently asked questions</h1>
+        {[
+          [
+            'Does opening an employer link submit my application?',
+            'No. We track it as started. Confirm submission only after completing the employer’s form.',
+          ],
+          [
+            'Can I apply automatically?',
+            'Automated sending requires a supported plan, explicit consent, a verified destination and a connected mailbox. It stays unavailable until those requirements and delivery services are ready.',
+          ],
+          [
+            'Can I create a CV?',
+            'You can create confirmed text CV versions from your profile. Scanned PDF/DOCX upload requires the file processing service.',
+          ],
+          [
+            'Are these real vacancies?',
+            'The local preview labels sample vacancies clearly. Production vacancies must come from approved sources or verified employers.',
+          ],
+          [
+            'How is my information protected?',
+            'Workspace records require authentication and ownership checks. Employer identity is returned according to your plan. Never share passwords or OTPs in application messages.',
+          ],
+        ].map(([question, answer]) => (
+          <details className="panel" key={question}>
+            <summary>{question}</summary>
+            <p style={{ marginTop: 14 }}>{answer}</p>
+          </details>
+        ))}
+      </div>
+    );
+  if (page === 'employer-pricing')
+    return (
+      <div className="page-wrap prose">
+        <div className="eyebrow">BUILD YOUR NEXT TEAM</div>
+        <h1>Hiring that grows with you</h1>
+        <p>
+          Employer subscriptions will control active vacancies, recruiter seats,
+          applicant access and analytics. Final packages and billing are not
+          open yet.
+        </p>
+        <div className="panel">
+          <h2>Explore your hiring workspace</h2>
+          <p>
+            Create an organization profile, submit vacancies for review, and
+            manage direct applicants.
+          </p>
+          <Link className="primary" href="/employer">
+            Open employer workspace
+          </Link>
+        </div>
+        <Link href="/contact">Contact the team about hiring</Link>
+      </div>
+    );
+  if (page === 'cookies')
+    return (
+      <div className="page-wrap prose">
+        <h1>Cookies and sessions</h1>
+        <p>
+          The application uses an HTTP-only session cookie to keep you signed
+          in. Signing out revokes the current session. The application does not
+          set advertising cookies in this local preview.
+        </p>
+        <Link href="/privacy">Read privacy information</Link>
+      </div>
+    );
+  if (page === 'contact') {
+    const contact = await api<{ email: string; phone: string }>(
+      'public/configuration',
+    );
     return (
       <div className="page-wrap prose">
         <div className="eyebrow">LET’S TALK</div>
@@ -161,13 +273,12 @@ export default async function Page({
           />
         </div>
         <p>
-          Email:{' '}
-          <a href="mailto:skillonitemployment@gmail.com">
-            skillonitemployment@gmail.com
-          </a>
+          Email: <a href={'mailto:' + contact.email}>{contact.email}</a>
         </p>
+        {contact.phone && <p>Phone: {contact.phone}</p>}
       </div>
     );
+  }
   const content: Record<
     string,
     { title: string; intro: string; sections: [string, string][] }

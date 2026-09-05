@@ -44,6 +44,7 @@ import {
 } from './lib/domain.js';
 import { searchJobs } from './lib/search.js';
 import { providerHealth, RazorpayProvider } from './lib/providers.js';
+import { featureRoute, notify } from './features.js';
 type App = {
   id: string;
   userId: string;
@@ -100,6 +101,7 @@ export async function handle(
         const jobs = await r.find<Job>('jobs', { status: 'published' });
         const plans = await configuredPlans();
         const matches = jobs
+          .filter((job) => isRecent(job))
           .map((job) => ({
             job: publicJob(job, user, plans),
             match: matchJob(job, user.profile, user.preferences),
@@ -118,9 +120,12 @@ export async function handle(
       });
     if (method !== 'GET' && p !== 'webhooks/razorpay')
       await rateLimit(
-        'write:' + (request.headers.get('x-real-ip') || 'local'),
+        (p.startsWith('auth/') ? 'auth:' : 'write:') +
+          (request.headers.get('x-real-ip') || 'local'),
         p.startsWith('auth/') ? 20 : 120,
       );
+    const feature = await featureRoute(p, method, body);
+    if (feature) return ok(feature.data, feature.status || 200);
     if (p === 'auth/register' && method === 'POST') {
       const input = registerSchema.parse(await body());
       if (!demoMode())
@@ -317,7 +322,9 @@ export async function handle(
             saved.map((s) => r.get<Job>('jobs', s.jobId)),
           );
           return jobs
-            .filter((j): j is Job => !!j)
+            .filter(
+              (j): j is Job => !!j && j.status === 'published' && isRecent(j),
+            )
             .map((j) => publicJob(j, u, plan));
         }),
       );
@@ -356,13 +363,15 @@ export async function handle(
     }
     if (p === 'me/matches' && method === 'GET') {
       const u = await requireUser('student');
+      const plans = await configuredPlans();
       const jobs = await read((r) =>
         r.find<Job>('jobs', { status: 'published' }, 1000),
       );
       return ok(
         jobs
+          .filter((job) => isRecent(job))
           .map((j) => ({
-            ...publicJob(j, u),
+            ...publicJob(j, u, plans),
             match: matchJob(j, u.profile, u.preferences),
           }))
           .sort((a, b) => b.match.score - a.match.score)
@@ -379,6 +388,7 @@ export async function handle(
         for (const t of [
           ...template.subject.matchAll(/\{\{(.*?)\}\}/g),
           ...template.body.matchAll(/\{\{(.*?)\}\}/g),
+          ...template.signature.matchAll(/\{\{(.*?)\}\}/g),
         ])
           if (!allowed.includes(t[1]))
             throw new ApiError(
@@ -387,6 +397,12 @@ export async function handle(
               'Only {{name}} and {{job_title}} are supported.',
             );
         await transaction(async (r) => {
+          await r.put('templateVersions', {
+            id: id(),
+            userId: u.id,
+            ...template,
+            createdAt: new Date().toISOString(),
+          });
           await r.put('applicationTemplates', {
             id: u.id,
             ...template,
@@ -478,12 +494,23 @@ export async function handle(
             'SAMPLE_JOB',
             'Sample vacancies cannot receive real applications.',
           );
-        const used = (
-          await r.find<App>('applications', { userId: u.id }, 1000)
-        ).filter(
-          (a) =>
-            a.createdAt.slice(0, 10) === new Date().toISOString().slice(0, 10),
-        ).length;
+        const period = new Date().toISOString().slice(0, 10);
+        const usageId = `${u.id}:${period}`;
+        const usage = await r.get<{ count: number }>(
+          'entitlementUsage',
+          usageId,
+        );
+        // Both the quota reservation and application insertion share one transaction.
+        // Count is initialized from today's existing records for pre-ledger deployments.
+        const nextDay = new Date(Date.parse(period) + 86400000)
+          .toISOString()
+          .slice(0, 10);
+        const used =
+          usage?.count ??
+          (await r.count('applications', {
+            userId: u.id,
+            createdAt: { $gte: period, $lt: nextDay },
+          }));
         const reasons = eligibility(latest!, job, plan, used);
         if (reasons.length)
           throw new ApiError(409, 'NOT_ELIGIBLE', reasons.join(' '));
@@ -508,13 +535,26 @@ export async function handle(
           ).toISOString(),
           job: { title: job.title, country: job.country, city: job.city },
           snapshot: {
-            profile: u.profile,
-            job: publicJob(job, u),
+            profile: latest!.profile,
+            job: publicJob(job, u, [plan]),
             template: await r.get('applicationTemplates', u.id),
           },
           events: [{ status, at: now }],
         };
         await r.put('applications', a);
+        await r.put('entitlementUsage', {
+          id: usageId,
+          userId: u.id,
+          period,
+          count: used + 1,
+        });
+        await notify(
+          r,
+          u.id,
+          'Application updated',
+          `${job.title}: ${status.replaceAll('_', ' ')}`,
+          '/applications',
+        );
         await audit(r, u.id, 'application.' + status.toLowerCase(), a.id);
         return a;
       });
@@ -530,6 +570,7 @@ export async function handle(
     if (
       parts[0] === 'applications' &&
       parts.length === 3 &&
+      ['cancel', 'confirm-external', 'withdraw'].includes(parts[2]) &&
       method === 'POST'
     ) {
       const u = await requireUser('student');
@@ -714,6 +755,13 @@ export async function handle(
           events: [...a.events, { status, at: new Date().toISOString() }],
         });
         await audit(r, u.id, 'applicant.' + status.toLowerCase(), a.id);
+        await notify(
+          r,
+          a.userId,
+          'An employer updated your application',
+          `${a.job.title}: ${status.replaceAll('_', ' ')}`,
+          '/applications',
+        );
       });
       return ok({ updated: true });
     }
@@ -825,10 +873,10 @@ export async function handle(
           providers: providerHealth(),
           mode: demoMode() ? 'Demo — local data only' : 'Production',
           counts: await read(async (r) => ({
-            jobs: (await r.find('jobs', {}, 1000)).length,
-            users: (await r.find('users', {}, 1000)).length,
-            applications: (await r.find('applications', {}, 1000)).length,
-            leads: (await r.find('leads', {}, 1000)).length,
+            jobs: await r.count('jobs'),
+            users: await r.count('users'),
+            applications: await r.count('applications'),
+            leads: await r.count('leads'),
           })),
         });
       if (p === 'admin/plans') {

@@ -2,6 +2,8 @@
 
 The existing website is separated into an independent Next.js frontend and Node.js/Express backend. Pages, components, styles, animations and browser workflows are preserved. The original specification and scope analysis remain in `docs/`.
 
+The enterprise branch now also includes candidate saved searches/alerts, notifications, confirmed text CV versions, a guided search assistant, template history APIs, admin content/source/feature controls, transactional daily quotas and batched retention. See `docs/ENTERPRISE_UPDATE.md` for scope and validation. External-provider features remain explicitly unavailable where unfinished.
+
 ```text
 skillonit-employment/
 ├── frontend/       Next.js UI, pages, assets and API data fetching
@@ -14,10 +16,10 @@ skillonit-employment/
 
 ## Clone and install
 
-Use Node.js 22.17 or later and npm. Clone the existing repository's default branch:
+Use Node.js 22.17 or later and npm. Clone the selected implementation branch:
 
 ```sh
-git clone https://github.com/Rupali28802/skillonit-employment.git
+git clone --branch codex/enterprise-portal https://github.com/Rupali28802/skillonit-employment.git
 cd skillonit-employment
 cd backend
 npm ci
@@ -88,6 +90,7 @@ npm run build
 npm test
 npm run test:mongo
 npm run test:integration
+npm run test:features
 npm run test:architecture  # requires both services running
 cd ../frontend
 npm run typecheck
@@ -95,7 +98,6 @@ npm run lint
 npm run build
 cd ..
 node scripts/scan-secrets.mjs
-node scripts/verify-ui-preservation.mjs
 ```
 
 `test:integration` requires a local demo backend at port 4000. Set `TEST_URL=http://localhost:3000` to test through the frontend proxy. `TEST_ORIGIN` defaults to `http://localhost:3000`. Tests create clearly synthetic records. `test:mongo` starts an isolated real MongoDB replica set, exercises API workflows and rollback/index behavior, then removes its temporary database; it never loads your `.env`. The first run downloads a MongoDB test binary. GitHub Actions validates both builds, unit tests, MongoDB integration, and proxied API workflows.
@@ -105,3 +107,7 @@ node scripts/verify-ui-preservation.mjs
 This architecture change preserves the existing implementation's capabilities and limits. Contact forms persist enquiries for admin review; outbound contact mail and mailbox OAuth were not connected before separation and remain unconfigured. CV processing, production registration/email delivery, automated sending and commercial payment activation retain their existing unavailable responses. No real emails, applications or payments are sent by tests. See `docs/IMPLEMENTATION_STATUS.md` for the original enterprise feature gaps; this refactor does not claim those features are complete.
 
 Never commit `.env`, `.env.local`, `.data`, tokens, CVs, database dumps, or build output. Only `.env.example` templates belong in Git. See `docs/ARCHITECTURE_SEPARATION.md` for the migration inventory and verification record.
+
+The historical `scripts/verify-ui-preservation.mjs` belongs to the earlier architecture-only refactor. It intentionally compares exact markup to that old revision and is no longer a CI gate for this user-authorized feature expansion. Integration, route transport, lint/typecheck, builds, MongoDB and feature regression checks remain active.
+
+If default ports are occupied, use backend `PORT=4100`, backend/frontend `APP_URL=http://127.0.0.1:3100`, frontend `BACKEND_URL=http://127.0.0.1:4100`, and start the frontend with `npm run dev -- --port 3100`. For tests set `TEST_URL=http://127.0.0.1:4100` and `TEST_ORIGIN=http://127.0.0.1:3100`. The architecture suite also accepts `TEST_FRONTEND=http://127.0.0.1:3100`. Use matching origins; localhost and 127.0.0.1 are distinct.
