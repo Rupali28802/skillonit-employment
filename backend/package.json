@@ -1,0 +1,33 @@
+{
+  "name": "skillonit-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --import tsx --watch src/index.ts",
+    "build": "tsc",
+    "start": "node --env-file-if-exists=.env dist/index.js",
+    "worker": "node --env-file-if-exists=.env dist/workers/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "test:integration": "node tests/integration.mjs",
+    "test:mongo": "node --import tsx tests/mongo-integration.ts",
+    "test:architecture": "node tests/architecture.mjs"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "mongodb": "^7.6.0",
+    "bullmq": "^6.3.4",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "22.19.19",
+    "typescript": "5.9.3",
+    "tsx": "^4.20.0",
+    "mongodb-memory-server": "^10.2.0"
+  }
+}

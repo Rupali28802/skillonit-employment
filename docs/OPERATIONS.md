@@ -8,9 +8,9 @@ Set APP_URL to the exact trusted HTTPS origin. Proxy configuration must strip cl
 
 ## Data and workers
 
-MongoDB transactions require replica-set support. `lib/store.ts` exports `bootstrapIndexes`; execute it through a trusted maintenance entry point after secrets are injected. Add indexes and pagination for every production query pattern. The demo `.data` file is single-process test storage and has no production HA/backup guarantees.
+MongoDB transactions require replica-set support. `backend/src/lib/store.ts` exports `bootstrapIndexes`; backend startup runs it after secrets are injected, before accepting traffic. Add indexes and pagination for every production query pattern. The demo `backend/.data` file is single-process test storage and has no production HA/backup guarantees.
 
-`workers/index.ts` includes source staging, retention and dedupe primitives. It does not implement the complete worker catalogue. Add a bundled worker build, scheduled producer, job IDs for idempotency, bounded retry/backoff, dead-letter handling, source cooldowns, heartbeat metrics and shared pub/sub before enabling. Never run applications through unverified destinations or unavailable sender providers.
+`backend/src/workers/index.ts` includes source staging, retention and dedupe primitives; build with `npm run build` and run with `npm run worker` in `backend/`. It does not implement the complete worker catalogue. Add a scheduled producer, job IDs for idempotency, bounded retry/backoff, dead-letter handling, source cooldowns, heartbeat metrics and shared pub/sub before enabling. Never run applications through unverified destinations or unavailable sender providers.
 
 ## Release and rollback
 
@@ -33,4 +33,4 @@ The original specification requires progressive datasets of 100k, 500k, 1M, 2M a
 - Razorpay signature verification and duplicate event IDs: https://razorpay.com/docs/webhooks/validate-test/
 - Greenhouse public board API: https://developers.greenhouse.io/job-board.html
 
-Read installed Next.js documentation before future edits, as required by the generated `portal/AGENTS.md`.
+Read installed Next.js documentation before future edits, as required by the generated `frontend/AGENTS.md`.

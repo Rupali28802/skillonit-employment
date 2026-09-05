@@ -8,32 +8,44 @@ jobs:
     env:
       DEMO_MODE: 'true'
       APP_URL: http://localhost:3000
-    defaults:
-      run:
-        working-directory: portal
+      BACKEND_URL: http://127.0.0.1:4000
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: portal/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm test
-      - run: npm run build
+        working-directory: backend
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run typecheck && npm run build && npm test && npm run test:mongo
+        working-directory: backend
+      - run: npm run build && npm run typecheck && npm run lint
+        working-directory: frontend
       - run: npm audit --audit-level=high
-      - name: Scan source for common secret patterns
-        working-directory: .
-        run: node scripts/scan-secrets.mjs
-      - name: Run local API integration suite
+        working-directory: backend
+      - run: npm audit --audit-level=high
+        working-directory: frontend
+      - run: node scripts/scan-secrets.mjs
+      - run: node scripts/verify-ui-preservation.mjs
+      - name: Verify backend independently and through frontend proxy
         run: |
-          npm run dev > /tmp/skillonit-dev.log 2>&1 &
-          SERVER_PID=$!
-          trap 'kill "$SERVER_PID"' EXIT
+          (cd backend && npm start) > /tmp/skillonit-api.log 2>&1 &
+          API_PID=$!
+          (cd frontend && npm start) > /tmp/skillonit-ui.log 2>&1 &
+          UI_PID=$!
+          trap 'kill "$API_PID" "$UI_PID"' EXIT
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://localhost:3000/api/v1/health > /dev/null; then break; fi
             sleep 2
           done
+          cd backend
           npm run test:integration
+          TEST_URL=http://localhost:3000 npm run test:integration
+          npm run test:architecture
