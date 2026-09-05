@@ -32,6 +32,16 @@ try {
     .collection('sessions')
     .indexes();
   assert.ok(indexes.some((index) => index.expireAfterSeconds === 0));
+  for (const name of ['passwordResets', 'verifications', 'rateLimits']) {
+    const ttlIndexes = await client
+      .db('architecture_test')
+      .collection(name)
+      .indexes();
+    assert.ok(
+      ttlIndexes.some((index) => index.expireAfterSeconds === 0),
+      `${name} TTL`,
+    );
+  }
   server = app.listen(0, '127.0.0.1');
   await new Promise<void>((resolve) => server!.once('listening', resolve));
   const address = server.address();
@@ -75,6 +85,39 @@ try {
       .countDocuments()) > 0,
   );
   const { expireJobs } = await import('../src/lib/lifecycle.js');
+  const { issuePasswordReset, resetPassword } =
+    await import('../src/lib/auth-lifecycle.js');
+  const { randomBytes } = await import('node:crypto');
+  const { digest, verifyPassword } = await import('../src/lib/security.js');
+  const resetToken = await issuePasswordReset('student@example.test');
+  assert.ok(resetToken);
+  const resetRow = await client
+    .db('architecture_test')
+    .collection('passwordResets')
+    .findOne({ id: digest(resetToken) });
+  assert.ok(resetRow?.expiresAtDate instanceof Date);
+  const newPassword = randomBytes(24).toString('base64url');
+  const results = await Promise.allSettled([
+    resetPassword(resetToken, newPassword),
+    resetPassword(resetToken, newPassword),
+  ]);
+  assert.equal(
+    results.filter((result) => result.status === 'fulfilled').length,
+    1,
+    'Reset token must be single-use under Mongo transaction concurrency',
+  );
+  const resetUser = await client
+    .db('architecture_test')
+    .collection('users')
+    .findOne({ email: 'student@example.test' });
+  assert.ok(resetUser && verifyPassword(newPassword, resetUser.passwordHash));
+  assert.equal(
+    await client
+      .db('architecture_test')
+      .collection('sessions')
+      .countDocuments({ userId: resetUser.id }),
+    0,
+  );
   const expired = sampleJobs()[0];
   await client
     .db('architecture_test')

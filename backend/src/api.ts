@@ -45,6 +45,11 @@ import {
 import { searchJobs } from './lib/search.js';
 import { providerHealth, RazorpayProvider } from './lib/providers.js';
 import { featureRoute, notify } from './features.js';
+import {
+  issuePasswordReset,
+  resetPassword,
+  revokeSessions,
+} from './lib/auth-lifecycle.js';
 type App = {
   id: string;
   userId: string;
@@ -126,6 +131,47 @@ export async function handle(
       );
     const feature = await featureRoute(p, method, body);
     if (feature) return ok(feature.data, feature.status || 200);
+    if (p === 'auth/forgot-password' && method === 'POST') {
+      const { email } = z
+        .object({ email: z.email().toLowerCase() })
+        .parse(await body());
+      await rateLimit('reset-account:' + email, 3);
+      if (!demoMode())
+        throw new ApiError(
+          503,
+          'VERIFICATION_UNAVAILABLE',
+          'Password recovery is unavailable until email delivery is configured.',
+        );
+      const token = await issuePasswordReset(email);
+      return ok({
+        message:
+          'If this account is eligible, recovery instructions can be requested. Demo mode does not send email.',
+        ...(token ? { demoResetToken: token } : {}),
+      });
+    }
+    if (p === 'auth/reset-password' && method === 'POST') {
+      const input = z
+        .object({
+          token: z.string().min(20).max(200),
+          password: z.string().min(12).max(128),
+        })
+        .parse(await body());
+      await resetPassword(input.token, input.password);
+      await signOut();
+      return ok({
+        reset: true,
+        message: 'Password changed. Please sign in again.',
+      });
+    }
+    if (p === 'auth/logout-all' && method === 'POST') {
+      const user = await requireUser();
+      await transaction(async (r) => {
+        await revokeSessions(r, user.id);
+        await audit(r, user.id, 'sessions.revoked', user.id);
+      });
+      await signOut();
+      return ok({ signedOut: true });
+    }
     if (p === 'auth/register' && method === 'POST') {
       const input = registerSchema.parse(await body());
       if (!demoMode())
@@ -175,6 +221,7 @@ export async function handle(
           id: digest(token),
           userId: user.id,
           expiresAt: Date.now() + 1800000,
+          expiresAtDate: new Date(Date.now() + 1800000),
         });
         await audit(r, user.id, 'account.registered', user.id);
       });
@@ -191,6 +238,7 @@ export async function handle(
     }
     if (p === 'auth/login' && method === 'POST') {
       const input = loginSchema.parse(await body());
+      await rateLimit('login-account:' + input.email, 5);
       const user = (
         await read((r) => r.find<User>('users', { email: input.email }))
       )[0];
@@ -198,13 +246,21 @@ export async function handle(
         !user ||
         !verifyPassword(input.password, user.passwordHash) ||
         user.disabled
-      )
+      ) {
+        if (user)
+          await transaction((r) =>
+            audit(r, user.id, 'auth.login_failed', user.id),
+          );
         throw new ApiError(
           401,
           'INVALID_LOGIN',
           'Email or password is incorrect.',
         );
+      }
       await signIn(user);
+      await transaction((r) =>
+        audit(r, user.id, 'auth.login_succeeded', user.id),
+      );
       return ok({ user: safeUser(user) });
     }
     if (p === 'auth/logout' && method === 'POST') {
@@ -220,14 +276,19 @@ export async function handle(
           'verifications',
           digest(token),
         );
-        if (!v || v.expiresAt < Date.now())
+        if (!v || !Number.isFinite(v.expiresAt) || v.expiresAt <= Date.now())
           throw new ApiError(
             400,
             'INVALID_TOKEN',
             'This verification link is invalid or expired.',
           );
         const u = await r.get<User>('users', v.userId);
-        if (!u) throw new ApiError(404, 'NOT_FOUND', 'Account not found.');
+        if (!u || u.disabled)
+          throw new ApiError(
+            400,
+            'INVALID_TOKEN',
+            'This verification link is invalid or expired.',
+          );
         await r.put('users', { ...u, verified: true });
         await r.remove('verifications', digest(token));
         await audit(r, u.id, 'email.verified', u.id);
@@ -273,8 +334,11 @@ export async function handle(
         if (!(await r.get('users', user.id))) await r.put('users', user);
         await audit(r, user.id, 'demo.session', user.id);
       });
-      await signIn(user);
-      return ok({ user: safeUser(user) });
+      const stored = await read((r) => r.get<User>('users', user.id));
+      if (!stored)
+        throw new ApiError(401, 'AUTH_REQUIRED', 'Please sign in again.');
+      await signIn(stored);
+      return ok({ user: safeUser(stored) });
     }
     if (p === 'me' && method === 'GET')
       return ok({ user: safeUser(await requireUser()), demo: demoMode() });

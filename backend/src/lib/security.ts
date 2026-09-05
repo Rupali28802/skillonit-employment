@@ -35,13 +35,23 @@ export async function currentUser() {
   const token = (await cookies()).get('skillonit_session')?.value;
   if (!token) return null;
   return read(async (r) => {
-    const s = await r.get<{ userId: string; expiresAt: string }>(
-      'sessions',
-      digest(token),
-    );
-    if (!s || Date.parse(s.expiresAt) < Date.now()) return null;
+    const s = await r.get<{
+      userId: string;
+      expiresAt: string;
+      credentialDigest?: string;
+    }>('sessions', digest(token));
+    if (
+      !s ||
+      !Number.isFinite(Date.parse(s.expiresAt)) ||
+      Date.parse(s.expiresAt) <= Date.now()
+    )
+      return null;
     const u = await r.get<User>('users', s.userId);
-    return u && !u.disabled ? u : null;
+    return u &&
+      !u.disabled &&
+      (!s.credentialDigest || s.credentialDigest === digest(u.passwordHash))
+      ? u
+      : null;
   });
 }
 export async function requireUser(role?: Role) {
@@ -59,14 +69,18 @@ export async function requireUser(role?: Role) {
 export async function signIn(user: User) {
   const token = randomBytes(32).toString('base64url');
   const expiresAt = new Date(Date.now() + 7 * 86400000);
-  await transaction((r) =>
-    r.put('sessions', {
+  await transaction(async (r) => {
+    const stored = await r.get<User>('users', user.id);
+    if (!stored || stored.disabled || stored.passwordHash !== user.passwordHash)
+      throw new ApiError(401, 'AUTH_REQUIRED', 'Please sign in again.');
+    await r.put('sessions', {
       id: digest(token),
       userId: user.id,
+      credentialDigest: digest(user.passwordHash),
       expiresAt: expiresAt.toISOString(),
       expiresAtDate: expiresAt,
-    }),
-  );
+    });
+  });
   (await cookies()).set('skillonit_session', token, {
     httpOnly: true,
     sameSite: 'lax',
@@ -112,6 +126,7 @@ export async function rateLimit(key: string, limit = 60) {
     await r.put('rateLimits', {
       id: bucket,
       count: (previous?.count || 0) + 1,
+      expiresAtDate: new Date(Date.now() + 120000),
     });
   });
 }

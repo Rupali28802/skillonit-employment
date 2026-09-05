@@ -193,6 +193,7 @@ export async function bootstrapIndexes() {
     'systemConfig',
     'rateLimits',
     'verifications',
+    'passwordResets',
     'applicationTemplates',
     'notifications',
     'fraudReports',
@@ -212,6 +213,16 @@ export async function bootstrapIndexes() {
   ])
     await db.collection(c).createIndex({ id: 1 }, { unique: true });
   await db.collection('users').createIndex({ email: 1 }, { unique: true });
+  await db.collection('users').createIndex({ role: 1, disabled: 1, id: 1 });
+  await db.collection('sessions').createIndex({ userId: 1, id: 1 });
+  await db
+    .collection('passwordResets')
+    .createIndex({ userId: 1 }, { unique: true });
+  for (const c of ['passwordResets', 'verifications', 'rateLimits'])
+    await db
+      .collection(c)
+      .createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
+  await db.collection('auditLogs').createIndex({ actorId: 1, createdAt: -1 });
   for (const collection of [
     'cvVersions',
     'templateVersions',
