@@ -17,6 +17,7 @@ const client = new MongoClient(replica.getUri());
 let server: ReturnType<typeof app.listen> | undefined;
 try {
   await bootstrapIndexes();
+  await bootstrapIndexes(); // Repeated bootstrap must preserve existing indexes.
   await transaction(async (r) => {
     for (const job of sampleJobs()) await r.put('jobs', job);
   });

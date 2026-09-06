@@ -8,8 +8,9 @@ if (!uri) {
   );
   process.exitCode = 1;
 } else {
-  const client = new MongoClient(uri, { serverSelectionTimeoutMS: 5000 });
+  let client: MongoClient | undefined;
   try {
+    client = new MongoClient(uri, { serverSelectionTimeoutMS: 5000 });
     await client.connect();
     await client
       .db(process.env.MONGODB_DATABASE || 'skillonit')
@@ -26,6 +27,6 @@ if (!uri) {
     );
     process.exitCode = 1;
   } finally {
-    await client.close();
+    await client?.close();
   }
 }

@@ -8,8 +8,9 @@ import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { sampleJobs } from './fixtures.js';
 import { plans } from './domain.js';
+import { demoEnabled } from './runtime-config.js';
 export type Row = { id: string; [key: string]: unknown };
-export const demoMode = () => process.env.DEMO_MODE === 'true';
+export const demoMode = () => demoEnabled();
 type Query = Record<string, unknown>;
 export interface Repository {
   count(collection: string, query?: Query): Promise<number>;
@@ -179,6 +180,10 @@ export async function configuredPlans() {
   });
 }
 export async function bootstrapIndexes() {
+  // Reject standalone deployments before any index writes. No demo fallback.
+  const hello = await mongo().db('admin').command({ hello: 1 });
+  if (!hello.setName && hello.msg !== 'isdbgrid')
+    throw new Error('MongoDB transaction-capable topology required.');
   const db = mongo().db(process.env.MONGODB_DATABASE || 'skillonit');
   for (const c of [
     'users',
