@@ -61,10 +61,22 @@ All paths use `/api/v1/`. Recovery does not mark email verified, elevate roles o
 
 ## Explicit remaining requirements
 
-- Production verification and recovery email provider, delivery retries and non-enumerating production recovery flow remain unimplemented. Production registration/recovery stay unavailable until this is implemented; this is not merely a missing API key.
+- SMTP authentication email adapter and verification/recovery pages now exist. Live SMTP delivery, sender-domain verification and production MongoDB connection are not yet validated. Durable delivery retries remain unimplemented; users can request replacement links. Recovery/resend return generic responses, but timing-based account enumeration resistance has not been established.
 - Demo responses deliberately expose test verification/reset tokens and may reveal test account existence. Never enable DEMO_MODE on an internet-facing deployment.
 - Account throttling is a basic suspicious-login control, not full device-risk detection, MFA, compromise notifications or administrator session policy.
 - Password hashing remains synchronous scrypt from the existing implementation; production throughput benchmarking and a bounded asynchronous hashing pool remain hardening work.
 - Large-scale Mongo query-plan/load tests, schema validator rollout and historical TTL backfill remain outstanding. No claim of million-user capacity or production deployment is made.
 
 Module 2 (student profile and CV/resume) begins only in the next requested step.
+
+## Real database and email setup
+
+Keep the working demo configuration until live providers have been checked. Store credentials only in ignored `backend/.env`. Never put connection strings in tickets or commits.
+
+1. Configure `MONGODB_URI` and `MONGODB_DATABASE` for an Atlas cluster or a local replica set. Run `npm run db:check` from backend. This read-only probe checks reachability and replica-set/sharded topology without printing driver error details or credentials.
+2. Configure `ENABLE_AUTH_EMAIL=true`, `SMTP_HOST`, `SMTP_PORT` (465 or 587), `SMTP_USER`, `SMTP_PASSWORD`, and `AUTH_EMAIL_FROM`. Use a sender authorized by your email provider. Set `APP_URL` to the public HTTPS origin. Configuration validation alone does not establish deliverability.
+3. SMTP uses certificate validation, TLS/required STARTTLS, timeouts, disabled debug logs and no attachment file/URL access. See https://nodemailer.com/smtp for transport behavior.
+4. Verify with synthetic accounts in staging before setting `DEMO_MODE=false` in production. Do not switch the current localhost preview to a public origin; use separate staging configuration.
+5. Email links use fragments rather than query parameters. The verification/reset pages read and clear the fragment, require an explicit form submission, and retain the existing UI style. Refreshing clears the in-memory token; reopen the original email link.
+
+`auth/resend-verification` is account-rate-limited and available after failed signup delivery. Signup stores the unverified account before sending; if SMTP fails, no session is issued and the user can request another verification link. SMTP acceptance does not guarantee inbox delivery. Real mailbox and database provider testing remain pending until secure local configuration is available.

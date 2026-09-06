@@ -4,6 +4,7 @@ import { AuthForm, SmartForm, Action } from '@/components/forms';
 import { Workspace } from '@/components/workspace';
 import { api, demoMode, configuredPlans } from '@/lib/api';
 import { Discovery } from '@/components/discovery';
+import { AccountRecovery } from '@/components/account-recovery';
 import type { PublicJob } from '@/lib/domain';
 export const dynamic = 'force-dynamic';
 export async function generateMetadata({
@@ -30,6 +31,13 @@ export default async function Page({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const page = (await params).page.join('/');
+  if (
+    page === 'forgot-password' ||
+    page === 'reset-password' ||
+    page === 'verify-email' ||
+    page === 'resend-verification'
+  )
+    return <AccountRecovery mode={page} />;
   const aliases: Record<string, string> = {
     signup: '/register',
     safety: '/trust',

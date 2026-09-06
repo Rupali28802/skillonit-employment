@@ -45,6 +45,7 @@ import {
 import { searchJobs } from './lib/search.js';
 import { providerHealth, RazorpayProvider } from './lib/providers.js';
 import { featureRoute, notify } from './features.js';
+import { authMailConfig, sendAuthMail } from './lib/auth-mail.js';
 import {
   issuePasswordReset,
   resetPassword,
@@ -136,17 +137,31 @@ export async function handle(
         .object({ email: z.email().toLowerCase() })
         .parse(await body());
       await rateLimit('reset-account:' + email, 3);
-      if (!demoMode())
-        throw new ApiError(
-          503,
-          'VERIFICATION_UNAVAILABLE',
-          'Password recovery is unavailable until email delivery is configured.',
-        );
+      if (!demoMode()) authMailConfig();
       const token = await issuePasswordReset(email);
+      if (!demoMode() && token) {
+        try {
+          await sendAuthMail(email, 'reset-password', token);
+        } catch {
+          await transaction(async (r) => {
+            const record = await r.get<{ userId: string }>(
+              'passwordResets',
+              digest(token),
+            );
+            if (record)
+              await audit(
+                r,
+                record.userId,
+                'auth.reset_delivery_failed',
+                record.userId,
+              );
+          });
+        }
+      }
       return ok({
         message:
-          'If this account is eligible, recovery instructions can be requested. Demo mode does not send email.',
-        ...(token ? { demoResetToken: token } : {}),
+          'If this account is eligible, recovery instructions have been requested. Please check your email or try again later.',
+        ...(demoMode() && token ? { demoResetToken: token } : {}),
       });
     }
     if (p === 'auth/reset-password' && method === 'POST') {
@@ -174,12 +189,7 @@ export async function handle(
     }
     if (p === 'auth/register' && method === 'POST') {
       const input = registerSchema.parse(await body());
-      if (!demoMode())
-        throw new ApiError(
-          503,
-          'VERIFICATION_UNAVAILABLE',
-          'Account registration will open after email verification is configured.',
-        );
+      if (!demoMode()) authMailConfig();
       const token = randomBytes(24).toString('base64url');
       const user: User = {
         id: id(),
@@ -225,13 +235,15 @@ export async function handle(
         });
         await audit(r, user.id, 'account.registered', user.id);
       });
+      if (!demoMode()) await sendAuthMail(user.email, 'verify-email', token);
       await signIn(user);
       return ok(
         {
           user: safeUser(user),
-          demoVerificationToken: token,
-          message:
-            'Demo only: no email was sent. Use the test verification control.',
+          ...(demoMode() ? { demoVerificationToken: token } : {}),
+          message: demoMode()
+            ? 'Demo only: no email was sent. Use the test verification control.'
+            : 'Check your email for the verification link.',
         },
         201,
       );
@@ -266,6 +278,43 @@ export async function handle(
     if (p === 'auth/logout' && method === 'POST') {
       await signOut();
       return ok({ signedOut: true });
+    }
+    if (p === 'auth/resend-verification' && method === 'POST') {
+      const { email } = z
+        .object({ email: z.email().toLowerCase() })
+        .parse(await body());
+      await rateLimit('verify-account:' + email, 3);
+      if (!demoMode()) authMailConfig();
+      const token = randomBytes(24).toString('base64url');
+      const recipient = await transaction(async (r) => {
+        const user = (await r.find<User>('users', { email }, 1))[0];
+        if (!user || user.disabled || user.verified) return null;
+        await r.put('verifications', {
+          id: digest(token),
+          userId: user.id,
+          expiresAt: Date.now() + 1800000,
+          expiresAtDate: new Date(Date.now() + 1800000),
+        });
+        return user;
+      });
+      if (recipient && !demoMode()) {
+        try {
+          await sendAuthMail(recipient.email, 'verify-email', token);
+        } catch {
+          await transaction((r) =>
+            audit(
+              r,
+              recipient.id,
+              'auth.verification_delivery_failed',
+              recipient.id,
+            ),
+          );
+        }
+      }
+      return ok({
+        message: 'If eligible, a verification link has been requested.',
+        ...(demoMode() && recipient ? { demoVerificationToken: token } : {}),
+      });
     }
     if (p === 'auth/verify-email' && method === 'POST') {
       const { token } = z

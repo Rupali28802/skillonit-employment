@@ -244,6 +244,10 @@ export function AuthForm({
                 setMessage(
                   'Demo account created. Complete the test email verification below; no email was sent.',
                 );
+              } else if (register) {
+                setMessage(
+                  j.data.message || 'Check your email to verify your account.',
+                );
               } else
                 window.location.href =
                   j.data.user.role === 'employer'
@@ -317,6 +321,10 @@ export function AuthForm({
             {register ? 'Sign in' : 'Create an account'}
           </Link>
         </p>
+        <div className="actions small">
+          <Link href="/forgot-password">Forgot password?</Link>
+          <Link href="/resend-verification">Resend verification</Link>
+        </div>
       </div>
       {demo && (
         <div className="panel">
