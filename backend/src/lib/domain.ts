@@ -36,6 +36,10 @@ export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company'> & {
   identityVisible: boolean;
 };
 export type Profile = {
+  avatarVersion?: string;
+  coverVersion?: string;
+  logoVersion?: string;
+  coverTheme?: string;
   name: string;
   headline: string;
   skills: string[];

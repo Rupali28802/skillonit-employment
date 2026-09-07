@@ -136,6 +136,7 @@ export async function bootstrapIndexes() {
     'applications',
     'savedJobs',
     'profiles',
+    'profileMedia',
     'employers',
     'leads',
     'auditLogs',

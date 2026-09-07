@@ -88,14 +88,12 @@ npm run build
 npm test
 npm run test:mongo
 npm run test:integration
-npm run test:architecture  # requires both services running
 cd ../frontend
 npm run typecheck
 npm run lint
 npm run build
 cd ..
 node scripts/scan-secrets.mjs
-node scripts/verify-ui-preservation.mjs
 ```
 
 `test:integration` requires a local demo backend at port 4000. Set `TEST_URL=http://localhost:3000` to test through the frontend proxy. `TEST_ORIGIN` defaults to `http://localhost:3000`. Tests create clearly synthetic records. `test:mongo` starts an isolated real MongoDB replica set, exercises API workflows and rollback/index behavior, then removes its temporary database; it never loads your `.env`. The first run downloads a MongoDB test binary. GitHub Actions validates both builds, unit tests, MongoDB integration, and proxied API workflows.

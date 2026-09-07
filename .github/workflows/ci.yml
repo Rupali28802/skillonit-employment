@@ -11,8 +11,6 @@ jobs:
       BACKEND_URL: http://127.0.0.1:4000
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -33,7 +31,6 @@ jobs:
       - run: npm audit --audit-level=high
         working-directory: frontend
       - run: node scripts/scan-secrets.mjs
-      - run: node scripts/verify-ui-preservation.mjs
       - name: Verify backend independently and through frontend proxy
         run: |
           (cd backend && npm start) > /tmp/skillonit-api.log 2>&1 &

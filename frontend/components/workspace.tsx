@@ -1,4 +1,5 @@
 import { display } from '@/lib/display';
+import { ProfileSidebar } from './profile-sidebar';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { currentUser } from '@/lib/api';
@@ -129,6 +130,7 @@ async function Candidate({ section, user }: { section: string; user: User }) {
       <div className="panel">
         <h2>Your experience, in your words.</h2>
         <p>Only facts you confirm can be used in matching and applications.</p>
+        <ProfileSidebar user={user} editor />
         <SmartForm
           endpoint="me/profile"
           method="PUT"

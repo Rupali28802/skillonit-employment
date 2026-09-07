@@ -1,6 +1,6 @@
 # Local validation report
 
-The first sections record validation of the original hybrid implementation on 5 September 2026. The architecture separation verification at the end records the current frontend/backend project.
+Validation performed on 5 September 2026 against the local Next.js application and fictional test records.
 
 | Check | Result |
 |---|---|
@@ -25,17 +25,11 @@ The integration suite leaves clearly named fictional test records in ignored loc
 Real MongoDB transaction/concurrency behavior, provider OAuth, CV scanning/parsing/storage, mail delivery, paid plan activation, live source ingestion, real-time pub/sub, all admin subroles/MFA, complete automated accessibility coverage, production deployment, GitHub-hosted CI execution, high-load/soak/spike/failover behavior, backup/restore or the million-user milestones. These remain release requirements, not implied passes.
 
 See `IMPLEMENTATION_STATUS.md` for the full requirement-by-requirement gap list.
-# Architecture separation verification — 2026-09-05
 
-- Next.js frontend and Express backend compile independently. Frontend production build verified with backend stopped; Express starts without a frontend process.
-- All 11 existing domain tests pass after migration to the backend.
-- Existing 36-assertion API suite passes directly against Express and through the Next.js `/api` proxy.
-- Real isolated MongoDB replica-set test passes the API suite, confirms persisted contact/application records, unique/TTL index bootstrap and transaction rollback. No production database or external account was used.
-- Architecture transport suite passes: all 43 existing page routes render, concurrent role sessions remain isolated, cookies are forwarded, direct and proxied SSE emit readiness events, CORS rejects untrusted origins, and oversized bodies return 413.
-- Chrome desktop baseline comparison: homepage DOM is unchanged except removal of the development-only Next.js toolbar when running production. Homepage visuals match the original. Remote search returns the same two jobs; sign-in reaches the candidate workspace; saving the unchanged profile confirms success.
-- Chrome mobile at 390×844: discovery layout and filter controls work without horizontal document overflow. Browser error/warning log is empty after interaction checks; viewport restored afterward.
-- Source preservation check: 72 UI/asset files unchanged; five data-fetching files retain JSX tags, visible text, static attributes and inline styles. All original CSS, animation definitions and client interaction components are unchanged.
-- Frontend lint and TypeScript checks pass. Both dependency trees report zero audit vulnerabilities. Repository secret scan excludes private env/data/build files.
-- Existing unconfigured mail, CV, automation and payment activation responses remain as before. This report validates separation, not completion of the original enterprise backlog.
+## UI and profile update — 7 September 2026
 
-The earlier sections document the original implementation milestone before architecture separation.
+- Frontend production build and lint pass; backend build and all 12 unit tests pass, including private profile image validation and persistence.
+- Architecture suite passes 43 page renders, session isolation, proxy cookies, SSE, CORS and request size checks.
+- All 36 API integration assertions pass after restarting the local demo backend to clear the rate limit accumulated by consecutive test suites.
+- Chrome checks confirm category filtering, fixed All opportunities button, moving category illustrations, static job grids, navbar profile photo linking to the student workspace, and desktop-only discovery sidebar. Tablet (1024px) and mobile (390px) have no horizontal document overflow.
+- Repository secret-pattern scan passes; private environment files and demo data remain ignored. This update does not validate live mail providers, payments or a production MongoDB connection.

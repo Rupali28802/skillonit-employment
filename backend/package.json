@@ -18,16 +18,17 @@
     "test:architecture": "node tests/architecture.mjs"
   },
   "dependencies": {
+    "bullmq": "^6.3.4",
     "express": "^5.1.0",
     "mongodb": "^7.6.0",
-    "bullmq": "^6.3.4",
+    "sharp": "^0.35.4",
     "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "22.19.19",
-    "typescript": "5.9.3",
+    "mongodb-memory-server": "^10.2.0",
     "tsx": "^4.20.0",
-    "mongodb-memory-server": "^10.2.0"
+    "typescript": "5.9.3"
   }
 }

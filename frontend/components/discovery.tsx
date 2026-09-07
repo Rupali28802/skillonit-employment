@@ -8,16 +8,23 @@ import {
   Bookmark,
   ShieldCheck,
   ArrowRight,
-  SlidersHorizontal,
   Globe2,
   BriefcaseBusiness,
   Sparkles,
   Pause,
   Play,
 } from 'lucide-react';
-import type { PublicJob } from '@/lib/domain';
-import { categories, countries, states } from '@/lib/domain';
-export function Discovery({ initialJobs }: { initialJobs: PublicJob[] }) {
+import type { PublicJob, User } from '@/lib/domain';
+import { CategorySlider } from './category-slider';
+import { ProfileSidebar } from './profile-sidebar';
+import { countries, states } from '@/lib/domain';
+export function Discovery({
+  initialJobs,
+  user,
+}: {
+  initialJobs: PublicJob[];
+  user: User | null;
+}) {
   const [jobs, setJobs] = useState(initialJobs),
     [query, setQuery] = useState(''),
     [category, setCategory] = useState(''),
@@ -29,6 +36,7 @@ export function Discovery({ initialJobs }: { initialJobs: PublicJob[] }) {
     [page, setPage] = useState(1),
     [filters, setFilters] = useState(false),
     [paused, setPaused] = useState(false),
+    [noticePaused, setNoticePaused] = useState(false),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false);
   const sequence = useRef(0);
@@ -128,77 +136,7 @@ export function Discovery({ initialJobs }: { initialJobs: PublicJob[] }) {
         </div>
       </section>
       <div className="discovery-grid">
-        <aside className="filter-panel">
-          <div className="section-line">
-            <h2>Refine your search</h2>
-            <SlidersHorizontal size={17} />
-          </div>
-          <label>
-            Location
-            <select
-              value={country}
-              onChange={(e) => setCountry(e.target.value)}
-            >
-              <option value="">Anywhere in the world</option>
-              {countries.map((c) => (
-                <option key={c}>{c}</option>
-              ))}
-            </select>
-          </label>
-          {country === 'India' && (
-            <label>
-              State / union territory
-              <select value={state} onChange={(e) => setState(e.target.value)}>
-                <option value="">All states</option>
-                {states.map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
-            </label>
-          )}
-          <label>
-            Work arrangement
-            <select value={mode} onChange={(e) => setMode(e.target.value)}>
-              <option value="">All arrangements</option>
-              {['Remote', 'Hybrid', 'On-site'].map((m) => (
-                <option key={m}>{m}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Experience
-            <select
-              value={experience}
-              onChange={(e) => setExperience(e.target.value)}
-            >
-              <option value="">All experience levels</option>
-              <option value="0">Fresher</option>
-              <option value="2">1–3 years</option>
-              <option value="5">3–5 years</option>
-              <option value="8">5+ years</option>
-            </select>
-          </label>
-          <button
-            className="secondary full"
-            onClick={() => {
-              setPage(1);
-              void search();
-            }}
-          >
-            Apply filters
-          </button>
-          <div className="filter-note">
-            <ShieldCheck size={24} />
-            <h3>A more confident search</h3>
-            <p>
-              Review source details, verification status and application method
-              before you apply.
-            </p>
-            <Link href="/trust">
-              How we protect your search <ArrowUpRight size={14} />
-            </Link>
-          </div>
-        </aside>
+        <ProfileSidebar user={user} />
         <section className="results">
           <div className="section-line">
             <div>
@@ -213,26 +151,7 @@ export function Discovery({ initialJobs }: { initialJobs: PublicJob[] }) {
               {paused ? <Play size={17} /> : <Pause size={17} />}
             </button>
           </div>
-          <div className="category-row">
-            <button
-              className={!category ? 'selected' : ''}
-              onClick={() => setCategory('')}
-            >
-              All opportunities
-            </button>
-            {categories.map((c) => (
-              <button
-                key={c}
-                className={category === c ? 'selected' : ''}
-                onClick={() => {
-                  setCategory(c);
-                  setPage(1);
-                }}
-              >
-                {c}
-              </button>
-            ))}
-          </div>
+          <CategorySlider value={category} onChange={(value) => { setCategory(value); setPage(1); }} />
           <div className="results-toolbar">
             <span>
               {jobs.length} opportunities{' '}
@@ -312,8 +231,41 @@ export function Discovery({ initialJobs }: { initialJobs: PublicJob[] }) {
             {message && <p className="notice">{message}</p>}
           </div>
           {jobs.some((j) => j.sample) && (
-            <div className="sample-note">
-              Preview collection · Sample vacancies for exploring the platform.
+            <div className="collection-notice">
+              <div className="collection-marquee">
+                <span className="sr-only">
+                  Preview collection · Sample vacancies for exploring the
+                  platform.
+                </span>
+                <div
+                  className={`collection-track${noticePaused ? ' is-paused' : ''}`}
+                  aria-hidden="true"
+                >
+                  {[0, 1].map((copy) => (
+                    <div className="collection-track-group" key={copy}>
+                      {[0, 1, 2].map((item) => (
+                        <span key={item}>
+                          <Sparkles size={15} />
+                          Preview collection · Sample vacancies for exploring
+                          the platform.
+                        </span>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <button
+                className="icon-button"
+                aria-label={
+                  noticePaused
+                    ? 'Resume collection notice'
+                    : 'Pause collection notice'
+                }
+                aria-pressed={noticePaused}
+                onClick={() => setNoticePaused(!noticePaused)}
+              >
+                {noticePaused ? <Play size={16} /> : <Pause size={16} />}
+              </button>
             </div>
           )}
           {jobs.length === 0 ? (
@@ -327,7 +279,7 @@ export function Discovery({ initialJobs }: { initialJobs: PublicJob[] }) {
               {jobs.map((job, i) => (
                 <article className="job-card" key={job.id}>
                   <div className={`job-mark mark-${i % 4}`}>
-                    <BriefcaseBusiness size={24} />
+                    <BriefcaseBusiness size={42} strokeWidth={1.5} />
                   </div>
                   <div className="job-main">
                     <div className="job-top">
@@ -383,6 +335,13 @@ export function Discovery({ initialJobs }: { initialJobs: PublicJob[] }) {
                         <small> / year</small>
                       </strong>
                     </div>
+                    <Link
+                      className="primary full job-apply"
+                      href={`/jobs/${job.id}`}
+                      aria-label={`Apply now for ${job.title}`}
+                    >
+                      Apply now <ArrowUpRight size={17} />
+                    </Link>
                   </div>
                 </article>
               ))}

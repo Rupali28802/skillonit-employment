@@ -42,6 +42,7 @@ app.get('/api/v1/jobs/stream', (req, res) => {
   res.on('close', () => clearInterval(timer));
 });
 // Keep bytes unchanged for payment webhook signatures; business parsing is in the handler.
+app.use('/api/v1/me/profile-image', express.raw({ type: () => true, limit: '2mb' }));
 app.use(
   '/api/v1',
   express.raw({ type: () => true, limit: '64kb' }),

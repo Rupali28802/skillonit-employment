@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { z } from 'zod';
+import { profileImage, mediaKinds } from './lib/profile-media.js';
 import {
   read,
   transaction,
@@ -322,6 +323,21 @@ export async function handle(
         }),
       );
     }
+    if (parts[0] === 'me' && parts[1] === 'profile-image') {
+      const u = await requireUser();
+      const kind = z.enum(mediaKinds).parse(parts[2]);
+      return await profileImage(request, u, kind);
+    }
+    if (p === 'me/profile-appearance' && method === 'PUT') {
+      const u = await requireUser();
+      const { coverTheme } = z.object({ coverTheme: z.enum(['auto', 'technology', 'design', 'healthcare', 'finance', 'education', 'business']) }).parse(await body());
+      await transaction(async r => {
+        const latest = await r.get<User>('users', u.id);
+        await r.put('users', { ...latest!, profile: { ...latest!.profile, coverTheme } });
+        await audit(r, u.id, 'profile.appearance.updated', u.id);
+      });
+      return ok({ coverTheme });
+    }
     if (p === 'me/profile') {
       const u = await requireUser('student');
       if (method === 'GET') return ok(u.profile);
@@ -329,7 +345,7 @@ export async function handle(
         const profile = profileSchema.parse(await body());
         await transaction(async (r) => {
           const latest = await r.get<User>('users', u.id);
-          await r.put('users', { ...latest!, profile, name: profile.name });
+          await r.put('users', { ...latest!, profile: { ...latest!.profile, ...profile }, name: profile.name });
           await audit(r, u.id, 'profile.updated', u.id);
         });
         return ok(profile);

@@ -27,7 +27,7 @@ export default async function Page({
 }) {
   const page = (await params).page.join('/');
   if (page === 'login' || page === 'register')
-    return <AuthForm register={page === 'register'} demo={await demoMode()} />;
+    return <AuthForm key={page} register={page === 'register'} demo={await demoMode()} />;
   if (
     [
       'dashboard',
