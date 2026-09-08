@@ -1,12 +1,13 @@
 import { Worker } from 'bullmq';
 import { transaction, read } from '../lib/store.js';
-import { type Job, isRecent } from '../lib/domain.js';
+import { type Job } from '../lib/domain.js';
 import {
   GreenhouseAdapter,
   fingerprint,
   type SourcePolicy,
 } from '../lib/pipeline.js';
 import { randomUUID } from 'node:crypto';
+import { expireJobs } from '../lib/lifecycle.js';
 if (!process.env.REDIS_URL || !process.env.MONGODB_URI)
   throw Error('Workers require REDIS_URL and MONGODB_URI.');
 const redis = new URL(process.env.REDIS_URL);
@@ -40,13 +41,7 @@ const worker = new Worker(
         }
       });
     } else if (task.name === 'job-retention') {
-      const jobs = await read((r) =>
-        r.find<Job>('jobs', { status: 'published' }, 1000),
-      );
-      await transaction(async (r) => {
-        for (const job of jobs)
-          if (!isRecent(job)) await r.put('jobs', { ...job, status: 'closed' });
-      });
+      await expireJobs();
     } else if (task.name === 'job-dedupe') {
       const job = await read((r) =>
         r.get<Job>('jobs', String(task.data.jobId)),

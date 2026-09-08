@@ -12,21 +12,26 @@
     "start": "node --env-file-if-exists=.env dist/index.js",
     "worker": "node --env-file-if-exists=.env dist/workers/index.js",
     "typecheck": "tsc --noEmit",
+    "db:check": "node --env-file-if-exists=.env --import tsx src/db-check.ts",
     "test": "node --import tsx --test tests/*.test.ts",
     "test:integration": "node tests/integration.mjs",
+    "test:features": "node tests/features.mjs",
     "test:mongo": "node --import tsx tests/mongo-integration.ts",
     "test:architecture": "node tests/architecture.mjs"
   },
   "dependencies": {
     "bullmq": "^6.3.4",
     "express": "^5.1.0",
+    "google-auth-library": "^11.0.2",
     "mongodb": "^7.6.0",
+    "nodemailer": "^10.0.0",
     "sharp": "^0.35.4",
     "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "22.19.19",
+    "@types/nodemailer": "^8.0.1",
     "mongodb-memory-server": "^10.2.0",
     "tsx": "^4.20.0",
     "typescript": "5.9.3"

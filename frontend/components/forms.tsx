@@ -1,6 +1,6 @@
 'use client';
 import { display } from '@/lib/display';
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -20,6 +20,7 @@ type Field = {
   required?: boolean;
   hint?: string;
 };
+const noAuthSubscription = () => () => {};
 export function SmartForm({
   fields,
   endpoint,
@@ -215,11 +216,10 @@ export function AuthForm({
 }) {
   const [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false),
-    [token, setToken] = useState(''),
-    [verificationDestination, setVerificationDestination] =
-      useState('/profile'),
     [showPassword, setShowPassword] = useState(false),
     [accountType, setAccountType] = useState('student');
+  const authError = useSyncExternalStore(noAuthSubscription, () => new URLSearchParams(window.location.search).get('auth_error'), () => null);
+  const providerMessage = authError === 'google_email_proof' ? 'Sign in with your password first to link this Google email safely.' : authError ? 'Google sign-in was not completed. Please try again.' : '';
   return (
     <div className="auth-page">
       <div className="auth-card">
@@ -336,6 +336,18 @@ export function AuthForm({
               Employer
             </button>
           </fieldset>
+          {accountType === 'student' && <>
+            <button type="button" className="auth-google" disabled={busy} onClick={async () => {
+              setBusy(true); setMessage('');
+              try {
+                const response = await fetch('/api/v1/auth/google/status');
+                const result = await response.json();
+                if (!response.ok || !result.data?.available) throw Error('Google sign-in is not available yet. Please use email sign-in.');
+                window.location.assign(result.data.startUrl);
+              } catch (error) { setMessage(error instanceof Error ? error.message : 'Google sign-in is unavailable.'); setBusy(false); }
+            }}><span className="auth-google-mark" aria-hidden="true">G</span>Continue with Google</button>
+            <div className="auth-divider"><span>or continue with email</span></div>
+          </>}
           <form
             onSubmit={async (e) => {
               e.preventDefault();
@@ -362,14 +374,9 @@ export function AuthForm({
                 );
                 const j = await r.json();
                 if (!r.ok) throw Error(j.error?.message);
-                if (j.data.demoVerificationToken) {
-                  setToken(j.data.demoVerificationToken);
-                  setVerificationDestination(
-                    j.data.user.role === 'employer' ? '/employer' : '/profile',
-                  );
-                  setMessage(
-                    'Demo account created. Complete the test email verification below; no email was sent.',
-                  );
+                if (register && !j.data.user.verified) {
+                  sessionStorage.setItem('skillonit-verification-email', typeof data.email === 'string' ? data.email : '');
+                  window.location.assign('/verify-email');
                 } else
                   window.location.href =
                     j.data.user.role === 'employer'
@@ -452,7 +459,7 @@ export function AuthForm({
             )}
             {!register && (
               <div className="auth-help">
-                <Link href="/contact">Need help signing in?</Link>
+                <Link href="/forgot-password">Forgot password?</Link>
               </div>
             )}
             <button className="primary full" disabled={busy}>
@@ -460,18 +467,10 @@ export function AuthForm({
               <ArrowRight size={17} />
             </button>
           </form>
-          {message && (
+          {(message || providerMessage) && (
             <p className="notice" aria-live="polite" style={{ marginTop: 15 }}>
-              {message}
+              {message || providerMessage}
             </p>
-          )}
-          {token && (
-            <Action
-              endpoint="auth/verify-email"
-              label="Verify this demo account"
-              payload={{ token }}
-              redirect={verificationDestination}
-            />
           )}
           <p className="auth-bottom-link">
             {register ? 'Already have an account?' : 'New to SkillonIT?'}{' '}

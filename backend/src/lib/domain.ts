@@ -63,7 +63,10 @@ export type User = {
   id: string;
   email: string;
   name: string;
-  passwordHash: string;
+  passwordHash: string | null;
+  googleId?: string;
+  authProvider?: "google" | "password";
+  isVerified?: boolean;
   role: Role;
   plan: PlanCode;
   verified: boolean;
@@ -318,6 +321,8 @@ export function eligibility(
   if (job.trust !== 'verified')
     reasons.push('Employer verification is required.');
   if (used >= plan.dailyCap) reasons.push('Daily plan allowance reached.');
+  if (used >= user.preferences.dailyCap)
+    reasons.push('Your personal daily application cap has been reached.');
   if (
     job.method === 'email' &&
     (!plan.autoApply ||

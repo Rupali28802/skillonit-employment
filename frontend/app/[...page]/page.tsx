@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { AuthForm, SmartForm, Action } from '@/components/forms';
+import { AuthRecovery } from '@/components/auth-recovery';
 import { Workspace } from '@/components/workspace';
 import { demoMode, configuredPlans } from '@/lib/api';
 export const dynamic = 'force-dynamic';
@@ -26,6 +27,8 @@ export default async function Page({
   params: Promise<{ page: string[] }>;
 }) {
   const page = (await params).page.join('/');
+  if (page === 'verify-email' || page === 'resend-verification' || page === 'forgot-password' || page === 'reset-password')
+    return <AuthRecovery key={page} mode={page} />;
   if (page === 'login' || page === 'register')
     return <AuthForm key={page} register={page === 'register'} demo={await demoMode()} />;
   if (
