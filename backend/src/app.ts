@@ -1,3 +1,4 @@
+import { googleAuth } from './google-auth.js';
 import express, { type ErrorRequestHandler } from 'express';
 import { handle } from './api.js';
 import { requestContext } from './request-context.js';
@@ -30,6 +31,7 @@ app.use((req, res, next) => {
   }
   next();
 });
+app.use('/api/v1/auth', googleAuth);
 app.get('/api/v1/jobs/stream', (req, res) => {
   res.set({
     'Content-Type': 'text/event-stream',
@@ -74,6 +76,23 @@ app.use(
         }),
       });
       response.headers.forEach((value, key) => res.setHeader(key, value));
+      if (url.pathname === '/api/v1/auth/login' || url.pathname === '/api/v1/session') {
+        const result = await response.clone().json().catch(() => null);
+        const outgoing = res.getHeader('set-cookie');
+        const sessionCookie = (Array.isArray(outgoing) ? outgoing : outgoing ? [String(outgoing)] : [])
+          .find(value => value.startsWith('skillonit_session='));
+        // Fixed labels and booleans only; never log request bodies or cookie values.
+        console.info('Auth session transport', {
+          endpoint: url.pathname === '/api/v1/auth/login' ? 'login' : 'session',
+          status: response.status,
+          incomingSessionCookie: /(?:^|;\s*)skillonit_session=/.test(req.headers.cookie || ''),
+          authenticated: !!result?.data?.user,
+          sessionCookieSet: !!sessionCookie,
+          secure: !!sessionCookie && /;\s*Secure/i.test(sessionCookie),
+          httpOnly: !!sessionCookie && /;\s*HttpOnly/i.test(sessionCookie),
+          sameSiteLax: !!sessionCookie && /;\s*SameSite=Lax/i.test(sessionCookie),
+        });
+      }
       res
         .status(response.status)
         .send(Buffer.from(await response.arrayBuffer()));

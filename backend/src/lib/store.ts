@@ -218,6 +218,9 @@ export async function bootstrapIndexes() {
   ])
     await db.collection(c).createIndex({ id: 1 }, { unique: true });
   await db.collection('users').createIndex({ email: 1 }, { unique: true });
+  await db.collection('users').createIndex({ googleId: 1 }, { unique: true, partialFilterExpression: { googleId: { $type: 'string' } } });
+  await db.collection('oauthStates').createIndex({ id: 1 }, { unique: true });
+  await db.collection('oauthStates').createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
   await db.collection('users').createIndex({ role: 1, disabled: 1, id: 1 });
   await db.collection('sessions').createIndex({ userId: 1, id: 1 });
   await db

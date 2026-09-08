@@ -59,7 +59,10 @@ export type User = {
   id: string;
   email: string;
   name: string;
-  passwordHash: string;
+  passwordHash: string | null;
+  googleId?: string;
+  authProvider?: "google" | "password";
+  isVerified?: boolean;
   role: Role;
   plan: PlanCode;
   verified: boolean;

@@ -223,6 +223,9 @@ export function AuthForm({
             ? 'Start with a profile that reflects you.'
             : 'Sign in to your SkillonIT workspace.'}
         </p>
+        <button type="button" className="secondary full" onClick={() => window.location.assign("/api/v1/auth/google")} style={{ display: 'block', marginBottom: 16, textAlign: 'center' }}>
+          Continue with Google
+        </button>
         <form
           onSubmit={async (e) => {
             e.preventDefault();
@@ -249,12 +252,7 @@ export function AuthForm({
                   j.data.message || 'Check your email to verify your account.',
                 );
               } else
-                window.location.href =
-                  j.data.user.role === 'employer'
-                    ? '/employer'
-                    : j.data.user.role === 'admin'
-                      ? '/admin'
-                      : '/dashboard';
+                window.location.href = '/';
             } catch (e) {
               setMessage((e as Error).message);
             } finally {

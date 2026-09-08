@@ -4,7 +4,11 @@ import { validateRuntime } from './lib/runtime-config.js';
 
 try {
   validateRuntime();
-  if (process.env.MONGODB_URI) await bootstrapIndexes();
+  if (process.env.MONGODB_URI) {
+    await bootstrapIndexes();
+    const database = process.env.MONGODB_DATABASE || 'skillonit';
+    console.log('MongoDB connected: ' + (/^[A-Za-z0-9_-]+$/.test(database) ? database : '[configured database]'));
+  }
   else if (!demoMode()) throw new Error('Missing persistence');
 } catch {
   // Driver/configuration exceptions can contain credentials. Never print them.

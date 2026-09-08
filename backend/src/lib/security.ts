@@ -24,7 +24,8 @@ export function hashPassword(password: string) {
   const salt = randomBytes(16).toString('hex');
   return salt + ':' + scryptSync(password, salt, 64).toString('hex');
 }
-export function verifyPassword(password: string, stored: string) {
+export function verifyPassword(password: string, stored: string | null) {
+  if (!stored) return false;
   const [salt, hash] = stored.split(':');
   if (!salt || !hash) return false;
   const actual = scryptSync(password, salt, 64);
@@ -49,7 +50,7 @@ export async function currentUser() {
     const u = await r.get<User>('users', s.userId);
     return u &&
       !u.disabled &&
-      (!s.credentialDigest || s.credentialDigest === digest(u.passwordHash))
+      (!s.credentialDigest || s.credentialDigest === digest(u.passwordHash ?? ("google:" + u.googleId)))
       ? u
       : null;
   });
@@ -71,12 +72,12 @@ export async function signIn(user: User) {
   const expiresAt = new Date(Date.now() + 7 * 86400000);
   await transaction(async (r) => {
     const stored = await r.get<User>('users', user.id);
-    if (!stored || stored.disabled || stored.passwordHash !== user.passwordHash)
+    if (!stored || stored.disabled || stored.passwordHash !== user.passwordHash || stored.googleId !== user.googleId)
       throw new ApiError(401, 'AUTH_REQUIRED', 'Please sign in again.');
     await r.put('sessions', {
       id: digest(token),
       userId: user.id,
-      credentialDigest: digest(user.passwordHash),
+      credentialDigest: digest(user.passwordHash ?? ("google:" + user.googleId)),
       expiresAt: expiresAt.toISOString(),
       expiresAtDate: expiresAt,
     });
@@ -84,7 +85,7 @@ export async function signIn(user: User) {
   (await cookies()).set('skillonit_session', token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: process.env.NODE_ENV === 'production' || process.env.APP_URL?.startsWith('https://') === true,
     path: '/',
     expires: expiresAt,
   });
