@@ -98,21 +98,22 @@ export function Discovery({
   }
   return (
     <>
-      <section className="search-intro">
-        <div className="eyebrow">
-          <span className="live-dot" /> YOUR NEXT CHAPTER STARTS HERE
+      <section className="search-intro job-hero">
+        <div className="job-hero-copy">
+        <div className="job-hero-badge">
+          <Globe2 size={14} /> Global jobs. Real opportunities. Your next chapter.
         </div>
         <h1>
-          Find work that <span>fits you.</span>
+          Find the Right Job.<br /><span>Faster, Smarter, Globally.</span>
         </h1>
-        <p>Discover opportunities across roles, industries and borders.</p>
-        <form className="search-box" onSubmit={search}>
+        <p>Discover jobs from around the world, explore roles that match your skills and take your next step—all in one place.</p>
+        <form className="search-box" onSubmit={(event) => { void search(event); document.getElementById('job-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>
           <Search size={23} />
           <input
             aria-label="Search jobs"
-            placeholder="Try “remote design jobs” or “fresher in Bengaluru”"
+            placeholder="Job title, skill or location"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setPage(1); }}
           />
           <button className="primary" disabled={busy}>
             {busy ? 'Searching…' : 'Find jobs'}
@@ -134,10 +135,23 @@ export function Discovery({
             </button>
           ))}
         </div>
+        <div className="job-hero-actions">
+          <Link href={user ? '/dashboard' : '/register'} className="job-hero-account">{user ? 'Open your workspace' : 'Create free account'}<ArrowRight size={16} /></Link>
+          <span><ShieldCheck size={16} /> Your career. Your next move.</span>
+        </div>
+        <div className="job-hero-highlights">
+          <span><Globe2 size={19} /><strong>Global opportunities</strong><small>Explore beyond borders</small></span>
+          <span><Sparkles size={19} /><strong>Skills that matter</strong><small>Find your next role</small></span>
+          <span><BriefcaseBusiness size={19} /><strong>One workspace</strong><small>Organize your job search</small></span>
+        </div>
+        </div>
+        <figure className="job-hero-art" aria-label="Illustration of a job seeker exploring career opportunities on a laptop">
+          <figcaption className="job-hero-art-caption">Illustrative preview</figcaption>
+        </figure>
       </section>
       <div className="discovery-grid">
         <ProfileSidebar user={user} />
-        <section className="results">
+        <section className="results" id="job-results">
           <div className="section-line">
             <div>
               <div className="eyebrow muted">EXPLORE OPPORTUNITIES</div>

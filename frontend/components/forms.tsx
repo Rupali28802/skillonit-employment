@@ -3,6 +3,7 @@ import { display } from '@/lib/display';
 import { useState } from 'react';
 import Link from 'next/link';
 import {
+  ArrowLeft,
   ArrowRight,
   BriefcaseBusiness,
   Check,
@@ -294,7 +295,15 @@ export function AuthForm({
           aria-label={register ? 'Register' : 'Sign in'}
         >
           <div className="auth-form-heading">
-            <div className="eyebrow">SKILLONIT EMPLOYMENT</div>
+            <div className="auth-heading-row">
+              <div className="eyebrow">SKILLONIT EMPLOYMENT</div>
+              <Link className="auth-back" href="/" onClick={(event) => {
+                if (window.history.length > 1) {
+                  event.preventDefault();
+                  window.history.back();
+                }
+              }}><ArrowLeft size={15} /> Back</Link>
+            </div>
             <h1>
               {register
                 ? 'Create your account'

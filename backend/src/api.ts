@@ -124,13 +124,7 @@ export async function handle(
       );
     if (p === 'auth/register' && method === 'POST') {
       const input = registerSchema.parse(await body());
-      if (!demoMode())
-        throw new ApiError(
-          503,
-          'VERIFICATION_UNAVAILABLE',
-          'Account registration will open after email verification is configured.',
-        );
-      const token = randomBytes(24).toString('base64url');
+      const token = demoMode() ? randomBytes(24).toString('base64url') : undefined;
       const user: User = {
         id: id(),
         ...input,
@@ -167,7 +161,7 @@ export async function handle(
             'An account already exists for this email.',
           );
         await r.put('users', user);
-        await r.put('verifications', {
+        if (token) await r.put('verifications', {
           id: digest(token),
           userId: user.id,
           expiresAt: Date.now() + 1800000,
@@ -178,9 +172,10 @@ export async function handle(
       return ok(
         {
           user: safeUser(user),
-          demoVerificationToken: token,
-          message:
-            'Demo only: no email was sent. Use the test verification control.',
+          ...(token ? { demoVerificationToken: token } : {}),
+          message: token
+            ? 'Demo only: no email was sent. Use the test verification control.'
+            : 'Account created. Email verification is pending; no verification email has been sent.',
         },
         201,
       );
