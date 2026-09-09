@@ -1,4 +1,5 @@
-import { Worker } from 'bullmq';
+import { productionCvProviders } from '../lib/cv-production.js';
+import { Worker, Queue } from 'bullmq';
 import { transaction, read } from '../lib/store.js';
 import { type Job } from '../lib/domain.js';
 import {
@@ -8,6 +9,7 @@ import {
 } from '../lib/pipeline.js';
 import { randomUUID } from 'node:crypto';
 import { expireJobs } from '../lib/lifecycle.js';
+import { runCvBatch, runCvMaintenance } from './cv.js';
 if (!process.env.REDIS_URL || !process.env.MONGODB_URI)
   throw Error('Workers require REDIS_URL and MONGODB_URI.');
 const redis = new URL(process.env.REDIS_URL);
@@ -18,11 +20,24 @@ const connection = {
   password: redis.password || undefined,
   tls: redis.protocol === 'rediss:' ? {} : undefined,
 };
+if (process.env.ENABLE_CV_UPLOADS === 'true') {
+  try {
+    await productionCvProviders().check();
+    const queue = new Queue('skillonit-operations', { connection });
+    await queue.upsertJobScheduler('cv-process', { every: 60000 }, { name: 'cv-process', data: {} });
+    await queue.upsertJobScheduler('cv-maintenance', { every: 3600000 }, { name: 'cv-maintenance', data: {} });
+    await queue.close();
+  } catch { console.error('CV worker configuration failed; provider details withheld.'); process.exit(1); }
+}
 const worker = new Worker(
   'skillonit-operations',
   async (task) => {
     const started = new Date().toISOString();
-    if (task.name === 'source-discovery') {
+    if (task.name === 'cv-maintenance') {
+      await runCvMaintenance();
+    } else if (task.name === 'cv-process') {
+      await runCvBatch();
+    } else if (task.name === 'source-discovery') {
       const policy = await read((r) =>
         r.get<SourcePolicy>('jobSources', String(task.data.sourceId)),
       );

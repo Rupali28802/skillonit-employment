@@ -11,8 +11,14 @@
     "build": "tsc",
     "start": "node --env-file-if-exists=.env dist/index.js",
     "worker": "node --env-file-if-exists=.env dist/workers/index.js",
+    "worker:module2": "node --env-file-if-exists=.env dist/workers/module2.js",
+    "module2:check": "node --env-file-if-exists=.env --import tsx src/module2-production-check.ts",
     "typecheck": "tsc --noEmit",
+    "catalog:configure": "node --env-file-if-exists=.env --import tsx src/configure-student-catalog.ts",
     "db:check": "node --env-file-if-exists=.env --import tsx src/db-check.ts",
+    "cv:check": "node --env-file-if-exists=.env --import tsx src/cv-provider-check.ts",
+    "test:module2": "node --import tsx --test tests/module2.test.ts tests/module2-foundation.test.ts tests/module2-hardening.test.ts tests/module2-providers.test.ts tests/module2-runtime.test.ts tests/student-profile.test.ts",
+    "test:module2:mongo": "node --import tsx --test tests/module2-mongo.test.ts",
     "test": "node --import tsx --test tests/*.test.ts",
     "test:integration": "node tests/integration.mjs",
     "test:features": "node tests/features.mjs",
@@ -20,19 +26,27 @@
     "test:architecture": "node tests/architecture.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1127.0",
     "bullmq": "^6.3.4",
     "express": "^5.1.0",
     "google-auth-library": "^11.0.2",
+    "ioredis": "^5.11.1",
     "mongodb": "^7.6.0",
     "nodemailer": "^10.0.0",
+    "pdf-lib": "^1.17.1",
+    "saxes": "^6.0.0",
+    "yauzl": "^3.4.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "22.19.19",
     "@types/nodemailer": "^8.0.1",
+    "@types/yauzl": "^3.4.0",
+    "@types/yazl": "^3.3.1",
     "mongodb-memory-server": "^10.2.0",
     "tsx": "^4.20.0",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "yazl": "^3.3.1"
   }
 }

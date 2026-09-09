@@ -12,14 +12,20 @@ export const loginSchema = z.object({
   password: z.string().min(1).max(128),
 });
 export const profileSchema = z.object({
-  name: text,
+  name: z.string().trim().max(200),
   headline: z.string().max(200),
   skills: list,
-  experience: z.number().min(0).max(70),
+  experience: z.number().min(0).max(70).nullable(),
   education: z.string().max(3000),
-  country: text,
-  city: text,
+  country: z.string().trim().max(200),
+  city: z.string().trim().max(200),
   confirmed: z.boolean(),
+  employmentHistory: z.array(z.object({
+    title: z.string().trim().max(200), employer: z.string().trim().max(200),
+    start: z.string().regex(/^(?:|\d{4}(?:-(?:0[1-9]|1[0-2]))?)$/),
+    end: z.string().regex(/^(?:|Present|\d{4}(?:-(?:0[1-9]|1[0-2]))?)$/),
+    description: z.string().trim().max(3000),
+  }).refine(row => !row.start || !row.end || row.end === 'Present' || (row.end.length === 4 ? row.end + '-12' : row.end) >= (row.start.length === 4 ? row.start + '-01' : row.start), 'Employment end precedes start.')).max(30).optional(),
 });
 export const preferencesSchema = z.object({
   roles: list,
@@ -30,6 +36,16 @@ export const preferencesSchema = z.object({
   automation: z.boolean(),
   dailyCap: z.number().int().min(0).max(100),
   consentAt: z.string().optional(),
+  skills: list.optional(),
+  experience: z.object({ min: z.number().min(0).max(70), max: z.number().min(0).max(70) }).refine(v => v.max >= v.min).optional(),
+  regions: list.optional(),
+  indiaStates: list.optional(),
+  cities: list.optional(),
+  salary: z.object({ min: z.number().min(0), max: z.number().min(0), currency: z.string().regex(/^[A-Z]{3}$/) }).refine(v => v.max >= v.min).optional(),
+  industries: list.optional(),
+  employmentTypes: list.optional(),
+  companyPreferences: z.object({ preferred: list, excluded: list }).optional(),
+  automationConstraints: z.object({ enabled: z.boolean(), dailyCap: z.number().int().min(0).max(100), minimumMatch: z.number().min(0).max(100), excludedMethods: z.array(z.enum(['direct', 'external', 'email'])).max(3) }).optional(),
 });
 export const jobSchema = z
   .object({

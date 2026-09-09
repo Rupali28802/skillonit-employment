@@ -208,6 +208,17 @@ export async function bootstrapIndexes() {
     'workerRuns',
     'queue',
     'cvs',
+    'cvDocuments',
+    'cvDeletionReceipts',
+    'atsCvDrafts',
+    'studentPreferences',
+    'automationPreferences',
+    'occupationFamilies',
+    'locations',
+    'skills',
+    'studentOnboarding',
+    'candidateConsents',
+    'candidateConsentEvents',
     'cvVersions',
     'templateVersions',
     'savedSearches',
@@ -218,6 +229,26 @@ export async function bootstrapIndexes() {
   ])
     await db.collection(c).createIndex({ id: 1 }, { unique: true });
   await db.collection('users').createIndex({ email: 1 }, { unique: true });
+  await db.collection('studentOnboarding').createIndex({ userId: 1 }, { unique: true });
+  await db.collection('studentPreferences').createIndex({ userId: 1 }, { unique: true });
+  await db.collection('automationPreferences').createIndex({ userId: 1 }, { unique: true });
+  await db.collection('occupationFamilies').createIndex({ slug: 1 }, { unique: true });
+  await db.collection('skills').createIndex({ slug: 1 }, { unique: true });
+  await db.collection('occupationFamilies').createIndex({ parentId: 1, active: 1 });
+  await db.collection('locations').createIndex({ slug: 1 }, { unique: true });
+  await db.collection('locations').createIndex({ countryCode: 1, code: 1 }, { unique: true });
+  await db.collection('locations').createIndex({ parentId: 1, active: 1 });
+  await db.collection('locations').createIndex({ countryCode: 1, type: 1, active: 1 });
+  await db.collection('candidateConsents').createIndex({ userId: 1, purpose: 1 }, { unique: true });
+  await db.collection('candidateConsentEvents').createIndex({ userId: 1, updatedAt: -1 });
+  await db.collection('cvDocuments').createIndex({ userId: 1, createdAt: -1 });
+  await db.collection('cvDocuments').createIndex({ userId: 1, sha256: 1 });
+  await db.collection('cvDocuments').createIndex({ status: 1, updatedAt: 1 });
+  await db.collection('cvDocuments').createIndex({ expiresAt: 1 });
+  await db.collection('cvDeletionReceipts').createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
+  await db.collection('atsCvDrafts').createIndex({ userId: 1, createdAt: -1 });
+  await db.collection('cvDocuments').createIndex({ status: 1, leaseUntil: 1 });
+  await db.collection('cvVersions').createIndex({ userId: 1, documentId: 1 });
   await db.collection('users').createIndex({ googleId: 1 }, { unique: true, partialFilterExpression: { googleId: { $type: 'string' } } });
   await db.collection('oauthStates').createIndex({ id: 1 }, { unique: true });
   await db.collection('oauthStates').createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
