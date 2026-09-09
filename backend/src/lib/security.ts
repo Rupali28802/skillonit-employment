@@ -5,7 +5,7 @@ import {
   createHash,
   randomUUID,
 } from 'node:crypto';
-import { cookies } from '../request-context.js';
+import { cookies, requestContext } from '../request-context.js';
 import { isLocalPreviewOrigin } from './runtime-config.js';
 import { read, transaction, type Repository } from './store.js';
 import type { User, Role } from './domain.js';
@@ -103,11 +103,13 @@ export async function audit(
   action: string,
   entityId: string,
 ) {
+  const entityType = ({ profile: 'studentProfile', cv: 'cvDocument', ats_cv: 'cvVersion', preferences: 'studentPreferences', onboarding: 'studentOnboarding', automation: 'automationPreferences', consent: 'candidateConsent', catalog: 'studentCatalog', profile_completion: 'configuration' } as Record<string, string>)[action.split('.')[0]];
   await r.put('auditLogs', {
     id: id(),
     actorId,
     action,
     entityId,
+    ...(entityType ? { entityType, correlationId: requestContext.getStore()?.response.locals.correlationId ?? id(), metadata: {}, timestamp: new Date().toISOString() } : {}),
     createdAt: new Date().toISOString(),
   });
 }

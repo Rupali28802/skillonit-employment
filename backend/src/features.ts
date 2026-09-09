@@ -9,7 +9,7 @@ import {
 import { requireUser, ApiError, audit, id } from './lib/security.js';
 import { profileSchema } from './lib/schemas.js';
 import { searchJobs } from './lib/search.js';
-import { publicJob, isRecent, type Job } from './lib/domain.js';
+import { publicJob, isRecent, type Job, type User } from './lib/domain.js';
 
 const searchSchema = z.object({
   name: z.string().trim().min(1).max(100),
@@ -234,6 +234,9 @@ export async function featureRoute(
             'ENTITLEMENT_REQUIRED',
             `Your plan allows ${plan.cvs} CV versions.`,
           );
+        const latest = await r.get<User>('users', user.id);
+        if (!latest || latest.disabled || latest.role !== 'student') throw new ApiError(403, 'FORBIDDEN', 'A student account is required.');
+        await r.put('users', { ...latest, cvQuotaRevision: (latest.cvQuotaRevision ?? 0) + 1 });
         await r.put('cvVersions', version);
         await notify(
           r,
@@ -255,8 +258,11 @@ export async function featureRoute(
       };
     if (method === 'DELETE') {
       await transaction(async (r) => {
-        await owned(r, 'cvVersions', parts[2], user.id);
+        const version = await owned(r, 'cvVersions', parts[2], user.id);
+        if (typeof version.documentId === 'string') { const doc = await r.get<Row>('cvDocuments', version.documentId); if (doc?.activeVersionId === parts[2]) await r.put('cvDocuments', { ...doc, activeVersionId: null }); }
         await r.remove('cvVersions', parts[2]);
+        const latest = await r.get<User>('users', user.id);
+        if (latest?.activeCvVersionId === parts[2]) await r.put('users', { ...latest, activeCvVersionId: null });
         await audit(r, user.id, 'cv.version_deleted', parts[2]);
       });
       return { data: { deleted: true } };

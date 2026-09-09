@@ -1,0 +1,12 @@
+{
+  "occupations": [
+    {"id":"healthcare","slug":"healthcare","displayName":"Healthcare","parentId":null,"aliases":["Health services"],"active":true,"relatedRoleIds":[]},
+    {"id":"nursing","slug":"nursing","displayName":"Nursing","parentId":"healthcare","aliases":["Nursing occupations"],"active":true,"relatedRoleIds":[]},
+    {"id":"agriculture","slug":"agriculture","displayName":"Agriculture","parentId":null,"aliases":["Agricultural occupations"],"active":true,"relatedRoleIds":[]}
+  ],
+  "locations": [
+    {"id":"in","slug":"india","code":"IN","displayName":"India","type":"country","parentId":null,"countryCode":"IN","active":true},
+    {"id":"in-mh","slug":"india-maharashtra","code":"MH","displayName":"Maharashtra","type":"state","parentId":"in","countryCode":"IN","active":true},
+    {"id":"in-mh-pune","slug":"india-maharashtra-pune","code":"PUNE","displayName":"Pune","type":"city","parentId":"in-mh","countryCode":"IN","active":true}
+  ]
+}

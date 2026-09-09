@@ -43,11 +43,12 @@ export type Profile = {
   name: string;
   headline: string;
   skills: string[];
-  experience: number;
+  experience: number | null;
   education: string;
   country: string;
   city: string;
   confirmed: boolean;
+  employmentHistory?: { title: string; employer: string; start: string; end: string; description: string }[];
 };
 export type Preferences = {
   roles: string[];
@@ -58,6 +59,16 @@ export type Preferences = {
   automation: boolean;
   dailyCap: number;
   consentAt?: string;
+  skills?: string[];
+  experience?: { min: number; max: number };
+  regions?: string[];
+  indiaStates?: string[];
+  cities?: string[];
+  salary?: { min: number; max: number; currency: string };
+  industries?: string[];
+  employmentTypes?: string[];
+  companyPreferences?: { preferred: string[]; excluded: string[] };
+  automationConstraints?: { enabled: boolean; dailyCap: number; minimumMatch: number; excludedMethods: ('direct' | 'external' | 'email')[] };
 };
 export type User = {
   id: string;
@@ -73,6 +84,12 @@ export type User = {
   disabled?: boolean;
   createdAt: string;
   profile: Profile;
+  profileRevision?: number;
+  activeCvVersionId?: string | null;
+  profileProvenance?: Record<string, { source: string; status: string }>;
+  cvQuotaRevision?: number;
+  profileUpdatedAt?: string;
+  profileConfirmedAt?: string;
   preferences: Preferences;
 };
 export type Plan = {
@@ -275,7 +292,7 @@ export function matchJob(job: Job, profile: Profile, preferences: Preferences) {
     job.title.toLowerCase().includes(r.toLowerCase()),
   );
   const experience =
-    profile.experience >= job.experienceMin &&
+    profile.experience !== null && profile.experience >= job.experienceMin &&
     profile.experience <= job.experienceMax;
   const location =
     !preferences.countries.length ||

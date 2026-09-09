@@ -1,3 +1,5 @@
+import { requestContext } from './request-context.js';
+import { getPreferences } from './lib/student-preferences.js';
 import { randomBytes } from "node:crypto";
 import { profileImage, mediaKinds } from './lib/profile-media.js';
 import { z } from "zod";
@@ -20,8 +22,6 @@ import {
 import {
   registerSchema,
   loginSchema,
-  profileSchema,
-  preferencesSchema,
   contactSchema,
   employerSchema,
   jobSchema,
@@ -43,6 +43,9 @@ import { featureRoute, notify } from "./features.js";
 import { authMailConfig, sendAuthMail } from "./lib/auth-mail.js";
 import { createEmailOtp, verifyEmailOtp, otpKey } from "./lib/email-otp.js";
 import { issuePasswordReset, resetPassword, revokeSessions } from "./lib/auth-lifecycle.js";
+import { getStudentProfileStatus, updateStudentProfile } from "./lib/student-profile.js";
+import { studentModuleRoute } from "./student-module.js";
+import { savePreferences } from "./lib/student-onboarding.js";
 type App = {
   id: string;
   userId: string;
@@ -59,7 +62,9 @@ export async function handle(
   request: Request,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
-  const correlationId = id();
+  const context = requestContext.getStore();
+  const correlationId = context?.response.locals.correlationId ?? id();
+  if (context) context.response.locals.correlationId = correlationId;
   try {
     const parts = (await params).path,
       p = parts.join("/"),
@@ -121,6 +126,8 @@ export async function handle(
           (request.headers.get("x-real-ip") || "local"),
         p.startsWith("auth/") ? 20 : 120,
       );
+    const studentResult = await studentModuleRoute(p, method, body, url.searchParams);
+    if (studentResult) return ok(studentResult.data, studentResult.status || 200);
     const feature = await featureRoute(p, method, body);
     if (feature) return ok(feature.data, feature.status || 200);
     if (p === "auth/forgot-password" && method === "POST") {
@@ -394,36 +401,22 @@ export async function handle(
       });
       return ok({ coverTheme });
     }
+    if (p === "me/profile/status" && method === "GET") {
+      const u = await requireUser("student");
+      return ok(await getStudentProfileStatus(u.id));
+    }
     if (p === "me/profile") {
       const u = await requireUser("student");
       if (method === "GET") return ok(u.profile);
       if (method === "PUT") {
-        const profile = profileSchema.parse(await body());
-        await transaction(async (r) => {
-          const latest = await r.get<User>("users", u.id);
-          await r.put("users", { ...latest!, profile: { ...latest!.profile, ...profile }, name: profile.name });
-          await audit(r, u.id, "profile.updated", u.id);
-        });
-        return ok(profile);
+        return ok(await updateStudentProfile(u.id, await body()));
       }
     }
     if (p === "me/preferences") {
       const u = await requireUser("student");
-      if (method === "GET") return ok(u.preferences);
+      if (method === "GET") return ok(await getPreferences(u.id));
       if (method === "PUT") {
-        const preferences = preferencesSchema.parse(await body());
-        if (preferences.automation)
-          throw new ApiError(
-            503,
-            "AUTOMATION_UNAVAILABLE",
-            "Automation needs a connected mailbox and configured delivery workers. Your current settings have not changed.",
-          );
-        await transaction(async (r) => {
-          const latest = await r.get<User>("users", u.id);
-          await r.put("users", { ...latest!, preferences });
-          await audit(r, u.id, "preferences.updated", u.id);
-        });
-        return ok(preferences);
+        return ok(await savePreferences(u.id, await body()));
       }
     }
     if (p === "me/matches" && method === "GET") {
@@ -474,15 +467,6 @@ export async function handle(
         });
         return ok(template);
       }
-    }
-    if (p === "me/cv") {
-      await requireUser("student");
-      if (method === "GET") return ok([]);
-      throw new ApiError(
-        503,
-        "CV_PROVIDER_UNAVAILABLE",
-        "Secure file scanning and storage must be configured before CV uploads. You can complete your profile manually.",
-      );
     }
     if (p === "me/export" && method === "GET") {
       const u = await requireUser();
@@ -958,9 +942,13 @@ export async function handle(
   } catch (error) {
     const known = error instanceof ApiError;
     const validation = error instanceof z.ZodError;
+    const status = known ? error.status : validation ? 400 : 503;
+    const classification = status === 401 || status === 403 ? 'authorization' : status === 409 ? 'conflict' : status === 429 ? 'rate_limit' : status >= 500 ? 'dependency' : 'request';
+    console.info('API request rejected', { correlationId, status, classification });
     return Response.json(
       {
         error: {
+          classification, retryable: status === 429 || status >= 500,
           code: known ? error.code : validation ? "VALIDATION_ERROR" : "SERVICE_UNAVAILABLE",
           message: known
             ? error.message

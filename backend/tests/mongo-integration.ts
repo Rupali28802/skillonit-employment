@@ -17,8 +17,38 @@ let server: ReturnType<typeof app.listen> | undefined;
 try {
   await bootstrapIndexes();
   await bootstrapIndexes(); // Repeated bootstrap must preserve existing indexes.
+  for (const name of ["cvDocuments", "studentOnboarding", "candidateConsents", "candidateConsentEvents"]) {
+    const entries = await client.db("architecture_test").collection(name).indexes();
+    assert.ok(entries.some(index => index.key.userId === 1), `${name} ownership index`);
+  }
   const { checkEmailOtp } = await import("./email-otp-checks.js");
   await checkEmailOtp();
+  const { checkStudentProfile } = await import("./student-profile-checks.js");
+  await checkStudentProfile();
+  const { checkModule2 } = await import("./module2-checks.js");
+  await checkModule2();
+  const { checkModule2Foundation } = await import('./module2-foundation-checks.js');
+  await checkModule2Foundation();
+  const receipts = await client.db('architecture_test').collection('cvDeletionReceipts').indexes();
+  assert.ok(receipts.some(index => index.expireAfterSeconds === 0));
+  const cvIndexes = await client.db('architecture_test').collection('cvDocuments').indexes();
+  assert.ok(cvIndexes.some(index => index.key.sha256 === 1));
+  for (const name of ['studentPreferences', 'automationPreferences']) {
+    const entries = await client.db('architecture_test').collection(name).indexes();
+    assert.ok(entries.some(index => index.key.userId === 1 && index.unique));
+    const existing = await client.db('architecture_test').collection(name).findOne({});
+    assert.ok(existing);
+    const { _id: _, ...copy } = existing;
+    await assert.rejects(client.db('architecture_test').collection(name).insertOne({ ...copy, id: 'duplicate-owner-test' }), { code: 11000 });
+  }
+  for (const name of ['occupationFamilies', 'locations']) {
+    const entries = await client.db('architecture_test').collection(name).indexes();
+    assert.ok(entries.some(index => index.key.slug === 1 && index.unique));
+    assert.ok(entries.some(index => index.key.parentId === 1));
+  }
+  const locationIndexes = await client.db('architecture_test').collection('locations').indexes();
+  assert.ok(locationIndexes.some(index => index.key.countryCode === 1 && index.key.type === 1));
+  console.log('PASS: Module 2 preferences, catalogs, consent, automation configuration, completion, ownership indexes and uniqueness on isolated architecture_test.');
   await transaction(async (r) => {
     for (const job of sampleJobs()) await r.put("jobs", job);
   });

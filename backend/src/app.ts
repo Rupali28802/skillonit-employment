@@ -1,13 +1,17 @@
 import { googleAuth } from './google-auth.js';
 import { isLocalPreviewOrigin } from './lib/runtime-config.js';
+import { createCvUploadRouter } from './student-module.js';
 import express, { type ErrorRequestHandler } from 'express';
 import { handle } from './api.js';
 import { requestContext } from './request-context.js';
+import { randomUUID } from 'node:crypto';
 
 export const app = express();
 app.disable('x-powered-by');
 app.use((req, res, next) => {
+  res.locals.correlationId = randomUUID();
   res.set({
+    'X-Request-Id': res.locals.correlationId,
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'no-store',
     'X-Frame-Options': 'DENY',
@@ -33,6 +37,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use('/api/v1/auth', googleAuth);
+app.use(createCvUploadRouter());
 app.get('/api/v1/jobs/stream', (req, res) => {
   res.set({
     'Content-Type': 'text/event-stream',
@@ -104,7 +109,7 @@ app.use(
 app.use((_req, res) => {
   res
     .status(404)
-    .json({ error: { code: 'NOT_FOUND', message: 'Endpoint not found.' } });
+    .json({ error: { code: 'NOT_FOUND', message: 'Endpoint not found.', classification: 'request', retryable: false }, correlationId: res.locals.correlationId });
 });
 const errors: ErrorRequestHandler = (error, _req, res, _next) => {
   const large = error?.type === 'entity.too.large';
@@ -113,10 +118,13 @@ const errors: ErrorRequestHandler = (error, _req, res, _next) => {
     .json({
       error: {
         code: large ? 'TOO_LARGE' : 'SERVICE_UNAVAILABLE',
+        classification: large ? 'request' : 'dependency',
+        retryable: !large,
         message: large
           ? 'Request is too large.'
           : 'This service is temporarily unavailable. Please try again later.',
       },
+      correlationId: res.locals.correlationId,
     });
 };
 app.use(errors);
