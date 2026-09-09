@@ -4,6 +4,7 @@ import { AuthForm, SmartForm, Action } from '@/components/forms';
 import { AuthRecovery } from '@/components/auth-recovery';
 import { Workspace } from '@/components/workspace';
 import { demoMode, configuredPlans } from '@/lib/api';
+import { googleStartUrl } from '@/lib/frontend-config';
 export const dynamic = 'force-dynamic';
 export async function generateMetadata({
   params,
@@ -30,7 +31,7 @@ export default async function Page({
   if (page === 'verify-email' || page === 'resend-verification' || page === 'forgot-password' || page === 'reset-password')
     return <AuthRecovery key={page} mode={page} />;
   if (page === 'login' || page === 'register')
-    return <AuthForm key={page} register={page === 'register'} demo={await demoMode()} />;
+    return <AuthForm key={page} register={page === 'register'} demo={await demoMode()} googleAuthUrl={googleStartUrl(process.env.APP_URL)} />;
   if (
     [
       'dashboard',

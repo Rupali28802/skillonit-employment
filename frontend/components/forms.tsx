@@ -28,6 +28,8 @@ export function SmartForm({
   initial = {},
   submit = 'Save changes',
   onSuccess,
+  expectedRevision,
+  preservedFields = {},
 }: {
   fields: Field[];
   endpoint: string;
@@ -35,7 +37,10 @@ export function SmartForm({
   initial?: Record<string, unknown>;
   submit?: string;
   onSuccess?: () => void;
+  expectedRevision?: number;
+  preservedFields?: Record<string, unknown>;
 }) {
+  const [revision, setRevision] = useState(expectedRevision);
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState(''),
     [error, setError] = useState(false);
@@ -46,12 +51,12 @@ export function SmartForm({
         setBusy(true);
         setMessage('');
         const form = new FormData(e.currentTarget),
-          payload: Record<string, unknown> = {};
+          payload: Record<string, unknown> = { ...preservedFields, ...(revision !== undefined ? { expectedRevision: revision } : {}) };
         for (const f of fields) {
           const v = form.get(f.name);
           payload[f.name] =
             f.type === 'number'
-              ? Number(v)
+              ? (v === '' && f.required === false ? null : Number(v))
               : f.type === 'checkbox'
                 ? v === 'on'
                 : f.type === 'list'
@@ -71,6 +76,8 @@ export function SmartForm({
           if (!r.ok)
             throw Error(j.error?.message || 'Could not save your changes.');
           setError(false);
+          if (revision !== undefined)
+            setRevision(typeof j.data?.revision === 'number' ? j.data.revision : revision + 1);
           setMessage(j.data?.message || 'Your changes have been saved.');
           onSuccess?.();
         } catch (e) {
@@ -210,9 +217,11 @@ export function Action({
 export function AuthForm({
   register = false,
   demo = false,
+  googleAuthUrl = '/api/v1/auth/google',
 }: {
   register?: boolean;
   demo?: boolean;
+  googleAuthUrl?: string;
 }) {
   const [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false),
@@ -343,7 +352,7 @@ export function AuthForm({
                 const response = await fetch('/api/v1/auth/google/status');
                 const result = await response.json();
                 if (!response.ok || !result.data?.available) throw Error('Google sign-in is not available yet. Please use email sign-in.');
-                window.location.assign(result.data.startUrl);
+                window.location.assign(result.data.startUrl || googleAuthUrl);
               } catch (error) { setMessage(error instanceof Error ? error.message : 'Google sign-in is unavailable.'); setBusy(false); }
             }}><span className="auth-google-mark" aria-hidden="true">G</span>Continue with Google</button>
             <div className="auth-divider"><span>or continue with email</span></div>

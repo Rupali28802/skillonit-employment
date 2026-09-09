@@ -43,11 +43,12 @@ export type Profile = {
   name: string;
   headline: string;
   skills: string[];
-  experience: number;
+  experience: number | null;
   education: string;
   country: string;
   city: string;
   confirmed: boolean;
+  employmentHistory?: { title: string; employer: string; start: string; end: string; description: string }[];
 };
 export type Preferences = {
   roles: string[];
@@ -69,6 +70,7 @@ export type User = {
   disabled?: boolean;
   createdAt: string;
   profile: Profile;
+  profileRevision?: number;
   preferences: Preferences;
 };
 export type Plan = {

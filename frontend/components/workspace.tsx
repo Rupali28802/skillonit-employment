@@ -125,16 +125,22 @@ export async function Workspace({ section }: { section: string }) {
   );
 }
 async function Candidate({ section, user }: { section: string; user: User }) {
-  if (section === 'profile')
+  if (section === 'profile') {
+    // Use the revision from the same authenticated user snapshot as the form.
+    // A separate status read could accept stale profile data after a concurrent edit.
+    const revision = user.profileRevision ?? 0;
     return (
       <div className="panel">
         <h2>Your experience, in your words.</h2>
         <p>Only facts you confirm can be used in matching and applications.</p>
         <ProfileSidebar user={user} editor />
         <SmartForm
+          key={revision}
           endpoint="me/profile"
           method="PUT"
           initial={user.profile}
+          expectedRevision={revision}
+          preservedFields={{ employmentHistory: user.profile.employmentHistory || [] }}
           fields={[
             { name: 'name', label: 'Full name' },
             { name: 'headline', label: 'Professional headline' },
@@ -148,6 +154,7 @@ async function Candidate({ section, user }: { section: string; user: User }) {
               name: 'experience',
               label: 'Years of experience',
               type: 'number',
+              required: false,
             },
             { name: 'country', label: 'Country', options: countries },
             { name: 'city', label: 'City' },
@@ -166,7 +173,9 @@ async function Candidate({ section, user }: { section: string; user: User }) {
         />
       </div>
     );
-  if (section === 'preferences' || section === 'automation')
+  }
+  if (section === 'preferences' || section === 'automation') {
+    const preferences = await api<User['preferences'] & { revision: number }>('me/preferences');
     return (
       <div className="panel">
         <h2>
@@ -181,7 +190,9 @@ async function Candidate({ section, user }: { section: string; user: User }) {
         <SmartForm
           endpoint="me/preferences"
           method="PUT"
-          initial={user.preferences}
+          key={preferences.revision}
+          initial={preferences}
+          expectedRevision={preferences.revision}
           fields={[
             { name: 'roles', label: 'Target job titles', type: 'list' },
             {
@@ -223,6 +234,7 @@ async function Candidate({ section, user }: { section: string; user: User }) {
         />
       </div>
     );
+  }
   if (section === 'saved') {
     const jobs = await api<PublicJob[]>('me/saved');
     return (

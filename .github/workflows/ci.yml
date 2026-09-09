@@ -31,6 +31,9 @@ jobs:
       - run: npm audit --audit-level=high
         working-directory: frontend
       - run: node scripts/scan-secrets.mjs
+      - name: Verify latest frontend against isolated MongoDB and Express
+        run: npm run test:frontend
+        working-directory: backend
       - name: Verify backend independently and through frontend proxy
         run: |
           (cd backend && npm start) > /tmp/skillonit-api.log 2>&1 &

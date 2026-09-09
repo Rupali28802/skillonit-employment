@@ -1,105 +1,98 @@
-# SkillonIT Employment
+# SkillOnIT Employment
 
-The existing website is separated into an independent Next.js frontend and Node.js/Express backend. Pages, components, styles, animations and browser workflows are preserved. The original specification and scope analysis remain in `docs/`.
+One repository, maintained on `main`: the existing frontend design and the Express/MongoDB Module 1 and Module 2 backend. The original specifications and backend contracts are in `docs/`.
 
 ```text
 skillonit-employment/
-├── frontend/       Next.js UI, pages, assets and API data fetching
-├── backend/        Express APIs, authentication, MongoDB, providers and workers
-├── docs/           Original requirements, implementation status and operations
-├── scripts/        Repository checks
-├── README.md
-└── .gitignore
+  frontend/   Next.js pages, components, styles and public assets
+  backend/    Express APIs, authentication, MongoDB, Module 2 and workers
+  scripts/    Integration tests and credential scanning
+  docs/       Requirements, API contracts and operations
 ```
 
-## Clone and install
+## Install and configure
 
-Use Node.js 22.17 or later and npm. Clone the existing repository's default branch:
+Use Node.js 22.17 or later. Run `npm ci` in both `backend` and `frontend`.
+For a new checkout, copy `backend/.env.example` to `backend/.env` and
+`frontend/.env.example` to `frontend/.env.local`. Preserve existing private environment files when upgrading.
 
-```sh
-git clone https://github.com/Rupali28802/skillonit-employment.git
-cd skillonit-employment
-cd backend
-npm ci
-cd ../frontend
-npm ci
-```
-
-Each application has its own package manifest and lockfile. Neither needs the other application's source directory or dependencies to build or start.
-
-## Backend — terminal 1
-
-Copy `backend/.env.example` to `backend/.env`. For the existing local demo, set:
+For local email/password development, both applications must use the same public origin:
 
 ```dotenv
-PORT=4000
-HOST=127.0.0.1
-APP_URL=http://localhost:3000
-DEMO_MODE=true
+APP_URL=http://127.0.0.1:3000
 ```
 
-Leave `MONGODB_URI` empty for fictional local demo storage, or set it privately to a MongoDB replica-set/Atlas connection string. The backend automatically connects and creates indexes before accepting traffic. MongoDB transactions require a replica set. MongoDB takes precedence over demo file storage when a URI is configured. Existing local demo records were moved to `backend/.data/`; they are never committed. Demo storage supports one backend process only.
+Backend: `HOST=127.0.0.1`, `PORT=4100`, `MONGODB_DATABASE=Skillonitemployment`.
+Configure `MONGODB_URI` privately. Keep the chosen `DEMO_MODE` value; tests never change the development environment files.
+Frontend: `BACKEND_URL=http://127.0.0.1:4100`.
+
+The frontend `/api/*` proxy forwards to Express. Credential validation, session creation, authorization and MongoDB persistence remain in the existing backend. Never set BACKEND_URL to the frontend itself.
+
+## Run
+
+Backend terminal:
 
 ```sh
 cd backend
-npm run dev
-```
-
-The API is at `http://localhost:4000/api/v1`. Check `http://localhost:4000/api/v1/health` independently of the frontend.
-
-## Frontend — terminal 2
-
-Copy `frontend/.env.example` to `frontend/.env.local`:
-
-```dotenv
-BACKEND_URL=http://127.0.0.1:4000
-APP_URL=http://localhost:3000
-DEMO_MODE=true
-```
-
-```sh
-cd frontend
-npm run dev
-```
-
-Open `http://localhost:3000`. Local candidate, employer and admin demo sessions work as before. The frontend contains no database driver, API handlers, credentials, authentication implementation or business-rule engine. Next.js renders the existing UI using Express API responses. Its `/api/*` rewrite forwards browser requests to Express, preserving same-origin HttpOnly session cookies and existing API URLs. This proxy is configuration only; all request handling is in the backend. Keep `BACKEND_URL` free of credentials. Restart/rebuild Next.js after changing it.
-
-Use the exact frontend origin for backend `APP_URL`, including port. For separate hosts, route `/api` to Express at the frontend ingress or retain the Next.js rewrite. Do not embed service credentials in `NEXT_PUBLIC_*` variables. The backend also allows credentialed CORS for its exact configured `APP_URL`.
-
-## Production builds
-
-Run independently in each directory:
-
-```sh
 npm run build
 npm start
 ```
 
-Set `NODE_ENV=production`, `DEMO_MODE=false` and private backend environment variables. Expose HTTPS at the ingress; session cookies are Secure in production. Set backend `HOST=0.0.0.0` when using containers. MongoDB, Redis and payment credentials belong exclusively in backend environment variables or a secret manager. `npm run worker` in `backend/` runs the compiled existing worker and requires MongoDB plus Redis. Backend startup fails if neither MongoDB nor explicit demo mode is configured.
+Frontend terminal:
 
-Frontend builds do not require a running database or backend. Dynamic pages require the backend at runtime. Both services must be running for the complete website.
+```sh
+cd frontend
+npm run build
+npm run start -- --hostname=127.0.0.1 --port=3000
+```
 
-## Validation
+Frontend: `http://127.0.0.1:3000`. Backend health: `http://127.0.0.1:4100/api/v1/health`.
+For development, use `npm run dev` in each directory. Restart after environment changes;
+rebuild the frontend when APP_URL or BACKEND_URL changes. Stop a production frontend before rebuilding its `.next` directory.
+
+## HTTPS and Google sign-in
+
+Google OAuth and the real auth-email adapter require a trusted HTTPS APP_URL.
+Expose only the frontend through the configured HTTPS domain/proxy. Keep Express and MongoDB private.
+
+1. Set APP_URL in both applications to the same reachable HTTPS origin.
+2. Set backend GOOGLE_CALLBACK_URL to that origin followed by `/api/v1/auth/google/callback`.
+3. Add that exact callback to the existing Google OAuth client's Authorized redirect URIs.
+4. Configure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET privately in the backend.
+5. Restart Express and rebuild/restart Next.js, then enter through the public origin.
+
+The frontend checks `/api/v1/auth/google/status` before starting the existing Express OAuth flow.
+State, PKCE, nonce, account association and session handling remain server-side. Successful login and Google callbacks redirect to `/`; `/dashboard` remains separately available.
+
+When APP_URL is HTTPS, localhost HTML requests redirect to that canonical origin so browser cookies and Origin checks use the same host. A terminated Quick Tunnel cannot serve its old callback. A reachable host and matching Google Console configuration are prerequisites for live Google testing; an authorization redirect alone does not prove successful login.
+
+## Profile and Module 2 integration
+
+Profile forms use the revision from the displayed user snapshot. Preferences follow the revision actually returned by the backend, including unchanged saves. Stale writes retain the backend's conflict protection. Profile edits preserve employment history and stored photo/theme metadata, and unknown experience remains null.
+
+The existing private avatar/cover/logo and profile appearance APIs remain available. Images are validated, resized and stored by Express; authorization is unchanged.
+
+Module 2 includes profile, completion, preferences, automation preferences, CV draft/confirmation/versioning, onboarding, consent and taxonomy APIs. Provider requirements and production gates are in `docs/backend/02-production-hardening.md`.
+The current frontend does not yet expose every Module 2 operation: its CV page offers manual profile entry, and complete CV upload/review/versioning and onboarding UI coverage remain separate work. This integration preserves the supplied UI and does not claim those absent screens are complete.
+
+Real CV services require the configured private storage, malware scanner, parser and worker/Redis infrastructure. Contact delivery, mailbox connections and commercial payments also require their existing provider configuration. Passing isolated tests is not proof of production provider readiness.
+
+## Validate
 
 ```sh
 cd backend
-npm run typecheck
-npm run build
 npm test
 npm run test:mongo
-npm run test:integration
+npm run typecheck
+npm run build
+npm run test:frontend
 cd ../frontend
 npm run typecheck
 npm run lint
-npm run build
 cd ..
 node scripts/scan-secrets.mjs
 ```
 
-`test:integration` requires a local demo backend at port 4000. Set `TEST_URL=http://localhost:3000` to test through the frontend proxy. `TEST_ORIGIN` defaults to `http://localhost:3000`. Tests create clearly synthetic records. `test:mongo` starts an isolated real MongoDB replica set, exercises API workflows and rollback/index behavior, then removes its temporary database; it never loads your `.env`. The first run downloads a MongoDB test binary. GitHub Actions validates both builds, unit tests, MongoDB integration, and proxied API workflows.
+`test:frontend` builds Next.js into ignored `.next-integration`, starts an isolated MongoDB replica set using `architecture_test`, Express on 3101 and the production frontend on 3100. It does not connect to the configured Atlas database, send mail, or simulate successful Google consent. Ports 3100/3101 must be free. An initial run may download the MongoDB test binary. The separate build directory preserves any currently running `.next` build.
 
-## Existing implementation status
-
-This architecture change preserves the existing implementation's capabilities and limits. Contact forms persist enquiries for admin review; outbound contact mail and mailbox OAuth were not connected before separation and remain unconfigured. CV processing, production registration/email delivery, automated sending and commercial payment activation retain their existing unavailable responses. No real emails, applications or payments are sent by tests. See `docs/IMPLEMENTATION_STATUS.md` for the original enterprise feature gaps; this refactor does not claim those features are complete.
-
-Never commit `.env`, `.env.local`, `.data`, tokens, CVs, database dumps, or build output. Only `.env.example` templates belong in Git. See `docs/ARCHITECTURE_SEPARATION.md` for the migration inventory and verification record.
+Never commit `.env`, `.env.local`, credentials, tokens, CV uploads, database dumps, `.data`, logs or generated builds. Only redacted `.env.example` templates belong in Git.
