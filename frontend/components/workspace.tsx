@@ -1,4 +1,5 @@
 import { display } from '@/lib/display';
+import { ProfileSidebar } from './profile-sidebar';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { currentUser } from '@/lib/api';
@@ -6,24 +7,12 @@ import { api, configuredPlans, demoMode } from '@/lib/api';
 import { type PublicJob, type User, countries, categories } from '@/lib/domain';
 import { SmartForm, Action } from './forms';
 import { PlanEditor } from './admin-config';
-import {
-  CVLibrary,
-  SavedSearches,
-  NotificationCenter,
-  SearchAssistant,
-  type CVVersion,
-  type SavedSearch,
-  type Notification,
-} from './candidate-tools';
 type RecordRow = { id: string; [key: string]: unknown };
 const candidateLinks = [
   ['dashboard', 'Overview'],
   ['profile', 'My profile'],
   ['preferences', 'Job preferences'],
   ['saved', 'Saved jobs'],
-  ['saved-searches', 'Saved searches'],
-  ['notifications', 'Notifications'],
-  ['assistant', 'Search assistant'],
   ['applications', 'Applications'],
   ['cvs', 'My CVs'],
   ['templates', 'Email templates'],
@@ -136,36 +125,20 @@ export async function Workspace({ section }: { section: string }) {
   );
 }
 async function Candidate({ section, user }: { section: string; user: User }) {
-  if (section === 'saved-searches')
-    return (
-      <SavedSearches searches={await api<SavedSearch[]>('me/saved-searches')} />
-    );
-  if (section === 'notifications')
-    return (
-      <NotificationCenter
-        notifications={await api<Notification[]>('me/notifications')}
-        preferences={await api<Record<string, unknown>>(
-          'me/notification-preferences',
-        )}
-      />
-    );
-  if (section === 'assistant') return <SearchAssistant />;
-  if (section === 'cvs')
-    return (
-      <CVLibrary
-        versions={await api<CVVersion[]>('me/cv-versions')}
-        profile={user.profile}
-      />
-    );
-  if (section === 'profile')
+  if (section === 'profile') {
+    const status = await api<{ revision: number }>('me/profile/status');
     return (
       <div className="panel">
         <h2>Your experience, in your words.</h2>
         <p>Only facts you confirm can be used in matching and applications.</p>
+        <ProfileSidebar user={user} editor />
         <SmartForm
+          key={status.revision}
           endpoint="me/profile"
           method="PUT"
           initial={user.profile}
+          expectedRevision={status.revision}
+          preservedFields={{ employmentHistory: user.profile.employmentHistory || [] }}
           fields={[
             { name: 'name', label: 'Full name' },
             { name: 'headline', label: 'Professional headline' },
@@ -179,6 +152,7 @@ async function Candidate({ section, user }: { section: string; user: User }) {
               name: 'experience',
               label: 'Years of experience',
               type: 'number',
+              required: false,
             },
             { name: 'country', label: 'Country', options: countries },
             { name: 'city', label: 'City' },
@@ -197,7 +171,9 @@ async function Candidate({ section, user }: { section: string; user: User }) {
         />
       </div>
     );
-  if (section === 'preferences' || section === 'automation')
+  }
+  if (section === 'preferences' || section === 'automation') {
+    const preferences = await api<User['preferences'] & { revision: number }>('me/preferences');
     return (
       <div className="panel">
         <h2>
@@ -212,7 +188,9 @@ async function Candidate({ section, user }: { section: string; user: User }) {
         <SmartForm
           endpoint="me/preferences"
           method="PUT"
-          initial={user.preferences}
+          key={preferences.revision}
+          initial={preferences}
+          expectedRevision={preferences.revision}
           fields={[
             { name: 'roles', label: 'Target job titles', type: 'list' },
             {
@@ -254,6 +232,7 @@ async function Candidate({ section, user }: { section: string; user: User }) {
         />
       </div>
     );
+  }
   if (section === 'saved') {
     const jobs = await api<PublicJob[]>('me/saved');
     return (
@@ -275,11 +254,6 @@ async function Candidate({ section, user }: { section: string; user: User }) {
                 <p>
                   {j.city} · {j.mode}
                 </p>
-                <Action
-                  endpoint={`jobs/${j.id}/save`}
-                  method="DELETE"
-                  label="Remove from saved jobs"
-                />
               </div>
             ))
         )}
@@ -380,6 +354,20 @@ async function Candidate({ section, user }: { section: string; user: User }) {
       </div>
     );
   }
+  if (section === 'cvs')
+    return (
+      <div className="panel">
+        <h2>Your CV collection</h2>
+        <p>
+          CV upload will be available after private storage, malware scanning
+          and document parsing are configured. No files are accepted into
+          unscanned storage.
+        </p>
+        <Link className="primary" href="/profile">
+          Complete your profile manually
+        </Link>
+      </div>
+    );
   if (section === 'mail')
     return (
       <div className="panel">
@@ -732,117 +720,6 @@ async function Admin({
   user: User;
 }) {
   const segment = section.split('/')[1];
-  if (segment === 'flags')
-    return (
-      <div className="panel">
-        <h2>Feature availability</h2>
-        <p>
-          Pause supported features without changing code. External mail,
-          payments and WhatsApp cannot be enabled from this screen until their
-          integrations are implemented and verified.
-        </p>
-        <SmartForm
-          endpoint="admin/feature-flags"
-          method="PUT"
-          initial={await api<Record<string, unknown>>('admin/feature-flags')}
-          fields={[
-            {
-              name: 'assistant',
-              label: 'Enable guided search assistant',
-              type: 'checkbox',
-            },
-            {
-              name: 'savedSearchAlerts',
-              label: 'Enable saved-search match checks',
-              type: 'checkbox',
-            },
-          ]}
-        />
-      </div>
-    );
-  if (segment === 'sources') {
-    const sources = await api<RecordRow[]>('admin/source-policies');
-    return (
-      <div className="stack">
-        <div className="panel">
-          <h2>Governed job sources</h2>
-          <p>
-            Record permission evidence before enabling a source. Saving a policy
-            does not start an external fetch; discovery requires a running
-            configured worker.
-          </p>
-          <SmartForm
-            endpoint="admin/source-policies"
-            submit="Save source policy"
-            fields={[
-              { name: 'name', label: 'Source name' },
-              { name: 'board', label: 'Greenhouse board identifier' },
-              {
-                name: 'requestsPerMinute',
-                label: 'Maximum requests per minute',
-                type: 'number',
-              },
-              {
-                name: 'policyEvidence',
-                label: 'Permission evidence and permitted use',
-                type: 'textarea',
-              },
-              {
-                name: 'approved',
-                label: 'Permission evidence has been reviewed',
-                type: 'checkbox',
-              },
-              {
-                name: 'enabled',
-                label: 'Enable this approved source',
-                type: 'checkbox',
-              },
-            ]}
-            initial={{ requestsPerMinute: 1 }}
-          />
-        </div>
-        {sources.map((source) => (
-          <div className="panel" key={source.id}>
-            <h3>{display(source.name || source.board)}</h3>
-            <span className="pill">
-              {source.enabled ? 'Enabled' : 'Disabled'} ·{' '}
-              {source.approved ? 'Approved' : 'Needs review'}
-            </span>
-            <p style={{ marginTop: 12 }}>{display(source.policyEvidence)}</p>
-            <p className="small">
-              Limit: {display(source.requestsPerMinute)} requests/minute. Policy
-              saved; worker execution is tracked separately.
-            </p>
-          </div>
-        ))}
-      </div>
-    );
-  }
-  if (segment === 'content')
-    return (
-      <div className="panel">
-        <h2>Public contact and announcements</h2>
-        <p>
-          Publish business contact details and an optional announcement. Changes
-          are recorded in the audit log.
-        </p>
-        <SmartForm
-          endpoint="admin/configuration"
-          method="PUT"
-          initial={await api<Record<string, unknown>>('admin/configuration')}
-          fields={[
-            { name: 'email', label: 'Public contact email', type: 'email' },
-            { name: 'phone', label: 'Public contact phone', required: false },
-            {
-              name: 'announcement',
-              label: 'Announcement',
-              type: 'textarea',
-              required: false,
-            },
-          ]}
-        />
-      </div>
-    );
   if (!segment) {
     const overview = await api<{
       counts: Record<string, number>;
@@ -859,7 +736,7 @@ async function Admin({
           {Object.entries(counts).map(([k, v]) => (
             <div className="panel" key={k}>
               <strong>{v}</strong>
-              <span>{k}</span>
+              <span>{k} (bounded overview)</span>
             </div>
           ))}
         </div>

@@ -36,14 +36,19 @@ export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company'> & {
   identityVisible: boolean;
 };
 export type Profile = {
+  avatarVersion?: string;
+  coverVersion?: string;
+  logoVersion?: string;
+  coverTheme?: string;
   name: string;
   headline: string;
   skills: string[];
-  experience: number;
+  experience: number | null;
   education: string;
   country: string;
   city: string;
   confirmed: boolean;
+  employmentHistory?: { title: string; employer: string; start: string; end: string; description: string }[];
 };
 export type Preferences = {
   roles: string[];

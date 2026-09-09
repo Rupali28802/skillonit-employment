@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import Image from 'next/image';
 import { BriefcaseBusiness, ArrowUpRight } from 'lucide-react';
 import './globals.css';
-import { api, currentUser } from '@/lib/api';
+import { currentUser } from '@/lib/api';
 
 export const metadata: Metadata = {
   icons: { icon: '/favicon.svg' },
@@ -20,7 +21,6 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const user = await currentUser();
-  const content = await api<{ announcement: string }>('public/configuration');
   const workspace =
     user?.role === 'admin'
       ? '/admin'
@@ -51,18 +51,21 @@ export default async function RootLayout({
             </Link>
           </nav>
           <div className="header-actions">
-            <Link href={user ? workspace : '/login'}>
-              {user ? 'My account' : 'Sign in'}
-            </Link>
+            {user ? (
+              <Link className="header-profile-photo" href={workspace} aria-label={`Open ${user.role === 'student' ? 'student ' : ''}workspace`} title={user.name}>
+                {user.profile.avatarVersion ? (
+                  <Image src={`/api/v1/me/profile-image/avatar?v=${encodeURIComponent(user.profile.avatarVersion)}`} alt={`${user.name}'s profile photo`} width={40} height={40} unoptimized />
+                ) : (
+                  <span aria-hidden="true">{user.name.split(' ').filter(Boolean).slice(0, 2).map(word => word[0]).join('').toUpperCase() || 'U'}</span>
+                )}
+              </Link>
+            ) : <Link href="/login">Sign in</Link>}
             <Link className="primary" href={user ? workspace : '/register'}>
               {user ? 'Workspace' : 'Get started'}
               <ArrowUpRight size={16} />
             </Link>
           </div>
         </header>
-        {content.announcement && (
-          <div className="site-announcement">{content.announcement}</div>
-        )}
         <main id="main">{children}</main>
         <footer>
           <Link className="brand" href="/">
@@ -75,8 +78,6 @@ export default async function RootLayout({
             <Link href="/contact">Contact</Link>
             <Link href="/privacy">Privacy</Link>
             <Link href="/terms">Terms</Link>
-            <Link href="/faq">FAQ</Link>
-            <Link href="/cookies">Cookies</Link>
           </div>
           <small>© {new Date().getFullYear()} SkillonIT Employment</small>
         </footer>
