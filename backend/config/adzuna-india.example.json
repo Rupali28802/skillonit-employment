@@ -1,0 +1,6 @@
+{
+  "id": "adzuna-in", "type": "adzuna", "name": "Adzuna", "countryCode": "in",
+  "enabled": false, "approved": false, "publish": false, "publicListing": true,
+  "intervalMinutes": 360, "maxPages": 2,
+  "policyEvidence": "PENDING: confirm account-approved display, caching, attribution and request quota at https://developer.adzuna.com/overview before enabling."
+}

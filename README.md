@@ -4,6 +4,8 @@ This branch builds on the existing frontend/shared-backend integration at `4f825
 
 See [Job hunting engine setup, sources and limits](docs/JOB_ENGINE.md). Start with `npm run jobs:seed`, `npm run jobs:once`, then `npm run worker:jobs` from `backend/` after installing dependencies and building. Source state is available through `npm run jobs:status`.
 
+[Worldwide source audit and integration backlog](docs/GLOBAL_JOB_COVERAGE.md) distinguishes live feeds from credential-gated connectors and unconnected platforms. `npm run jobs:coverage` reports real inventory across 250 country/territory filters (ISO entries plus Kosovo); empty countries are explicitly reported. The preview is not a global public deployment.
+
 ```text
 skillonit-employment/
   frontend/     Next.js pages, components, assets and API presentation

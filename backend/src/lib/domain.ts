@@ -1,3 +1,4 @@
+export { countries } from './countries.js';
 export type Role = 'student' | 'employer' | 'admin';
 export type PlanCode = 'basic' | 'pro' | 'premium';
 export type Job = {
@@ -6,6 +7,7 @@ export type Job = {
   company: string;
   domain: string;
   country: string;
+  eligibleCountries?: string[];
   state: string;
   city: string;
   category: string;
@@ -153,16 +155,6 @@ export const categories = [
   'Hospitality',
   'Legal',
   'Logistics',
-];
-export const countries = [
-  'India',
-  'United States',
-  'United Kingdom',
-  'Canada',
-  'Germany',
-  'Australia',
-  'Singapore',
-  'United Arab Emirates',
 ];
 export const states = [
   'Andhra Pradesh',

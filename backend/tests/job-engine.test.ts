@@ -1,4 +1,6 @@
 import { test, before, after, beforeEach } from 'node:test';
+import { countryEntries, countriesInLocation, normalizeCountry } from '../src/lib/countries.ts';
+import { coverageReport } from '../src/job-engine/coverage.ts';
 import assert from 'node:assert/strict';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { MongoClient } from 'mongodb';
@@ -138,4 +140,90 @@ test('search reaches jobs beyond 1000 records and does not match unknown experie
   assert.equal((await searchJobs(new URLSearchParams('q=nurse&experience=0'))).total, 0);
   assert.equal((await searchJobs(new URLSearchParams('q=nurse'))).total, 1);
   assert.equal((await searchJobs(new URLSearchParams('page=NaN'))).page, 1);
+});
+
+test('all ISO countries and aliases are supported without inventing city/remote eligibility', () => {
+  assert.equal(countryEntries.length, 250);
+  for (const c of countryEntries) assert.equal(normalizeCountry(c.code), c.name);
+  assert.equal(normalizeCountry('UAE'), 'United Arab Emirates');
+  assert.equal(normalizeCountry('USA'), 'United States');
+  assert.deepEqual(countriesInLocation('Dubai, UAE'), ['United Arab Emirates']);
+  assert.deepEqual(countriesInLocation('London, United Kingdom'), ['United Kingdom']);
+  assert.deepEqual(countriesInLocation('Remote - Japan'), ['Japan']);
+  assert.deepEqual(countriesInLocation('Remote - Papua New Guinea'), ['Papua New Guinea']);
+  assert.deepEqual(countriesInLocation('Berlin'), []);
+  assert.deepEqual(countriesInLocation('EMEA'), []);
+  assert.deepEqual(new Set(countriesInLocation('United States; Canada')), new Set(['United States', 'Canada']));
+});
+
+test('Jobicy keeps attribution, geography and salary period; snapshots are never inferred', async () => {
+  const s = publicSources.find(s => s.type === 'jobicy')!;
+  assert.equal(sourceSchema.safeParse({ ...s, intervalMinutes: 30 }).success, false);
+  const b = await fetchFeed(s, async url => {
+    assert.equal(url, 'https://jobicy.com/api/v2/remote-jobs?count=200');
+    return { jobs: [{ id: 1, jobTitle: 'Marine biologist', companyName: 'Lab', url: 'https://jobicy.com/jobs/1',
+      jobDescription: 'Marine biodiversity research with laboratory and field teams.', jobGeo: 'Australia', jobType: ['part-time'],
+      jobIndustry: ['Science'], pubDate: new Date().toISOString(), salaryMin: 25, salaryMax: 35, salaryCurrency: 'AUD', salaryPeriod: 'hourly' }] };
+  });
+  const j = normalize(b.jobs[0], s);
+  assert.equal(j.country, 'Australia'); assert.equal(j.mode, 'Remote'); assert.equal(j.type, 'part-time');
+  assert.equal(j.salaryText, 'AUD 25–35 hourly'); assert.equal(b.snapshot, false);
+  assert.equal(publicJob(j).sourceLink, 'https://jobicy.com/jobs/1');
+  assert.throws(() => normalize({ ...b.jobs[0], url: 'https://other.example.com/job' }, s));
+});
+
+test('gated providers fail before network without credentials; invalid Adzuna countries fail validation', async () => {
+  const old = process.env.ADZUNA_APP_KEY, oldUs = process.env.USAJOBS_API_KEY;
+  delete process.env.ADZUNA_APP_KEY; delete process.env.USAJOBS_API_KEY;
+  try {
+    let calls = 0;
+    for (const type of ['adzuna', 'usajobs'] as const)
+      await assert.rejects(fetchFeed({ ...source, type, countryCode: 'in' }, async () => { calls++; return {}; }), /MISSING_.*_CREDENTIALS/);
+    assert.equal(calls, 0);
+    assert.equal(sourceSchema.safeParse({ ...source, type: 'adzuna', countryCode: 'ae' }).success, false);
+  } finally { if (old !== undefined) process.env.ADZUNA_APP_KEY = old; if (oldUs !== undefined) process.env.USAJOBS_API_KEY = oldUs; }
+});
+
+test('Adzuna uses country endpoint, preserves source link and omits predicted salaries', async () => {
+  const oldId = process.env.ADZUNA_APP_ID, oldKey = process.env.ADZUNA_APP_KEY;
+  process.env.ADZUNA_APP_ID = 'fixture-id'; process.env.ADZUNA_APP_KEY = 'fixture-key';
+  try {
+    const s = { ...source, type: 'adzuna' as const, countryCode: 'in', maxPages: 1 };
+    const b = await fetchFeed(s, async raw => {
+      const url = new URL(raw); assert.equal(url.pathname, '/v1/api/jobs/in/search/1'); assert.equal(url.searchParams.get('sort_by'), 'date');
+      return { count: 1, results: [{ id: 'a1', title: 'Agronomist', company: { display_name: 'Farm' }, location: { display_name: 'Pune, India', area: ['India'] }, category: { label: 'Agriculture' }, description: 'Support crop planning and sustainable agriculture research.', redirect_url: 'https://www.adzuna.in/jobs/land/ad/1?utm_source=publisher', created: new Date().toISOString(), salary_min: 9999, salary_is_predicted: 1, contract_time: 'full_time' }] };
+    });
+    const j = normalize(b.jobs[0], s); assert.equal(j.country, 'India'); assert.equal(j.salaryDisclosed, false);
+    assert.ok(j.url?.includes('utm_source=publisher')); assert.equal(b.snapshot, false);
+  } finally { if (oldId === undefined) delete process.env.ADZUNA_APP_ID; else process.env.ADZUNA_APP_ID = oldId; if (oldKey === undefined) delete process.env.ADZUNA_APP_KEY; else process.env.ADZUNA_APP_KEY = oldKey; }
+});
+
+test('USAJOBS preserves overseas locations, eligibility text and closing date', async () => {
+  const oldKey = process.env.USAJOBS_API_KEY, oldUa = process.env.USAJOBS_USER_AGENT;
+  process.env.USAJOBS_API_KEY = 'fixture-key'; process.env.USAJOBS_USER_AGENT = 'fixture@example.invalid';
+  try {
+    const closesAt = new Date(Date.now() + 3600000).toISOString();
+    const b = await fetchFeed({ ...source, type: 'usajobs' }, async (_url, headers) => {
+      assert.equal(headers?.['Authorization-Key'], 'fixture-key');
+      return { SearchResult: { SearchResultCountAll: 1, SearchResultItems: [{ MatchedObjectId: 1, MatchedObjectDescriptor: {
+        PositionTitle: 'Librarian', OrganizationName: 'Agency', PositionURI: 'https://www.usajobs.gov/job/1', PositionLocationDisplay: 'Tokyo, Japan', PositionLocation: [{ CountryCode: 'Japan' }], PublicationStartDate: new Date().toISOString(), ApplicationCloseDate: closesAt,
+        UserArea: { Details: { JobSummary: 'Manage a research library and its information services.', WhoMayApply: { Name: 'United States Citizens' } } }, PositionSchedule: [{ Name: 'Full Time' }], JobCategory: [{ Name: 'Library Science' }] } }] } };
+    });
+    const j = normalize(b.jobs[0], { ...source, type: 'usajobs' });
+    assert.equal(j.country, 'Japan'); assert.equal(j.expiresAt, closesAt); assert.ok(j.description.includes('United States Citizens'));
+    assert.throws(() => normalize({ ...b.jobs[0], closesAt: '2000-01-01' }, source));
+  } finally { if (oldKey === undefined) delete process.env.USAJOBS_API_KEY; else process.env.USAJOBS_API_KEY = oldKey; if (oldUa === undefined) delete process.env.USAJOBS_USER_AGENT; else process.env.USAJOBS_USER_AGENT = oldUa; }
+});
+
+test('search covers unmatched professions, job types and multiple countries; report exposes zero coverage', async () => {
+  const j = normalize(candidate({ title: 'Research specialist', description: 'Marine biodiversity surveys and fisheries research. Work with scientific teams.', location: 'United Arab Emirates; India', employmentType: 'part_time', category: 'Ocean science' }), source);
+  await transaction(r => r.put('jobs', j));
+  assert.equal((await searchJobs(new URLSearchParams('q=biodiversity&country=UAE&type=part-time'))).total, 1);
+  assert.equal((await searchJobs(new URLSearchParams('country=India'))).total, 1);
+  assert.equal((await searchJobs(new URLSearchParams('country=Japan'))).total, 0);
+  assert.equal((await searchJobs(new URLSearchParams('q=Ocean'))).total, 1);
+  const coverage = await coverageReport();
+  assert.equal(coverage.countries.length, 250); assert.equal(coverage.total, 1);
+  assert.equal(coverage.countries.find(c => c.code === 'AE')?.indexedListings, 1);
+  assert.equal(coverage.countries.find(c => c.code === 'JP')?.status, 'no_explicit_inventory');
 });

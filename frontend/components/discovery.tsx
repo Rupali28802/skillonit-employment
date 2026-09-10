@@ -30,6 +30,7 @@ export function Discovery({
     [category, setCategory] = useState(''),
     [country, setCountry] = useState(''),
     [mode, setMode] = useState(''),
+    [jobType, setJobType] = useState(''),
     [experience, setExperience] = useState(''),
     [state, setState] = useState(''),
     [sort, setSort] = useState('recent'),
@@ -52,6 +53,7 @@ export function Discovery({
           category,
           country,
           mode,
+          type: jobType,
           experience,
           state,
           sort,
@@ -67,7 +69,7 @@ export function Discovery({
         if (requestId === sequence.current) setBusy(false);
       }
     },
-    [query, category, country, mode, experience, state, sort, page],
+    [query, category, country, mode, jobType, experience, state, sort, page],
   );
   useEffect(() => {
     const timer = setTimeout(() => void search(), 250);
@@ -188,12 +190,20 @@ export function Discovery({
                 Country
                 <select
                   value={country}
-                  onChange={(e) => setCountry(e.target.value)}
+                  onChange={(e) => { setCountry(e.target.value); setState(''); setPage(1); }}
                 >
                   <option value="">All countries</option>
+                  <option value="Worldwide">Worldwide / anywhere</option>
                   {countries.map((c) => (
                     <option key={c}>{c}</option>
                   ))}
+                </select>
+              </label>
+              <label>
+                Job type
+                <select value={jobType} onChange={(e) => { setJobType(e.target.value); setPage(1); }}>
+                  <option value="">All job types</option>
+                  {['Full-time', 'Part-time', 'Permanent', 'Contract', 'Temporary', 'Internship', 'Apprenticeship', 'Freelance', 'Volunteer'].map(t => <option key={t}>{t}</option>)}
                 </select>
               </label>
               <label>

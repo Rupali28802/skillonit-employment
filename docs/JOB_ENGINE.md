@@ -4,11 +4,16 @@ This implementation replaces the disconnected ingestion staging path with a stan
 
 ## Coverage
 
+See [Worldwide platform inventory and country audit](GLOBAL_JOB_COVERAGE.md) for the expansion backlog and explicit missing integrations. Run `npm run jobs:coverage` for actual indexed country/occupation/type counts, including zero-inventory countries. Country filters support 250 country/territory entries (249 ISO entries plus Kosovo); this is not proof of inventory or website reachability in every country.
+
 | Connector | Initial activation | Coverage and limits |
 | --- | --- | --- |
 | Arbeitnow | Available through `jobs:seed` | Multi-domain Europe-focused public job feed; paginated, four pages per run by default. |
 | Arbeitnow UK | Available through `jobs:seed` | UK-focused public feed; four pages per run by default. |
 | Remotive | Available through `jobs:seed` | Worldwide/restricted-location remote jobs across the categories the API supplies; public API data is delayed and may be limited. Six-hour minimum refresh. |
+| Jobicy | Available through `jobs:seed` | Up to 200 latest remote listings, attributed original URLs; six-hour default refresh, at least hourly. Partial rolling inventory. |
+| Adzuna | Configure only after provider approval | Country-specific connector, newest-first bounded pages; private ADZUNA_APP_ID and ADZUNA_APP_KEY required. No live account was provisioned. |
+| USAJOBS | Configure only after provider approval | Federal announcements including overseas duty stations; private USAJOBS_API_KEY and registered USAJOBS_USER_AGENT email required. No live account was provisioned. |
 | Ashby | Configure each approved employer board | Published/listed company jobs, supplied posting dates and location information. |
 | Greenhouse | Configure each approved employer board | Public employer board jobs. Updated time is not substituted for the original posting date. |
 | Lever | Configure each approved employer board | Public employer postings with bounded pagination. Original posting date may be unavailable. |
@@ -52,7 +57,11 @@ Copy `backend/config/job-source.example.json` outside tracked configuration if i
 npm run jobs:configure -- path/to/source.json
 ```
 
-Supported types: `arbeitnow`, `arbeitnow-uk`, `remotive`, `ashby`, `greenhouse`, `lever`. ATS types require board and company. Sources must be approved before enabling. `publish=false` stages listings for review. `publicListing=false` preserves the employer identity gate; it is not permitted for Remotive. Do not approve or invent an employer relationship just because its board is publicly reachable.
+Supported types: `arbeitnow`, `arbeitnow-uk`, `remotive`, `jobicy`, `adzuna`, `usajobs`, `ashby`, `greenhouse`, `lever`. ATS types require board and company. Sources must be approved before enabling. `publish=false` stages listings for review. `publicListing=false` preserves the employer identity gate; public aggregator connectors require public source attribution. Do not approve or invent an employer relationship just because its board is publicly reachable.
+
+Adzuna uses `countryCode`: au, at, be, br, ca, ch, de, es, fr, gb, in, it, mx, nl, nz, pl, sg, us, za. Confirm current country access with the provider account; UAE is not treated as supported. Create a separate configuration ID per approved country, use an agreed aggregate request budget, and optionally set `keywords` for source queries. Two pages per six-hour example means up to eight requests/day per configured country. Source-specific schedules do not establish an account-wide quota; choose them together before enabling many countries. No all-country fan-out is enabled automatically. USAJOBS likewise accepts optional `keywords` and preserves actual locations/eligibility/closing dates; US government ownership does not imply a US work location or global eligibility.
+
+Examples are `backend/config/adzuna-india.example.json` and `backend/config/usajobs.example.json`. They are intentionally disabled/unapproved. Confirm caching/publication terms, set credentials privately, update evidence and approved/enabled/publish flags, then configure the source. Missing credentials produce safe error codes and zero network requests. Adzuna descriptions are excerpts; original links remain authoritative. Predicted salaries are not displayed as offered salaries.
 
 To pause a source, configure its existing ID with `enabled=false`; the next worker cycle withdraws its active variants. Configuration updates do not reset cooldowns. Four pages is a per-source bound, configurable up to twenty. A partial result is explicitly recorded; bounded rolling feeds are not treated as complete inventories.
 
@@ -75,6 +84,8 @@ Known source dates older than 90 days, malformed/future dates and incomplete rec
 Salary, experience and work mode are not fabricated. Missing values display as not specified; unknown experience does not match fresher filters. Public-source availability does not imply verified employers. Suspicious payment/credential requests go to review. Original source links open the source website; they do not claim that an application was submitted.
 
 Search queries now filter/page in MongoDB instead of truncating the first 1,000 jobs in memory. Keyword matching remains a database regex search, not a deployed full-text search cluster; production load/capacity testing is still needed. A shared poller observes feed revisions and notifies connected frontend sessions through the existing SSE endpoint. The user's current filters are retained; Pause live feed stops those updates.
+
+Keywords include descriptions, original category labels and employment types, so professions outside the navigation categories remain discoverable. `type=part-time` matches source spellings such as `part_time` and `Part Time`. Explicit multi-country listings match each reported country; worldwide inventory is a separate filter and not silently treated as local inventory. Countries are normalized from ISO codes/names and common aliases (UAE, UK, USA); cities and broad regions such as EMEA remain geographically unresolved when no country is supplied. Existing records acquire improved metadata on their next normal source refresh.
 
 ## Operational inspection and verification
 

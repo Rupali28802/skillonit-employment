@@ -3,6 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { bootstrapIndexes, closeStore, read } from '../lib/store.js';
 import { runEngine, upsertSource, engineStatus } from './engine.js';
 import { publicSources } from './sources.js';
+import { coverageReport } from './coverage.js';
 
 let stopping = false;
 for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => { stopping = true; });
@@ -19,7 +20,8 @@ try {
     const file = process.argv[3]; if (!file) throw Error('SOURCE_CONFIG_FILE_REQUIRED');
     const source = await upsertSource(JSON.parse(await readFile(file, 'utf8')));
     console.log(JSON.stringify({ id: source.id, enabled: source.enabled }));
-  } else if (command === 'status') console.log(JSON.stringify(await engineStatus(), null, 2));
+  } else if (command === 'coverage') console.log(JSON.stringify(await coverageReport(), null, 2));
+  else if (command === 'status') console.log(JSON.stringify(await engineStatus(), null, 2));
   else if (command === 'once' || command === 'watch') {
     do {
       console.log(JSON.stringify(await runEngine()));

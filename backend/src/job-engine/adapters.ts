@@ -5,7 +5,7 @@ export type Candidate = {
   externalId: string; title: string; company: string; url: string; description: string;
   location: string; country?: string; category?: string; tags?: string[];
   mode?: 'Remote' | 'Hybrid' | 'On-site'; employmentType?: string;
-  postedAt?: string; salaryText?: string;
+  postedAt?: string; closesAt?: string; salaryText?: string;
 };
 export type FeedBatch = { jobs: Candidate[]; complete: boolean; snapshot: boolean; requests: number };
 export class FeedError extends Error {
@@ -20,9 +20,9 @@ const iso = (v: unknown) => {
   return Number.isFinite(stamp) && Math.abs(stamp) <= 8640000000000000 ? new Date(stamp).toISOString() : 'invalid';
 };
 
-export async function fetchJson(url: string): Promise<Json | Json[]> {
+export async function fetchJson(url: string, extraHeaders: Record<string, string> = {}): Promise<Json | Json[]> {
   const r = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(20000),
-    headers: { Accept: 'application/json', 'User-Agent': 'SkillonIT-JobFeed/1.0' } });
+    headers: { Accept: 'application/json', 'User-Agent': 'SkillonIT-JobFeed/1.0', ...extraHeaders } });
   if (!r.ok) {
     const retry = r.headers.get('retry-after') || '';
     const ms = /^\d+$/.test(retry) ? Number(retry) * 1000 : Date.parse(retry) - Date.now();
@@ -45,6 +45,58 @@ export async function fetchJson(url: string): Promise<Json | Json[]> {
 export async function fetchFeed(source: FeedSource, get = fetchJson, pause = delay): Promise<FeedBatch> {
   if (!source.enabled || !source.approved) throw new FeedError('SOURCE_DISABLED');
   const jobs: Candidate[] = []; let requests = 0;
+  if (source.type === 'jobicy') {
+    const payload = await get('https://jobicy.com/api/v2/remote-jobs?count=200') as Json;
+    if (!Array.isArray(payload.jobs)) throw new FeedError('INVALID_FEED');
+    for (const j of payload.jobs) jobs.push({ externalId: String(j.id ?? ''), title: text(j.jobTitle), company: text(j.companyName),
+      url: text(j.url), description: text(j.jobDescription), location: text(j.jobGeo), category: list(j.jobIndustry).join(', '),
+      tags: list(j.jobIndustry), employmentType: list(j.jobType).join(', '), mode: 'Remote', postedAt: iso(j.pubDate),
+      salaryText: j.salaryCurrency && j.salaryPeriod && Number.isFinite(j.salaryMin) && Number.isFinite(j.salaryMax)
+        ? `${j.salaryCurrency} ${j.salaryMin}–${j.salaryMax} ${j.salaryPeriod}` : undefined });
+    // Latest N is a rolling feed, never a full inventory snapshot.
+    return { jobs, complete: jobs.length < 200, snapshot: false, requests: 1 };
+  }
+  if (source.type === 'adzuna') {
+    if (!process.env.ADZUNA_APP_ID || !process.env.ADZUNA_APP_KEY) throw new FeedError('MISSING_ADZUNA_CREDENTIALS');
+    let complete = false;
+    for (let page = 1; page <= source.maxPages; page++) {
+      if (page > 1) await pause(2000);
+      const query = new URLSearchParams({ app_id: process.env.ADZUNA_APP_ID, app_key: process.env.ADZUNA_APP_KEY,
+        results_per_page: '50', sort_by: 'date', max_days_old: '30', ...(source.keywords ? { what: source.keywords } : {}) });
+      const payload = await get(`https://api.adzuna.com/v1/api/jobs/${source.countryCode}/search/${page}?${query}`) as Json; requests++;
+      if (!Array.isArray(payload.results)) throw new FeedError('INVALID_FEED');
+      for (const j of payload.results) jobs.push({ externalId: String(j.id ?? ''), title: text(j.title), company: text(j.company?.display_name),
+        url: text(j.redirect_url), description: text(j.description), location: text(j.location?.display_name),
+        country: text(j.location?.area?.[0]), category: text(j.category?.label), tags: [text(j.category?.label)].filter(Boolean),
+        employmentType: [text(j.contract_time), text(j.contract_type)].filter(Boolean).join(', '), postedAt: iso(j.created) });
+      if (payload.results.length < 50 || (typeof payload.count === 'number' && page * 50 >= payload.count)) { complete = true; break; }
+    }
+    return { jobs, complete, snapshot: false, requests };
+  }
+  if (source.type === 'usajobs') {
+    if (!process.env.USAJOBS_API_KEY || !process.env.USAJOBS_USER_AGENT) throw new FeedError('MISSING_USAJOBS_CREDENTIALS');
+    let complete = false;
+    for (let page = 1; page <= source.maxPages; page++) {
+      if (page > 1) await pause(2000);
+      const query = new URLSearchParams({ Page: String(page), ResultsPerPage: '100', DatePosted: '30', SortField: 'opendate', SortDirection: 'desc', Fields: 'Full', ...(source.keywords ? { Keyword: source.keywords } : {}) });
+      const payload = await get(`https://data.usajobs.gov/api/search?${query}`, { 'Authorization-Key': process.env.USAJOBS_API_KEY, 'User-Agent': process.env.USAJOBS_USER_AGENT }) as Json; requests++;
+      const result = payload.SearchResult;
+      if (!Array.isArray(result?.SearchResultItems)) throw new FeedError('INVALID_FEED');
+      for (const item of result.SearchResultItems) {
+        const j = item.MatchedObjectDescriptor, details = j?.UserArea?.Details;
+        const locations: Json[] = Array.isArray(j?.PositionLocation) ? j.PositionLocation : [];
+        jobs.push({ externalId: String(item.MatchedObjectId ?? ''), title: text(j?.PositionTitle), company: text(j?.OrganizationName),
+          url: text(j?.ApplyURI?.[0]) || text(j?.PositionURI), location: text(j?.PositionLocationDisplay),
+          country: [...new Set(locations.map(l => text(l.CountryCode)).filter(Boolean))].join('; '),
+          category: (j?.JobCategory || []).map((c: Json) => text(c.Name)).join(', '),
+          description: [text(details?.JobSummary), text(j?.QualificationSummary), text(details?.WhoMayApply?.Name), text(details?.Requirements)].filter(Boolean).join('\n'),
+          employmentType: (j?.PositionSchedule || []).map((c: Json) => text(c.Name)).join(', '),
+          postedAt: iso(j?.PublicationStartDate), closesAt: iso(j?.ApplicationCloseDate) });
+      }
+      if (result.SearchResultItems.length < 100 || page * 100 >= Number(result.SearchResultCountAll)) { complete = true; break; }
+    }
+    return { jobs, complete, snapshot: false, requests };
+  }
   if (source.type === 'arbeitnow' || source.type === 'arbeitnow-uk') {
     const host = source.type === 'arbeitnow' ? 'www.arbeitnow.com' : 'www.arbeitnow.co.uk';
     let complete = false;

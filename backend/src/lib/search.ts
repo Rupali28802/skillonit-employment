@@ -1,6 +1,7 @@
 import type { Job, User } from './domain.js';
 import { publicJob } from './domain.js';
 import { read, configuredPlans, demoMode } from './store.js';
+import { normalizeCountry } from './countries.js';
 
 export async function searchJobs(params: URLSearchParams, user: User | null = null) {
   const query = (params.get('q') || '').slice(0, 200).toLowerCase();
@@ -11,7 +12,15 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
     status: 'published', discoveredAt: { $gte: new Date(now.getTime() - 90 * 86400000).toISOString() },
     expiresAt: { $gt: now.toISOString() }, ...(!demoMode() ? { sample: { $ne: true } } : {}),
   };
-  for (const key of ['category', 'country', 'state', 'mode']) if (params.get(key)) filter[key] = params.get(key)!.slice(0, 120);
+  for (const key of ['category', 'state', 'mode']) if (params.get(key)) filter[key] = params.get(key)!.slice(0, 120);
+  if (params.get('country')) {
+    const country = normalizeCountry(params.get('country')!) || params.get('country')!.slice(0, 120);
+    filter.$or = [{ country }, { eligibleCountries: country }];
+  }
+  if (params.get('type')) {
+    const type = params.get('type')!.slice(0, 80).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[ _-]+/g, '[ _-]*');
+    filter.type = new RegExp(type, 'i');
+  }
   const experience = params.get('experience');
   if (query.includes('fresher')) { filter.experienceMin = 0; filter.experienceDisclosed = { $ne: false }; }
   if (experience && Number.isFinite(Number(experience)) && Number(experience) >= 0) {
@@ -20,7 +29,9 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
   }
   if (words.length) filter.$and = words.map(w => {
     const regex = new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    return { $or: ['title', 'category', 'city', 'country', 'mode', 'skills'].map(field => ({ [field]: regex })) };
+    const country = normalizeCountry(w);
+    return { $or: [...['title', 'category', 'city', 'country', 'mode', 'skills', 'type', 'description'].map(field => ({ [field]: regex })),
+      ...(country ? [{ country }, { eligibleCountries: country }] : [])] };
   });
   const page = Math.max(1, Math.min(100000, Math.floor(Number(params.get('page')) || 1)));
   const sort: Record<string, 1 | -1> = params.get('sort') === 'salary'

@@ -1,0 +1,1687 @@
+{
+  "generatedAt": "2026-09-10T10:44:34.805Z",
+  "total": 1046,
+  "worldwide": 10,
+  "unknownGeography": 776,
+  "domains": {
+    "Engineering": 118,
+    "Technology": 210,
+    "Sales": 151,
+    "Legal": 22,
+    "Marketing": 94,
+    "Operations": 122,
+    "Other": 164,
+    "Design": 50,
+    "Logistics": 24,
+    "Healthcare": 17,
+    "Finance": 73,
+    "Education": 1
+  },
+  "employmentTypes": {
+    "Full-Time": 190,
+    "Not specified": 295,
+    "Entry, Intern, Part time": 8,
+    "Full Time": 233,
+    "Entry, fulltime permanent": 4,
+    "Student school, parttime fixed term": 1,
+    "berufserfahren": 35,
+    "Experienced, Permanent, Full time": 73,
+    "manager": 3,
+    "Freelance, berufserfahren": 2,
+    "Full-time": 13,
+    "Experienced, fulltime permanent": 8,
+    "Student, Working student, Part time": 14,
+    "Mid, fulltime permanent": 11,
+    "Contract": 15,
+    "freelance": 2,
+    "berufseinstieg": 4,
+    "Full-time permanent, mid": 4,
+    "professional / experienced": 12,
+    "full_time": 10,
+    "part_time": 2,
+    "Entry, Permanent, Full time": 1,
+    "Full-time permanent, experienced": 3,
+    "Working Student": 1,
+    "Contract, professional / experienced": 4,
+    "Experienced, Permanent, Full or part time": 5,
+    "geschäftsleitung": 1,
+    "Apprenticeship": 1,
+    "Freelance": 2,
+    "Entry, Working student, Part time": 4,
+    "Student, Intern, Part time": 9,
+    "Student, Working student, Full or part time": 1,
+    "Intern": 4,
+    "contract": 3,
+    "Part Time": 4,
+    "teamleitung": 1,
+    "Permanent": 4,
+    "Full time, mid-senior": 4,
+    "Internship, entry": 1,
+    "Permanent Full Time Employee": 2,
+    "Working student, professional / experienced": 1,
+    "Side": 1,
+    "Working student": 5,
+    "Executive, Permanent, Full time": 3,
+    "Traineeship, teamleitung": 1,
+    "Fulltime": 1,
+    "Working student, hilfstätigkeit / student": 2,
+    "Student college, parttime fixed term": 5,
+    "Part-Time": 2,
+    "Full time, director": 1,
+    "12-month FTC": 1,
+    "Student, Intern, Full time": 1,
+    "Manager, fulltime permanent": 1,
+    "Working student, no experience required / student": 1,
+    "Market Veterinary Centre, South Molton [1668]": 1,
+    "Side, no experience required / student": 1,
+    "Experienced, Temporary, Full time": 2,
+    "Contract, manager": 1,
+    "Employee: Full Time": 1,
+    "Full time": 1,
+    "Working student, berufseinstieg": 1,
+    "Homeoffice": 1,
+    "Internship, hilfstätigkeit / student": 1,
+    "Experienced, Working student, Part time": 1,
+    "Student, Intern, Full or part time": 3,
+    "Full-time fixed-term, mid": 1,
+    "Experienced, Fixed term, Full time": 1,
+    "Full Time Employee": 1,
+    "Temporary": 1,
+    "Apprenticeship, berufseinstieg": 2,
+    "Entry, Intern, Full or part time": 1,
+    "Contract, berufseinstieg": 1,
+    "Side, professional / experienced": 1,
+    "Full-time fixed-term, experienced": 1,
+    "Part-time minijob, entry": 1,
+    "Mid, fulltime fixed term": 1
+  },
+  "sources": [
+    {
+      "id": "arbeitnow-europe",
+      "type": "arbeitnow",
+      "enabled": true,
+      "approved": true,
+      "lastSuccessAt": "2026-09-10T10:19:08.501Z",
+      "status": "partial",
+      "errorCode": null,
+      "counts": {
+        "fetched": 700,
+        "added": 24,
+        "updated": 376,
+        "duplicates": 0,
+        "rejected": 300,
+        "closed": 0,
+        "requests": 4,
+        "complete": false
+      }
+    },
+    {
+      "id": "arbeitnow-uk",
+      "type": "arbeitnow-uk",
+      "enabled": true,
+      "approved": true,
+      "lastSuccessAt": "2026-09-10T10:20:56.998Z",
+      "status": "partial",
+      "errorCode": null,
+      "counts": {
+        "fetched": 400,
+        "added": 6,
+        "updated": 394,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 4,
+        "complete": false
+      }
+    },
+    {
+      "id": "remotive-global",
+      "type": "remotive",
+      "enabled": true,
+      "approved": true,
+      "lastSuccessAt": "2026-09-10T09:20:19.159Z",
+      "status": "completed",
+      "errorCode": null,
+      "counts": {
+        "fetched": 17,
+        "added": 17,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 1,
+        "complete": true
+      }
+    },
+    {
+      "id": "jobicy-global",
+      "type": "jobicy",
+      "enabled": true,
+      "approved": true,
+      "lastSuccessAt": "2026-09-10T10:43:32.136Z",
+      "status": "partial",
+      "errorCode": null,
+      "counts": {
+        "fetched": 200,
+        "added": 200,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      }
+    }
+  ],
+  "credentialsAvailable": {
+    "adzuna": false,
+    "usajobs": false
+  },
+  "countries": [
+    {
+      "code": "AF",
+      "name": "Afghanistan",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "AX",
+      "name": "Åland Islands",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "AL",
+      "name": "Albania",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "DZ",
+      "name": "Algeria",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "AS",
+      "name": "American Samoa",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "AD",
+      "name": "Andorra",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "AO",
+      "name": "Angola",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "AI",
+      "name": "Anguilla",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "AQ",
+      "name": "Antarctica",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "AG",
+      "name": "Antigua & Barbuda",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "AR",
+      "name": "Argentina",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "AM",
+      "name": "Armenia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "AW",
+      "name": "Aruba",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "AU",
+      "name": "Australia",
+      "indexedListings": 3,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "AT",
+      "name": "Austria",
+      "indexedListings": 1,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "AZ",
+      "name": "Azerbaijan",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BS",
+      "name": "Bahamas",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BH",
+      "name": "Bahrain",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BD",
+      "name": "Bangladesh",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BB",
+      "name": "Barbados",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BY",
+      "name": "Belarus",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BE",
+      "name": "Belgium",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BZ",
+      "name": "Belize",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BJ",
+      "name": "Benin",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BM",
+      "name": "Bermuda",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BT",
+      "name": "Bhutan",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BO",
+      "name": "Bolivia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BA",
+      "name": "Bosnia & Herzegovina",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BW",
+      "name": "Botswana",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BV",
+      "name": "Bouvet Island",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BR",
+      "name": "Brazil",
+      "indexedListings": 2,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "IO",
+      "name": "British Indian Ocean Territory",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "VG",
+      "name": "British Virgin Islands",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BN",
+      "name": "Brunei",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BG",
+      "name": "Bulgaria",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BF",
+      "name": "Burkina Faso",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BI",
+      "name": "Burundi",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "KH",
+      "name": "Cambodia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "CM",
+      "name": "Cameroon",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "CA",
+      "name": "Canada",
+      "indexedListings": 26,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "CV",
+      "name": "Cape Verde",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BQ",
+      "name": "Caribbean Netherlands",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "KY",
+      "name": "Cayman Islands",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "CF",
+      "name": "Central African Republic",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "TD",
+      "name": "Chad",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "CL",
+      "name": "Chile",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "CN",
+      "name": "China",
+      "indexedListings": 2,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "CX",
+      "name": "Christmas Island",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "CC",
+      "name": "Cocos (Keeling) Islands",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "CO",
+      "name": "Colombia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "KM",
+      "name": "Comoros",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "CG",
+      "name": "Congo - Brazzaville",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "CD",
+      "name": "Congo - Kinshasa",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "CK",
+      "name": "Cook Islands",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "CR",
+      "name": "Costa Rica",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "CI",
+      "name": "Côte d’Ivoire",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "HR",
+      "name": "Croatia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "CU",
+      "name": "Cuba",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "CW",
+      "name": "Curaçao",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "CY",
+      "name": "Cyprus",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "CZ",
+      "name": "Czechia",
+      "indexedListings": 1,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "DK",
+      "name": "Denmark",
+      "indexedListings": 1,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "DJ",
+      "name": "Djibouti",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "DM",
+      "name": "Dominica",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "DO",
+      "name": "Dominican Republic",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "EC",
+      "name": "Ecuador",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "EG",
+      "name": "Egypt",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "SV",
+      "name": "El Salvador",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "GQ",
+      "name": "Equatorial Guinea",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "ER",
+      "name": "Eritrea",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "EE",
+      "name": "Estonia",
+      "indexedListings": 2,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "SZ",
+      "name": "Eswatini",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "ET",
+      "name": "Ethiopia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "FK",
+      "name": "Falkland Islands",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "FO",
+      "name": "Faroe Islands",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "FJ",
+      "name": "Fiji",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "FI",
+      "name": "Finland",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "FR",
+      "name": "France",
+      "indexedListings": 1,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "GF",
+      "name": "French Guiana",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "PF",
+      "name": "French Polynesia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "TF",
+      "name": "French Southern Territories",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "GA",
+      "name": "Gabon",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "GM",
+      "name": "Gambia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "GE",
+      "name": "Georgia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "DE",
+      "name": "Germany",
+      "indexedListings": 48,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "GH",
+      "name": "Ghana",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "GI",
+      "name": "Gibraltar",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "GR",
+      "name": "Greece",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "GL",
+      "name": "Greenland",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "GD",
+      "name": "Grenada",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "GP",
+      "name": "Guadeloupe",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "GU",
+      "name": "Guam",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "GT",
+      "name": "Guatemala",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "GG",
+      "name": "Guernsey",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "GN",
+      "name": "Guinea",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "GW",
+      "name": "Guinea-Bissau",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "GY",
+      "name": "Guyana",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "HT",
+      "name": "Haiti",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "HM",
+      "name": "Heard & McDonald Islands",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "HN",
+      "name": "Honduras",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "HK",
+      "name": "Hong Kong SAR China",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "HU",
+      "name": "Hungary",
+      "indexedListings": 1,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "IS",
+      "name": "Iceland",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "IN",
+      "name": "India",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "ID",
+      "name": "Indonesia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "IR",
+      "name": "Iran",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "IQ",
+      "name": "Iraq",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "IE",
+      "name": "Ireland",
+      "indexedListings": 3,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "IM",
+      "name": "Isle of Man",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "IL",
+      "name": "Israel",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "IT",
+      "name": "Italy",
+      "indexedListings": 1,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "JM",
+      "name": "Jamaica",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "JP",
+      "name": "Japan",
+      "indexedListings": 2,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "JE",
+      "name": "Jersey",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "JO",
+      "name": "Jordan",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "KZ",
+      "name": "Kazakhstan",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "KE",
+      "name": "Kenya",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "KI",
+      "name": "Kiribati",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "XK",
+      "name": "Kosovo",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "KW",
+      "name": "Kuwait",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "KG",
+      "name": "Kyrgyzstan",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "LA",
+      "name": "Laos",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "LV",
+      "name": "Latvia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "LB",
+      "name": "Lebanon",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "LS",
+      "name": "Lesotho",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "LR",
+      "name": "Liberia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "LY",
+      "name": "Libya",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "LI",
+      "name": "Liechtenstein",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "LT",
+      "name": "Lithuania",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "LU",
+      "name": "Luxembourg",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MO",
+      "name": "Macao SAR China",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MG",
+      "name": "Madagascar",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MW",
+      "name": "Malawi",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MY",
+      "name": "Malaysia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MV",
+      "name": "Maldives",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "ML",
+      "name": "Mali",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MT",
+      "name": "Malta",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MH",
+      "name": "Marshall Islands",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MQ",
+      "name": "Martinique",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MR",
+      "name": "Mauritania",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MU",
+      "name": "Mauritius",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "YT",
+      "name": "Mayotte",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MX",
+      "name": "Mexico",
+      "indexedListings": 4,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "FM",
+      "name": "Micronesia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MD",
+      "name": "Moldova",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MC",
+      "name": "Monaco",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MN",
+      "name": "Mongolia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "ME",
+      "name": "Montenegro",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MS",
+      "name": "Montserrat",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MA",
+      "name": "Morocco",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MZ",
+      "name": "Mozambique",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MM",
+      "name": "Myanmar (Burma)",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "NA",
+      "name": "Namibia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "NR",
+      "name": "Nauru",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "NP",
+      "name": "Nepal",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "NL",
+      "name": "Netherlands",
+      "indexedListings": 2,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "NC",
+      "name": "New Caledonia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "NZ",
+      "name": "New Zealand",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "NI",
+      "name": "Nicaragua",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "NE",
+      "name": "Niger",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "NG",
+      "name": "Nigeria",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "NU",
+      "name": "Niue",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "NF",
+      "name": "Norfolk Island",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "KP",
+      "name": "North Korea",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MK",
+      "name": "North Macedonia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MP",
+      "name": "Northern Mariana Islands",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "NO",
+      "name": "Norway",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "OM",
+      "name": "Oman",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "PK",
+      "name": "Pakistan",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "PW",
+      "name": "Palau",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "PS",
+      "name": "Palestinian Territories",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "PA",
+      "name": "Panama",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "PG",
+      "name": "Papua New Guinea",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "PY",
+      "name": "Paraguay",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "PE",
+      "name": "Peru",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "PH",
+      "name": "Philippines",
+      "indexedListings": 1,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "PN",
+      "name": "Pitcairn Islands",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "PL",
+      "name": "Poland",
+      "indexedListings": 2,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "PT",
+      "name": "Portugal",
+      "indexedListings": 3,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "PR",
+      "name": "Puerto Rico",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "QA",
+      "name": "Qatar",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "RE",
+      "name": "Réunion",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "RO",
+      "name": "Romania",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "RU",
+      "name": "Russia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "RW",
+      "name": "Rwanda",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "WS",
+      "name": "Samoa",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "SM",
+      "name": "San Marino",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "ST",
+      "name": "São Tomé & Príncipe",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "SA",
+      "name": "Saudi Arabia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "SN",
+      "name": "Senegal",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "RS",
+      "name": "Serbia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "SC",
+      "name": "Seychelles",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "SL",
+      "name": "Sierra Leone",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "SG",
+      "name": "Singapore",
+      "indexedListings": 4,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "SX",
+      "name": "Sint Maarten",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "SK",
+      "name": "Slovakia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "SI",
+      "name": "Slovenia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "SB",
+      "name": "Solomon Islands",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "SO",
+      "name": "Somalia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "ZA",
+      "name": "South Africa",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "GS",
+      "name": "South Georgia & South Sandwich Islands",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "KR",
+      "name": "South Korea",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "SS",
+      "name": "South Sudan",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "ES",
+      "name": "Spain",
+      "indexedListings": 5,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "LK",
+      "name": "Sri Lanka",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "BL",
+      "name": "St. Barthélemy",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "SH",
+      "name": "St. Helena",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "KN",
+      "name": "St. Kitts & Nevis",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "LC",
+      "name": "St. Lucia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "MF",
+      "name": "St. Martin",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "PM",
+      "name": "St. Pierre & Miquelon",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "VC",
+      "name": "St. Vincent & Grenadines",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "SD",
+      "name": "Sudan",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "SR",
+      "name": "Suriname",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "SJ",
+      "name": "Svalbard & Jan Mayen",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "SE",
+      "name": "Sweden",
+      "indexedListings": 3,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "CH",
+      "name": "Switzerland",
+      "indexedListings": 2,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "SY",
+      "name": "Syria",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "TW",
+      "name": "Taiwan",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "TJ",
+      "name": "Tajikistan",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "TZ",
+      "name": "Tanzania",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "TH",
+      "name": "Thailand",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "TL",
+      "name": "Timor-Leste",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "TG",
+      "name": "Togo",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "TK",
+      "name": "Tokelau",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "TO",
+      "name": "Tonga",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "TT",
+      "name": "Trinidad & Tobago",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "TN",
+      "name": "Tunisia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "TR",
+      "name": "Türkiye",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "TM",
+      "name": "Turkmenistan",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "TC",
+      "name": "Turks & Caicos Islands",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "TV",
+      "name": "Tuvalu",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "UM",
+      "name": "U.S. Outlying Islands",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "VI",
+      "name": "U.S. Virgin Islands",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "UG",
+      "name": "Uganda",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "UA",
+      "name": "Ukraine",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "AE",
+      "name": "United Arab Emirates",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "GB",
+      "name": "United Kingdom",
+      "indexedListings": 60,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "US",
+      "name": "United States",
+      "indexedListings": 121,
+      "status": "partial_inventory"
+    },
+    {
+      "code": "UY",
+      "name": "Uruguay",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "UZ",
+      "name": "Uzbekistan",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "VU",
+      "name": "Vanuatu",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "VA",
+      "name": "Vatican City",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "VE",
+      "name": "Venezuela",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "VN",
+      "name": "Vietnam",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "WF",
+      "name": "Wallis & Futuna",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "EH",
+      "name": "Western Sahara",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "YE",
+      "name": "Yemen",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "ZM",
+      "name": "Zambia",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    },
+    {
+      "code": "ZW",
+      "name": "Zimbabwe",
+      "indexedListings": 0,
+      "status": "no_explicit_inventory"
+    }
+  ],
+  "notes": [
+    "Counts describe stored live listings, not platform completeness or applicant eligibility.",
+    "Worldwide jobs are reported separately, not counted as evidence of local jobs in every country.",
+    "Website reachability from each country is not established by this report."
+  ]
+}
