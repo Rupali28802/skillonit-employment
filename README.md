@@ -70,6 +70,8 @@ When APP_URL is HTTPS, localhost HTML requests redirect to that canonical origin
 
 Profile forms use the revision from the displayed user snapshot. Preferences follow the revision actually returned by the backend, including unchanged saves. Stale writes retain the backend's conflict protection. Profile edits preserve employment history and stored photo/theme metadata, and unknown experience remains null.
 
+New password and Google accounts start with unknown experience and an empty country. Email verification does not confirm profile facts; the candidate must supply or confirm them through the existing profile/CV flow.
+
 The existing private avatar/cover/logo and profile appearance APIs remain available. Images are validated, resized and stored by Express; authorization is unchanged.
 
 Module 2 includes profile, completion, preferences, automation preferences, CV draft/confirmation/versioning, onboarding, consent and taxonomy APIs. Provider requirements and production gates are in `docs/backend/02-production-hardening.md`.
@@ -96,3 +98,5 @@ node scripts/scan-secrets.mjs
 `test:frontend` builds Next.js into ignored `.next-integration`, starts an isolated MongoDB replica set using `architecture_test`, Express on 3101 and the production frontend on 3100. It does not connect to the configured Atlas database, send mail, or simulate successful Google consent. Ports 3100/3101 must be free. An initial run may download the MongoDB test binary. The separate build directory preserves any currently running `.next` build.
 
 Never commit `.env`, `.env.local`, credentials, tokens, CV uploads, database dumps, `.data`, logs or generated builds. Only redacted `.env.example` templates belong in Git.
+
+The latest branch audit and validation results are in [Module 1/2 main validation](docs/MODULE12_MAIN_VALIDATION.md).

@@ -94,6 +94,10 @@ try {
   const registrationCookie = cookieOf(registered);
   const registeredUser = (await payload('/api/v1/session', registrationCookie)).user;
   assert.equal(registeredUser.email, credentials.email);
+  assert.equal(registeredUser.profile.experience, null);
+  assert.equal(registeredUser.profile.country, '');
+  const initialStatus = await payload('/api/v1/me/profile/status', registrationCookie);
+  assert.ok(initialStatus.missingFields.includes('experience') && initialStatus.missingFields.includes('country'));
   assert.ok(await read(r => r.get('users', registeredUser.id)), 'Registration persisted in isolated MongoDB');
   await request('/api/v1/auth/register', 409, '', 'POST', credentials);
   await request('/api/v1/auth/login', 401, '', 'POST', { email: credentials.email, password: 'incorrect-password' });

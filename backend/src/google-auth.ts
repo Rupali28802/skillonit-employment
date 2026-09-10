@@ -48,7 +48,7 @@ export async function resolveGoogleUser(identity: Identity, linking?: User) {
       id: id(), email: identity.email, name: identity.name, googleId: identity.sub,
       authProvider: 'google', passwordHash: null, verified: true, isVerified: true,
       role: 'student', plan: 'basic', createdAt: new Date().toISOString(),
-      profile: { name: identity.name, headline: '', skills: [], experience: 0, education: '', country: '', city: '', confirmed: false },
+      profile: { name: identity.name, headline: '', skills: [], experience: null, education: '', country: '', city: '', confirmed: false },
       preferences: { roles: [], relatedRoles: [], countries: [], modes: [], exclusions: [], automation: false, dailyCap: 5 },
     };
     await r.put('users', user);

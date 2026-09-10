@@ -25,6 +25,9 @@ test('local account-resolution unit checks (not a real Google identity validatio
     const created = await resolveGoogleUser(identity);
     assert.equal(created.authProvider, 'google'); assert.equal(created.passwordHash, null);
     assert.equal(created.verified, true); assert.equal(created.isVerified, true);
+    assert.equal(created.profile.experience, null, 'Google identity does not provide work experience');
+    assert.equal(created.profile.country, '');
+    assert.equal(created.profile.confirmed, false, 'Verified email does not confirm candidate profile facts');
     assert.equal(verifyPassword('any password', created.passwordHash), false);
     assert.equal((await resolveGoogleUser(identity)).id, created.id);
     const local = { ...created, id: 'local-user', googleId: undefined, email: 'local@example.test', authProvider: 'password' as const, passwordHash: hashPassword('a-long-local-password'), verified: false };
