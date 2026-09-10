@@ -42,6 +42,7 @@ export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company' | 'feed
   company: string;
   identityVisible: boolean;
   sourceLink?: string;
+  publicApplicationLink?: string;
 };
 export type Profile = {
   name: string;
@@ -270,7 +271,7 @@ export function publicJob(
     source: scrub(safe.source),
     company: identityVisible ? company : 'Company identity protected',
     identityVisible,
-    ...(feed?.publicListing ? { sourceLink: feed.attributionUrl } : {}),
+    ...(feed?.publicListing ? { sourceLink: feed.attributionUrl, publicApplicationLink: job.url } : {}),
   };
 }
 export function isRecent(job: Job, days = 90, now = Date.now()) {

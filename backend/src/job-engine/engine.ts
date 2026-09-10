@@ -70,7 +70,8 @@ async function ingest(source: FeedSource, batch: FeedBatch, owner: string, runId
     const committed = await transaction(async r => {
       await fence(r, owner);
       const current = await r.get<FeedSource>('jobFeedSources', source.id);
-      if (!current?.enabled || !current.approved || JSON.stringify(current) !== JSON.stringify(source)) throw new FeedError('SOURCE_CHANGED');
+      const currentPolicy = sourceSchema.safeParse(current);
+      if (!currentPolicy.success || !currentPolicy.data.enabled || !currentPolicy.data.approved || JSON.stringify(currentPolicy.data) !== JSON.stringify(sourceSchema.parse(source))) throw new FeedError('SOURCE_CHANGED');
       const result = { added: 0, updated: 0, duplicates: 0 };
       const chunk = jobs.slice(start, start + 25);
       const variants = new Map((await r.find<Variant>('jobFeedVariants', { id: { $in: chunk.map(j => hash(source.id + ':' + j.feed!.externalId)) } }, 100)).map(v => [v.id, v]));
@@ -123,6 +124,8 @@ export async function runEngine(discover: (source: FeedSource) => Promise<FeedBa
   if (!acquired) return { status: 'busy', results: [] };
   const results: { source: string; status: string; counts?: Counts; errorCode?: string }[] = [];
   try {
+    const knownStates = new Map((await read(r => r.find<SourceState>('jobFeedStates', {}, 1000))).map(s => [s.id, s]));
+    const providerBlocks = new Map<string, number>();
     let cursor = '';
     for (;;) {
       const sources = await read(r => r.scan<FeedSource>('jobFeedSources', {}, cursor, 50));
@@ -131,12 +134,17 @@ export async function runEngine(discover: (source: FeedSource) => Promise<FeedBa
         const parsed = sourceSchema.safeParse(raw);
         if (!parsed.success) { results.push({ source: raw.id, status: 'invalid_configuration' }); continue; }
         const source = parsed.data;
+        if (!providerBlocks.has(source.type)) {
+          const provider = await read(r => r.get<{ id: string; until: number }>('jobEngineState', `provider-${source.type}`));
+          providerBlocks.set(source.type, provider?.until || 0);
+        }
         if (!source.approved || !source.enabled) {
           const closed = await deactivate(source.id, owner);
           if (closed) await transaction(refreshFeed);
           results.push({ source: source.id, status: 'disabled' }); continue;
         }
-        const state = await read(r => r.get<SourceState>('jobFeedStates', source.id));
+        if (providerBlocks.get(source.type)! > Date.now()) { results.push({ source: source.id, status: 'provider_backoff' }); continue; }
+        const state = knownStates.get(source.id) || await read(r => r.get<SourceState>('jobFeedStates', source.id));
         if ((state?.nextRunAt || 0) > Date.now()) { results.push({ source: source.id, status: 'not_due' }); continue; }
         const runId = randomUUID(), started = new Date().toISOString();
         await transaction(async r => {
@@ -158,9 +166,12 @@ export async function runEngine(discover: (source: FeedSource) => Promise<FeedBa
           results.push({ source: source.id, status: counts.complete ? 'completed' : 'partial', counts });
         } catch (e) {
           const errorCode = e instanceof FeedError ? e.code : 'SOURCE_UNAVAILABLE';
+          if (errorCode === 'HTTP_429') providerBlocks.set(source.type, Date.now() + Math.max(3600000, e instanceof FeedError ? e.retryAfterMs : 0));
           const failures = (state?.failures || 0) + 1;
           await transaction(async r => {
             await fence(r, owner);
+            if (errorCode === 'HTTP_429') await r.put('jobEngineState', { id: `provider-${source.type}`,
+              until: Date.now() + Math.max(3600000, e instanceof FeedError ? e.retryAfterMs : 0) });
             await r.put('jobFeedStates', { ...state, id: source.id, status: 'failed', failures, errorCode,
               lastAttemptAt: started, nextRunAt: Date.now() + Math.max(source.intervalMinutes * 60000, Math.min(86400000, 60000 * 2 ** Math.min(failures, 10)), e instanceof FeedError ? e.retryAfterMs : 0) });
             await r.put('jobFeedRuns', { id: runId, sourceId: source.id, status: 'failed', errorCode, startedAt: started,

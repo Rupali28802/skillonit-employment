@@ -6,6 +6,8 @@ See [Job hunting engine setup, sources and limits](docs/JOB_ENGINE.md). Start wi
 
 [Worldwide source audit and integration backlog](docs/GLOBAL_JOB_COVERAGE.md) distinguishes live feeds from credential-gated connectors and unconnected platforms. `npm run jobs:coverage` reports real inventory across 250 country/territory filters (ISO entries plus Kosovo); empty countries are explicitly reported. The preview is not a global public deployment.
 
+For scheduled country discovery, run `npm run jobs:seed-worldwide` after the backend build, then `npm run worker:jobs`. This enables bounded daily Himalayas country queries, a separate worldwide query and Remote OK. It does not enable restricted marketplaces or guarantee local vacancies in every country. See the audit snapshot for attempted country queries and actual inventory.
+
 ```text
 skillonit-employment/
   frontend/     Next.js pages, components, assets and API presentation

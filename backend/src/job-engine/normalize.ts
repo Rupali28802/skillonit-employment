@@ -4,7 +4,7 @@ import he from 'he';
 import type { Job } from '../lib/domain.js';
 import type { Candidate } from './adapters.js';
 import type { FeedSource } from './sources.js';
-import { countriesInLocation } from '../lib/countries.js';
+import { countriesInLocation, normalizeCountry } from '../lib/countries.js';
 
 export const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 export function plain(input: string, limit = 30000) {
@@ -42,6 +42,7 @@ export function normalize(c: Candidate, source: FeedSource, now = Date.now()): J
   if (!c.externalId || c.externalId.length > 2000 || !title || !company || description.length < 30) throw Error('MISSING_JOB_FACTS');
   const canonical = canonicalUrl(c.url);
   const url = source.type === 'adzuna' ? new URL(c.url).href : canonical;
+  if (source.type === 'remoteok' && new URL(url).hostname !== 'remoteok.com') throw Error('INVALID_ATTRIBUTION');
   if (source.type === 'jobicy' && new URL(url).hostname !== 'jobicy.com') throw Error('INVALID_ATTRIBUTION');
   if (source.type === 'usajobs' && !['www.usajobs.gov', 'usajobs.gov'].includes(new URL(url).hostname)) throw Error('INVALID_ATTRIBUTION');
   if (source.type === 'remotive' && new URL(url).hostname !== 'remotive.com') throw Error('INVALID_ATTRIBUTION');
@@ -52,7 +53,8 @@ export function normalize(c: Candidate, source: FeedSource, now = Date.now()): J
   if (posted !== undefined && (!Number.isFinite(posted) || posted > now + 300000 || posted < now - 90 * 86400000)) throw Error('STALE_OR_INVALID_DATE');
   const suspicious = /\b(pay|send|transfer)\b.{0,50}\b(fee|deposit|password|otp)\b|registration fee/i.test(description);
   const stamp = new Date(now).toISOString();
-  const eligibleCountries = countriesInLocation(plain(c.country || c.location, 500));
+  const eligibleCountries = c.countryCodes?.length ? [...new Set(c.countryCodes.map(normalizeCountry).filter((c): c is string => !!c))]
+    : countriesInLocation(plain(c.country || c.location, 500));
   const country = eligibleCountries.length === 1 ? eligibleCountries[0] : eligibleCountries.length > 1 ? 'Multiple countries'
     : /^(worldwide|anywhere|global)$/i.test(c.location.trim()) ? 'Worldwide' : 'Not specified';
   return {
@@ -67,7 +69,8 @@ export function normalize(c: Candidate, source: FeedSource, now = Date.now()): J
     // Refresh only this availability deadline; never reset the original posting/first-discovery dates.
     expiresAt: new Date(Math.min(now + 72 * 3600000, (posted ?? now) + 90 * 86400000, closing ?? Infinity)).toISOString(),
     ...(posted !== undefined ? { sourcePostedAt: new Date(posted).toISOString() } : {}),
-    feed: { sourceId: source.id, externalId: c.externalId, publicListing: source.publicListing, attributionUrl: url, lastSeenAt: stamp },
+    feed: { sourceId: source.id, externalId: c.externalId, publicListing: source.publicListing,
+      attributionUrl: source.type === 'himalayas' ? 'https://himalayas.app' : url, lastSeenAt: stamp },
   };
 }
 export const duplicateKey = (j: Job) => hash([j.title, j.company, j.city, j.country, j.description].join('|').toLowerCase().replace(/\s+/g, ' ').trim());

@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
-import { bootstrapIndexes, closeStore, read } from '../lib/store.js';
+import { bootstrapIndexes, closeStore, read, transaction } from '../lib/store.js';
 import { runEngine, upsertSource, engineStatus } from './engine.js';
-import { publicSources } from './sources.js';
+import { publicSources, worldwideSources, sourceSchema } from './sources.js';
 import { coverageReport } from './coverage.js';
 
 let stopping = false;
@@ -11,7 +11,15 @@ try {
   if (!process.env.MONGODB_URI) throw Error('MONGODB_REQUIRED');
   await bootstrapIndexes();
   const command = process.argv[2] || 'status';
-  if (command === 'seed') {
+  if (command === 'seed-worldwide') {
+    await transaction(async r => {
+      const existing = new Set((await r.find<{ id: string }>('jobFeedSources', {}, 1000)).map(s => s.id));
+      const missing = worldwideSources.filter(s => !existing.has(s.id)).map(s => sourceSchema.parse(s));
+      await r.putMany('jobFeedSources', missing);
+      await r.putMany('jobFeedStates', missing.map(s => ({ id: s.id, nextRunAt: 0, failures: 0, status: 'ready' })));
+    });
+    console.log('Country search feeds configured; existing source settings preserved.');
+  } else if (command === 'seed') {
     for (const source of publicSources) {
       if (!(await read(r => r.get('jobFeedSources', source.id)))) await upsertSource(source);
     }
@@ -24,7 +32,10 @@ try {
   else if (command === 'status') console.log(JSON.stringify(await engineStatus(), null, 2));
   else if (command === 'once' || command === 'watch') {
     do {
-      console.log(JSON.stringify(await runEngine()));
+      const result = await runEngine();
+      const changed = result.results.filter(r => r.counts || r.status === 'failed' || r.status === 'invalid_configuration');
+      if (command === 'once') console.log(JSON.stringify(result));
+      else if (changed.length || result.expired) console.log(JSON.stringify({ ...result, results: changed }));
       if (command === 'once') break;
       for (let i = 0; i < 30 && !stopping; i++) await delay(1000);
     } while (!stopping);

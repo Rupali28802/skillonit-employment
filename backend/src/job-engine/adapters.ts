@@ -3,7 +3,7 @@ import type { FeedSource } from './sources.js';
 
 export type Candidate = {
   externalId: string; title: string; company: string; url: string; description: string;
-  location: string; country?: string; category?: string; tags?: string[];
+  location: string; country?: string; countryCodes?: string[]; category?: string; tags?: string[];
   mode?: 'Remote' | 'Hybrid' | 'On-site'; employmentType?: string;
   postedAt?: string; closesAt?: string; salaryText?: string;
 };
@@ -45,6 +45,45 @@ export async function fetchJson(url: string, extraHeaders: Record<string, string
 export async function fetchFeed(source: FeedSource, get = fetchJson, pause = delay): Promise<FeedBatch> {
   if (!source.enabled || !source.approved) throw new FeedError('SOURCE_DISABLED');
   const jobs: Candidate[] = []; let requests = 0;
+  if (source.type === 'remoteok') {
+    const payload = await get('https://remoteok.com/api');
+    if (!Array.isArray(payload)) throw new FeedError('INVALID_FEED');
+    for (const j of payload) {
+      if (!j.id && j.legal) continue; // First feed row contains attribution terms, not a vacancy.
+      jobs.push({ externalId: String(j.id ?? ''), title: text(j.position), company: text(j.company),
+        url: text(j.url), description: text(j.description), location: text(j.location), tags: list(j.tags), mode: 'Remote', postedAt: iso(j.date) });
+    }
+    return { jobs, complete: false, snapshot: false, requests: 1 };
+  }
+  if (source.type === 'himalayas') {
+    let complete = false;
+    for (let page = 1; page <= source.maxPages; page++) {
+      await pause(1500);
+      const query = new URLSearchParams({ sort: 'recent', page: String(page),
+        ...(source.countryCode ? { country: source.countryCode.toUpperCase(), exclude_worldwide: 'true' } : { worldwide: 'true' }) });
+      const payload = await get(`https://himalayas.app/jobs/api/search?${query}`) as Json; requests++;
+      if (!Array.isArray(payload.jobs) || !Number.isFinite(payload.totalCount) || !Number.isFinite(payload.limit) || payload.limit < 1) throw new FeedError('INVALID_FEED');
+      for (const j of payload.jobs) {
+        // Missing geography is unknown. Only an explicit empty restriction array means worldwide.
+        const locations = Array.isArray(j.locationRestrictions) ? j.locationRestrictions : undefined;
+        const location = locations?.length ? locations.map((c: Json | string) => typeof c === 'string' ? c : text(c.name) || text(c.alpha2)).filter(Boolean).join('; ')
+          : locations ? 'Worldwide' : 'Not specified';
+        const timezones = list(j.timezoneRestrictions);
+        // Live search currently returns seconds although OpenAPI describes milliseconds. Accept both.
+        const sourceDate = (value: unknown) => typeof value === 'number' && Math.abs(value) > 100000000000 ? iso(value / 1000) : iso(value);
+        jobs.push({ externalId: text(j.guid), title: text(j.title), company: text(j.companyName),
+          url: text(j.applicationLink), location,
+          countryCodes: locations?.map((c: Json | string) => typeof c === 'string' ? c : text(c.alpha2) || text(c.name)).filter(Boolean),
+          description: text(j.description) + `\nReported location eligibility: ${location}` + (timezones.length ? `\nRequired timezone overlap: ${timezones.join(', ')}` : ''),
+          category: list(j.parentCategories).join(', '), tags: [...list(j.categories), ...list(j.parentCategories)], mode: 'Remote',
+          employmentType: text(j.employmentType), postedAt: sourceDate(j.pubDate), closesAt: sourceDate(j.expiryDate),
+          salaryText: Number.isFinite(j.minSalary) && Number.isFinite(j.maxSalary) && j.currency
+            ? `${text(j.currency)} ${j.minSalary}–${j.maxSalary} ${text(j.salaryPeriod) || 'annual'}` : undefined });
+      }
+      if (!payload.jobs.length || page * payload.limit >= payload.totalCount) { complete = true; break; }
+    }
+    return { jobs, complete, snapshot: false, requests };
+  }
   if (source.type === 'jobicy') {
     const payload = await get('https://jobicy.com/api/v2/remote-jobs?count=200') as Json;
     if (!Array.isArray(payload.jobs)) throw new FeedError('INVALID_FEED');

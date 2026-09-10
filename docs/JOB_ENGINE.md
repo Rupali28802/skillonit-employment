@@ -33,6 +33,10 @@ Remotive requires an original listing backlink, source credit and public access 
 
 ## Run locally
 
+Worldwide remote-source rollout: after building, run `npm run jobs:seed-worldwide`, then keep `npm run worker:jobs` running. This configures one daily Himalayas query per directory country/territory, a separate worldwide query, and Remote OK's daily feed. Existing configurations are preserved. India and UAE run first among the Himalayas sources. Each country fetches one newest-results page by default, explicitly excluding worldwide substitutes. Empty/unsupported responses remain visible in `jobs:coverage`; this is not complete local-market inventory. Total default Himalayas budget is up to 251 requests/day plus bounded failures, with a 1.5-second delay before requests and shared provider backoff after 429 responses. Do not increase page counts/cadence without reviewing provider limits.
+
+Himalayas retains source credit separately from the original application URL and preserves timezone overlap requirements. The adapter accepts seconds (observed live) and milliseconds (documented) timestamps; listings past their stated close date are excluded. Its documentation says the public feed refreshes daily. Remote OK original backlinks are retained. These connectors add remote-job sources, not unrestricted LinkedIn/Indeed exports or proof of on-site inventory in every country. References: [Himalayas API](https://himalayas.app/docs/remote-jobs-api), [Remote OK feeds](https://remoteok.com/faq).
+
 Use the existing backend `.env` privately, with the existing transaction-capable MongoDB connection. No additional API secret or Redis instance is required for these public feeds.
 
 ```sh

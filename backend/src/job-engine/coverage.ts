@@ -25,12 +25,13 @@ export async function coverageReport() {
   const sources = await read(async r => {
     const configs = await r.find<FeedSource>('jobFeedSources', {}, 1000);
     const states = new Map((await r.find<SourceState>('jobFeedStates', {}, 1000)).map(s => [s.id, s]));
-    return configs.map(s => ({ id: s.id, type: s.type, enabled: s.enabled, approved: s.approved,
+    return configs.map(s => ({ id: s.id, type: s.type, countryCode: s.countryCode || null, enabled: s.enabled, approved: s.approved,
       lastSuccessAt: states.get(s.id)?.lastSuccessAt ?? null, status: states.get(s.id)?.status ?? 'not_run',
       errorCode: states.get(s.id)?.errorCode ?? null, counts: states.get(s.id)?.counts ?? null }));
   });
   return { generatedAt: now.toISOString(), total, worldwide, unknownGeography, domains, employmentTypes: types, sources,
     credentialsAvailable: { adzuna: !!(process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY), usajobs: !!(process.env.USAJOBS_API_KEY && process.env.USAJOBS_USER_AGENT) },
-    countries: countryEntries.map(c => ({ ...c, indexedListings: countryCounts.get(c.name)!, status: countryCounts.get(c.name) ? 'partial_inventory' : 'no_explicit_inventory' })),
+    countries: countryEntries.map(c => ({ ...c, indexedListings: countryCounts.get(c.name)!, status: countryCounts.get(c.name) ? 'partial_inventory' : 'no_explicit_inventory',
+      countryFeeds: sources.filter(s => s.countryCode?.toUpperCase() === c.code).map(s => ({ id: s.id, status: s.status, lastSuccessAt: s.lastSuccessAt, errorCode: s.errorCode })) })),
     notes: ['Counts describe stored live listings, not platform completeness or applicant eligibility.', 'Worldwide jobs are reported separately, not counted as evidence of local jobs in every country.', 'Website reachability from each country is not established by this report.'] };
 }

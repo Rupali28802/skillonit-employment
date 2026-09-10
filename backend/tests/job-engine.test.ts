@@ -1,6 +1,8 @@
 import { test, before, after, beforeEach } from 'node:test';
 import { countryEntries, countriesInLocation, normalizeCountry } from '../src/lib/countries.ts';
 import { coverageReport } from '../src/job-engine/coverage.ts';
+import { worldwideSources } from '../src/job-engine/sources.ts';
+import { FeedError } from '../src/job-engine/adapters.ts';
 import assert from 'node:assert/strict';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { MongoClient } from 'mongodb';
@@ -100,6 +102,8 @@ test('failed, partial and rejected feeds do not remove listings; two complete mi
   await due(); await runEngine(async () => { throw new FeedError('HTTP_429', 86400000); });
   let state = await read(r => r.get<any>('jobFeedStates', source.id));
   assert.ok(state.nextRunAt > Date.now() + 86000000);
+  // Simulate the provider-wide cooldown expiring inside this isolated fixture database.
+  await transaction(r => r.put('jobEngineState', { id: `provider-${source.type}`, until: 0 }));
   await due(); await runEngine(async () => batch([], { complete: false }));
   assert.equal(await read(r => r.count('jobs', { status: 'published' })), 1);
   await due(); await runEngine(async () => batch([candidate({ title: '' })]));
@@ -147,6 +151,7 @@ test('all ISO countries and aliases are supported without inventing city/remote 
   for (const c of countryEntries) assert.equal(normalizeCountry(c.code), c.name);
   assert.equal(normalizeCountry('UAE'), 'United Arab Emirates');
   assert.equal(normalizeCountry('USA'), 'United States');
+  for (const [name, code] of [['Antigua and Barbuda','AG'],['Hong Kong','HK'],['Cabo Verde','CV'],['Russian Federation','RU'],['Congo, The Democratic Republic of the','CD'],['Palestine, State of','PS'],['Saint Helena, Ascension and Tristan da Cunha','SH']]) assert.equal(normalizeCountry(name), normalizeCountry(code));
   assert.deepEqual(countriesInLocation('Dubai, UAE'), ['United Arab Emirates']);
   assert.deepEqual(countriesInLocation('London, United Kingdom'), ['United Kingdom']);
   assert.deepEqual(countriesInLocation('Remote - Japan'), ['Japan']);
@@ -226,4 +231,57 @@ test('search covers unmatched professions, job types and multiple countries; rep
   assert.equal(coverage.countries.length, 250); assert.equal(coverage.total, 1);
   assert.equal(coverage.countries.find(c => c.code === 'AE')?.indexedListings, 1);
   assert.equal(coverage.countries.find(c => c.code === 'JP')?.status, 'no_explicit_inventory');
+});
+
+test('country rollout covers every directory entry and queries explicit eligibility, not worldwide substitutes', async () => {
+  assert.equal(new Set(worldwideSources.filter(s => s.countryCode).map(s => s.countryCode)).size, countryEntries.length);
+  for (const s of worldwideSources) assert.ok(sourceSchema.safeParse(s).success);
+  const s = worldwideSources.find(s => s.countryCode === 'in')!;
+  const b = await fetchFeed(s, async url => {
+    const q = new URL(url).searchParams; assert.equal(q.get('country'), 'IN'); assert.equal(q.get('exclude_worldwide'), 'true');
+    return { jobs: [{ guid: 'india-role', title: 'Agriculture analyst', companyName: 'Research firm',
+      applicationLink: 'https://careers.example.com/india-role', description: 'Research agricultural markets and work with local teams.',
+      locationRestrictions: [{ alpha2: 'IN', name: 'India' }, { alpha2: 'AE', name: 'United Arab Emirates' }],
+      timezoneRestrictions: ['UTC+5:30'], pubDate: Date.now(), expiryDate: Date.now() + 86400000,
+      employmentType: 'Full Time', categories: ['Agriculture'] }], totalCount: 100, limit: 20 };
+  }, async () => undefined);
+  const j = normalize(b.jobs[0], s);
+  assert.equal(b.complete, false); assert.equal(b.snapshot, false);
+  assert.deepEqual(new Set(j.eligibleCountries), new Set(['India', 'United Arab Emirates']));
+  assert.ok(j.description.includes('UTC+5:30'));
+  assert.equal(publicJob(j).sourceLink, 'https://himalayas.app');
+  assert.equal(publicJob(j).publicApplicationLink, 'https://careers.example.com/india-role');
+});
+
+test('missing Himalayas geography is never treated as worldwide and empty feed is a valid result', async () => {
+  const s = worldwideSources.find(s => s.countryCode === 'ae')!;
+  const result = await fetchFeed(s, async () => ({ jobs: [], totalCount: 0, limit: 20 }), async () => undefined);
+  assert.equal(result.complete, true); assert.equal(result.jobs.length, 0);
+  const b = await fetchFeed(s, async () => ({ jobs: [{guid:'unknown',title:'Role',companyName:'Employer',applicationLink:'https://careers.example.com/unknown',description:'Work with our research and operations teams.',pubDate:Math.floor(Date.now()/1000),expiryDate:Math.floor(Date.now()/1000)+86400}], totalCount:1,limit:20 }), async () => undefined);
+  assert.equal(normalize(b.jobs[0],s).country,'Not specified');
+  assert.ok(Date.parse(b.jobs[0].postedAt!) > Date.now()-10000);
+});
+
+test('a provider 429 prevents later country sources from making network calls', async () => {
+  const india = worldwideSources.find(s => s.countryCode === 'in')!, uae = worldwideSources.find(s => s.countryCode === 'ae')!;
+  await upsertSource(india); await upsertSource(uae);
+  let calls = 0;
+  const result = await runEngine(async () => { calls++; throw new FeedError('HTTP_429', 7200000); });
+  assert.equal(calls, 1); assert.equal(result.results[1].status, 'provider_backoff');
+  assert.ok((await read(r=>r.get<{until:number}>('jobEngineState','provider-himalayas')))!.until >= Date.now()+7100000);
+});
+
+test('Remote OK skips feed metadata and preserves its original posting link', async () => {
+  const s = worldwideSources.find(s => s.type === 'remoteok')!;
+  const b = await fetchFeed(s, async () => [{ legal: 'Credit source' }, { id: 9, position: 'Nurse', company: 'Clinic', date: new Date().toISOString(), location: 'India', url: 'https://remoteok.com/remote-jobs/9', description: 'Provide remote clinical triage and patient support.' }]);
+  assert.equal(b.jobs.length, 1); assert.equal(b.snapshot, false);
+  assert.equal(publicJob(normalize(b.jobs[0], s)).sourceLink, 'https://remoteok.com/remote-jobs/9');
+});
+
+test('equivalent persisted policy property order does not reject a country import', async () => {
+  const s = worldwideSources.find(s => s.countryCode === 'in')!;
+  await transaction(r => r.put('jobFeedSources', s));
+  const result = await runEngine(async () => batch([candidate({ country: 'India' })]));
+  assert.equal(result.results[0].counts?.added, 1);
+  assert.equal(await read(r => r.count('jobs')), 1);
 });

@@ -61,7 +61,7 @@ try {
   assert.ok(feedPage.includes('Integration clinical nurse') && feedPage.includes('Salary not specified') && feedPage.includes('Experience not specified'));
   const feedJob = (await read(r => r.find<any>('jobs', { title: 'Integration clinical nurse' })))[0];
   const detail = await (await request('/jobs/' + feedJob.id)).text();
-  assert.ok(detail.includes('View original job on') && detail.includes('https://careers.example.com/nurse-1'));
+  assert.ok(detail.includes('View original job from') && detail.includes('https://careers.example.com/nurse-1'));
   await request('/api/v1/admin/job-engine', 401);
   const live = await fetch(origin + '/api/v1/jobs/stream', { signal: AbortSignal.timeout(20000) });
   const reader = live.body!.getReader();

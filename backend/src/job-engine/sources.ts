@@ -1,8 +1,9 @@
 import { z } from 'zod';
+import { countryEntries } from '../lib/countries.js';
 
 export const sourceSchema = z.object({
   id: z.string().regex(/^[a-z0-9_-]{1,80}$/),
-  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever']),
+  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'himalayas', 'remoteok', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever']),
   countryCode: z.string().regex(/^[a-z]{2}$/).optional(),
   keywords: z.string().trim().max(100).optional(),
   name: z.string().trim().min(1).max(100),
@@ -15,6 +16,10 @@ export const sourceSchema = z.object({
   intervalMinutes: z.number().int().min(30).max(10080).default(60),
   maxPages: z.number().int().min(1).max(20).default(4),
 }).superRefine((s, ctx) => {
+  if (['himalayas', 'remoteok'].includes(s.type) && (s.intervalMinutes < 1440 || !s.publicListing))
+    ctx.addIssue({ code: 'custom', message: 'Daily refresh and public source attribution required.' });
+  if (s.type === 'himalayas' && s.countryCode && !countryEntries.some(c => c.code.toLowerCase() === s.countryCode))
+    ctx.addIssue({ code: 'custom', message: 'Unknown country code.' });
   if (s.type === 'adzuna' && (!s.countryCode || !['au','at','be','br','ca','ch','de','es','fr','gb','in','it','mx','nl','nz','pl','sg','us','za'].includes(s.countryCode)))
     ctx.addIssue({ code: 'custom', message: 'Select a supported Adzuna country; account access still must be confirmed.' });
   if (['jobicy', 'adzuna', 'usajobs'].includes(s.type) && (s.intervalMinutes < 60 || !s.publicListing))
@@ -36,4 +41,19 @@ export const publicSources: FeedSource[] = [
     policyEvidence: 'Public syndication with original-link attribution, ungated listings, no Google Jobs distribution: https://github.com/remotive-com/remote-jobs-api', publicListing: true, publish: true, intervalMinutes: 360, maxPages: 1 },
   { id: 'jobicy-global', type: 'jobicy', name: 'Jobicy', enabled: true, approved: true,
     policyEvidence: 'Public API permits job discovery with canonical source attribution: https://jobicy.com/jobs-rss-feed', publicListing: true, publish: true, intervalMinutes: 360, maxPages: 1 },
+];
+
+// One bounded, once-daily query per country; an empty result is recorded, not filled with worldwide jobs.
+// Priority IDs bring India/UAE forward in the worker's stable source order.
+export const worldwideSources: FeedSource[] = [
+  ...countryEntries.map(c => ({ id: `himalayas-${c.code === 'IN' ? '00-' : c.code === 'AE' ? '01-' : ''}${c.code.toLowerCase()}`,
+    type: 'himalayas' as const, name: 'Himalayas', countryCode: c.code.toLowerCase(), enabled: true, approved: true,
+    policyEvidence: 'Public API permits job-board reuse with visible Himalayas attribution: https://himalayas.app/docs/remote-jobs-api',
+    publicListing: true, publish: true, intervalMinutes: 1440, maxPages: 1 })),
+  { id: 'himalayas-worldwide', type: 'himalayas', name: 'Himalayas', enabled: true, approved: true,
+    policyEvidence: 'Public API permits attributed reuse; worldwide inventory kept separate: https://himalayas.app/docs/remote-jobs-api',
+    publicListing: true, publish: true, intervalMinutes: 1440, maxPages: 1 },
+  { id: 'remoteok-global', type: 'remoteok', name: 'Remote OK', enabled: true, approved: true,
+    policyEvidence: 'Public aggregator feed with source credit and original job backlinks: https://remoteok.com/faq',
+    publicListing: true, publish: true, intervalMinutes: 1440, maxPages: 1 },
 ];

@@ -72,7 +72,7 @@ export default async function JobPage({
                   : 'Apply by authorized email'}
             </p>
             {job.acceptingApplications && j.sourceLink ? (
-              <a className="primary full" href={j.sourceLink} target="_blank" rel="noopener noreferrer">View original job on {j.source} ↗</a>
+              <a className="primary full" href={j.publicApplicationLink || j.sourceLink} target="_blank" rel="noopener noreferrer">View original job from {j.source} ↗</a>
             ) : job.acceptingApplications ? (
               <JobActions jobId={j.id} sample={j.sample} />
             ) : (

@@ -41,6 +41,7 @@ export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company'> & {
   company: string;
   identityVisible: boolean;
   sourceLink?: string;
+  publicApplicationLink?: string;
 };
 export type Profile = {
   avatarVersion?: string;
