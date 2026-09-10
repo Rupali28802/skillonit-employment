@@ -1,6 +1,8 @@
 # SkillonIT Employment — current frontend + shared backend
 
-This branch integrates the existing SkillonIT frontend with the backend published on `codex/backend-foundation` at commit `e4407c5` (9 September 2026). The backend directory is unchanged from that commit. The existing hero, navigation, profile sidebar, category slider, job cards and authentication styling are preserved.
+This branch builds on the existing frontend/shared-backend integration at `4f8253c` and adds a scheduled job hunting engine. Google authentication configuration and the existing website design are preserved. Feed cards show truthful missing-field labels and source attribution; public syndicated listings link to their original source.
+
+See [Job hunting engine setup, sources and limits](docs/JOB_ENGINE.md). Start with `npm run jobs:seed`, `npm run jobs:once`, then `npm run worker:jobs` from `backend/` after installing dependencies and building. Source state is available through `npm run jobs:status`.
 
 ```text
 skillonit-employment/
@@ -15,7 +17,7 @@ skillonit-employment/
 Use Node.js 22.17 or later and npm.
 
 ```sh
-git clone --branch codex/frontend-latest-backend https://github.com/Rupali28802/skillonit-employment.git
+git clone --branch codex/job-hunting-engine https://github.com/Rupali28802/skillonit-employment.git
 cd skillonit-employment
 cd backend
 npm ci

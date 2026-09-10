@@ -40,7 +40,7 @@ export default async function JobPage({
               <span>{j.mode}</span>
               <span>{j.type}</span>
               <span>
-                {j.experienceMin}–{j.experienceMax} years
+                {j.experienceDisclosed === false ? 'Experience not specified' : `${j.experienceMin}–${j.experienceMax} years`}
               </span>
             </div>
             {j.sample && (
@@ -71,7 +71,9 @@ export default async function JobPage({
                   ? 'Continue on the employer website'
                   : 'Apply by authorized email'}
             </p>
-            {job.acceptingApplications ? (
+            {job.acceptingApplications && j.sourceLink ? (
+              <a className="primary full" href={j.sourceLink} target="_blank" rel="noopener noreferrer">View original job on {j.source} ↗</a>
+            ) : job.acceptingApplications ? (
               <JobActions jobId={j.id} sample={j.sample} />
             ) : (
               <p className="notice">
@@ -87,7 +89,7 @@ export default async function JobPage({
             />
             <h3>Opportunity details</h3>
             <p className="small">
-              Annual salary:{' '}
+              {j.salaryDisclosed === false ? (j.salaryText || 'Salary not specified') : <>Annual salary:{' '}
               {new Intl.NumberFormat('en', {
                 style: 'currency',
                 currency: j.currency,
@@ -96,10 +98,10 @@ export default async function JobPage({
               {new Intl.NumberFormat('en', {
                 style: 'currency',
                 currency: j.currency,
-              }).format(j.salaryMax)}
+              }).format(j.salaryMax)}</>}
             </p>
             <p className="small">
-              Source: {j.source}
+              Source: {j.sourceLink ? <a href={j.sourceLink} target="_blank" rel="noopener noreferrer">{j.source} ↗</a> : j.source}
               <br />
               Verification: {j.trust}
               <br />

@@ -10,7 +10,7 @@ export type Job = {
   city: string;
   category: string;
   skills: string[];
-  mode: 'Remote' | 'Hybrid' | 'On-site';
+  mode: 'Remote' | 'Hybrid' | 'On-site' | 'Not specified';
   type: string;
   salaryMin: number;
   salaryMax: number;
@@ -30,10 +30,15 @@ export type Job = {
   expiresAt: string;
   sample?: boolean;
   mnc?: boolean;
+  salaryDisclosed?: boolean;
+  experienceDisclosed?: boolean;
+  salaryText?: string;
+  sourcePostedAt?: string;
 };
 export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company'> & {
   company: string;
   identityVisible: boolean;
+  sourceLink?: string;
 };
 export type Profile = {
   avatarVersion?: string;

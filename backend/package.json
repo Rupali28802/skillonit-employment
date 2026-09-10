@@ -7,6 +7,12 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+    "jobs:seed": "node --env-file-if-exists=.env --import tsx src/job-engine/cli.ts seed",
+    "jobs:configure": "node --env-file-if-exists=.env --import tsx src/job-engine/cli.ts configure",
+    "jobs:once": "node --env-file-if-exists=.env --import tsx src/job-engine/cli.ts once",
+    "jobs:status": "node --env-file-if-exists=.env --import tsx src/job-engine/cli.ts status",
+    "worker:jobs": "node --env-file-if-exists=.env dist/job-engine/cli.js watch",
+    "test:jobs": "node --import tsx --test tests/job-engine.test.ts",
     "dev": "node --env-file-if-exists=.env --import tsx --watch src/index.ts",
     "build": "tsc",
     "start": "node --env-file-if-exists=.env dist/index.js",
@@ -30,6 +36,7 @@
     "bullmq": "^6.3.4",
     "express": "^5.1.0",
     "google-auth-library": "^11.0.2",
+    "he": "^1.2.0",
     "ioredis": "^5.11.1",
     "mongodb": "^7.6.0",
     "nodemailer": "^10.0.0",
@@ -40,6 +47,7 @@
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
+    "@types/he": "^1.2.3",
     "@types/node": "22.19.19",
     "@types/nodemailer": "^8.0.1",
     "@types/yauzl": "^3.4.0",

@@ -37,6 +37,7 @@ import {
   isRecent,
 } from "./lib/domain.js";
 import { searchJobs } from "./lib/search.js";
+import { engineStatus } from './job-engine/engine.js';
 import { providerHealth, RazorpayProvider } from "./lib/providers.js";
 import { featureRoute, notify } from "./features.js";
 import { authMailConfig, sendAuthMail } from "./lib/auth-mail.js";
@@ -343,6 +344,10 @@ export async function handle(
     }
     if (p === "me" && method === "GET")
       return ok({ user: safeUser(await requireUser()), demo: demoMode() });
+    if (p === 'admin/job-engine' && method === 'GET') {
+      await requireUser('admin');
+      return ok(await engineStatus());
+    }
     if (p === "jobs" && method === "GET")
       return ok(await searchJobs(url.searchParams, await currentUser()));
     if (p === "plans" && method === "GET")

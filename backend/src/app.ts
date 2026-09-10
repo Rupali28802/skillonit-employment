@@ -4,6 +4,7 @@ import express, { type ErrorRequestHandler } from 'express';
 import { handle } from './api.js';
 import { requestContext } from './request-context.js';
 import { randomUUID } from 'node:crypto';
+import { subscribeJobs } from './job-engine/events.js';
 
 export const app = express();
 app.disable('x-powered-by');
@@ -45,8 +46,9 @@ app.get('/api/v1/jobs/stream', (req, res) => {
   });
   res.flushHeaders();
   res.write('event: ready\ndata: {"connected":true}\n\n');
+  const unsubscribe = subscribeJobs(() => res.write('event: jobs\ndata: {"changed":true}\n\n'));
   const timer = setInterval(() => res.write(': heartbeat\n\n'), 25000);
-  res.on('close', () => clearInterval(timer));
+  res.on('close', () => { clearInterval(timer); unsubscribe(); });
 });
 // Keep bytes unchanged for payment webhook signatures; business parsing is in the handler.
 app.use(

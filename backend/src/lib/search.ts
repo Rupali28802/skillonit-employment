@@ -1,73 +1,31 @@
 import type { Job, User } from './domain.js';
-import { isRecent, publicJob } from './domain.js';
-import { read, configuredPlans } from './store.js';
-export async function searchJobs(
-  params: URLSearchParams,
-  user: User | null = null,
-) {
+import { publicJob } from './domain.js';
+import { read, configuredPlans, demoMode } from './store.js';
+
+export async function searchJobs(params: URLSearchParams, user: User | null = null) {
   const query = (params.get('q') || '').slice(0, 200).toLowerCase();
-  const ignored = new Set([
-    'jobs',
-    'job',
-    'in',
-    'for',
-    'a',
-    'an',
-    'and',
-    'or',
-    'the',
-    'as',
-    'with',
-  ]);
-  const words = query
-    .split(/\W+/)
-    .filter((w) => w && !ignored.has(w) && w !== 'fresher');
-  const category = params.get('category'),
-    country = params.get('country'),
-    state = params.get('state'),
-    mode = params.get('mode');
-  const exp = params.get('experience');
-  // Bounded database fallback; production SearchProvider should use indexed facets and full text.
-  const jobs = await read((r) =>
-    r.find<Job>(
-      'jobs',
-      {
-        status: 'published',
-        ...(country ? { country } : {}),
-        ...(category ? { category } : {}),
-        ...(mode ? { mode } : {}),
-      },
-      1000,
-    ),
-  );
-  const filtered = jobs.filter(
-    (j) =>
-      isRecent(j) &&
-      (!state || j.state === state) &&
-      (!query.includes('fresher') || j.experienceMin === 0) &&
-      (!exp ||
-        (j.experienceMin <= Number(exp) && j.experienceMax >= Number(exp))) &&
-      words.every((w) =>
-        [j.title, j.category, j.city, j.country, j.mode, ...j.skills]
-          .join(' ')
-          .toLowerCase()
-          .includes(w),
-      ),
-  );
-  filtered.sort(
-    params.get('sort') === 'salary'
-      ? (a, b) =>
-          a.currency.localeCompare(b.currency) || b.salaryMin - a.salaryMin
-      : (a, b) => Date.parse(b.discoveredAt) - Date.parse(a.discoveredAt),
-  );
-  const page = Math.max(1, Math.min(100, Number(params.get('page')) || 1));
-  const p = await configuredPlans();
-  return {
-    jobs: filtered
-      .slice((page - 1) * 12, page * 12)
-      .map((j) => publicJob(j, user, p)),
-    total: filtered.length,
-    page,
-    hasMore: page * 12 < filtered.length,
+  const ignored = new Set(['jobs', 'job', 'in', 'for', 'a', 'an', 'and', 'or', 'the', 'as', 'with', 'fresher']);
+  const words = query.split(/[^\p{L}\p{N}+#.-]+/u).filter(w => w && !ignored.has(w)).slice(0, 15);
+  const now = new Date();
+  const filter: Record<string, unknown> = {
+    status: 'published', discoveredAt: { $gte: new Date(now.getTime() - 90 * 86400000).toISOString() },
+    expiresAt: { $gt: now.toISOString() }, ...(!demoMode() ? { sample: { $ne: true } } : {}),
   };
+  for (const key of ['category', 'country', 'state', 'mode']) if (params.get(key)) filter[key] = params.get(key)!.slice(0, 120);
+  const experience = params.get('experience');
+  if (query.includes('fresher')) { filter.experienceMin = 0; filter.experienceDisclosed = { $ne: false }; }
+  if (experience && Number.isFinite(Number(experience)) && Number(experience) >= 0) {
+    filter.experienceMin = { $lte: Number(experience) }; filter.experienceMax = { $gte: Number(experience) };
+    filter.experienceDisclosed = { $ne: false };
+  }
+  if (words.length) filter.$and = words.map(w => {
+    const regex = new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    return { $or: ['title', 'category', 'city', 'country', 'mode', 'skills'].map(field => ({ [field]: regex })) };
+  });
+  const page = Math.max(1, Math.min(100000, Math.floor(Number(params.get('page')) || 1)));
+  const sort: Record<string, 1 | -1> = params.get('sort') === 'salary'
+    ? { currency: 1, salaryMin: -1, id: 1 } : { sourcePostedAt: -1, discoveredAt: -1, id: 1 };
+  const result = await read(async r => ({ jobs: await r.page<Job>('jobs', filter, sort, (page - 1) * 12, 12), total: await r.count('jobs', filter) }));
+  const plans = await configuredPlans();
+  return { jobs: result.jobs.map(j => publicJob(j, user, plans)), total: result.total, page, hasMore: page * 12 < result.total };
 }

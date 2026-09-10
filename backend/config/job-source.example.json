@@ -1,0 +1,14 @@
+{
+  "id": "approved-employer-board",
+  "type": "ashby",
+  "name": "Employer career site",
+  "board": "replace-with-approved-board",
+  "company": "Replace with confirmed employer name",
+  "enabled": false,
+  "approved": false,
+  "policyEvidence": "Replace with the source owner's permission and permitted publication terms.",
+  "publicListing": false,
+  "publish": false,
+  "intervalMinutes": 60,
+  "maxPages": 4
+}

@@ -76,13 +76,9 @@ export function Discovery({
   useEffect(() => {
     if (paused) return;
     const stream = new EventSource('/api/v1/jobs/stream');
-    stream.addEventListener('jobs', () =>
-      setMessage(
-        'New vacancies are available. Search again to refresh your results.',
-      ),
-    );
+    stream.addEventListener('jobs', () => { void search(); });
     return () => stream.close();
-  }, [paused]);
+  }, [paused, search]);
   async function save(id: string) {
     const r = await fetch(`/api/v1/jobs/${id}/save`, { method: 'POST' });
     if (r.status === 401) {
@@ -310,7 +306,7 @@ export function Discovery({
                       {job.title}
                     </Link>
                     <p className="company">
-                      {job.company} <ShieldCheck size={14} />
+                      {job.company} {job.trust === 'verified' && <ShieldCheck size={14} />}
                     </p>
                     <div className="job-facts">
                       <span>
@@ -319,7 +315,7 @@ export function Discovery({
                       </span>
                       <span>{job.mode}</span>
                       <span>
-                        {job.experienceMin === 0
+                        {job.experienceDisclosed === false ? 'Experience not specified' : job.experienceMin === 0
                           ? 'Fresher welcome'
                           : `${job.experienceMin}–${job.experienceMax} years`}
                       </span>
@@ -331,6 +327,7 @@ export function Discovery({
                         ))}
                       </div>
                       <strong>
+                        {job.salaryDisclosed === false ? (job.salaryText || 'Salary not specified') : <>
                         {new Intl.NumberFormat('en', {
                           style: 'currency',
                           currency: job.currency,
@@ -347,8 +344,10 @@ export function Discovery({
                           maximumFractionDigits: 1,
                         }).format(job.salaryMax)}
                         <small> / year</small>
+                        </>}
                       </strong>
                     </div>
+                    {job.sourceLink && <a className="small" href={job.sourceLink} target="_blank" rel="noopener noreferrer">Source: {job.source} ↗</a>}
                     <Link
                       className="primary full job-apply"
                       href={`/jobs/${job.id}`}

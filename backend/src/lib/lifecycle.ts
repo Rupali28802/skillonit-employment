@@ -15,7 +15,7 @@ export async function expireJobs() {
       for (const item of batch) {
         const latest = await r.get<Job>('jobs', item.id);
         if (latest?.status === 'published' && !isRecent(latest)) {
-          await r.put('jobs', { ...latest, status: 'closed' });
+          await r.put('jobs', { ...latest, status: 'closed', ...(latest.feed ? { feed: { ...latest.feed, closedByEngine: true } } : {}) });
           changed++;
         }
       }

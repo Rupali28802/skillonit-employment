@@ -10,7 +10,7 @@ export type Job = {
   city: string;
   category: string;
   skills: string[];
-  mode: 'Remote' | 'Hybrid' | 'On-site';
+  mode: 'Remote' | 'Hybrid' | 'On-site' | 'Not specified';
   type: string;
   salaryMin: number;
   salaryMax: number;
@@ -30,10 +30,16 @@ export type Job = {
   expiresAt: string;
   sample?: boolean;
   mnc?: boolean;
+  salaryDisclosed?: boolean;
+  experienceDisclosed?: boolean;
+  salaryText?: string;
+  sourcePostedAt?: string;
+  feed?: { sourceId: string; externalId: string; publicListing: boolean; attributionUrl: string; lastSeenAt: string; closedByEngine?: boolean };
 };
-export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company'> & {
+export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company' | 'feed'> & {
   company: string;
   identityVisible: boolean;
+  sourceLink?: string;
 };
 export type Profile = {
   name: string;
@@ -245,10 +251,11 @@ export function publicJob(
   configuredPlans = plans,
 ): PublicJob {
   const identityVisible =
+    job.feed?.publicListing === true ||
     user?.role === 'admin' ||
     user?.id === job.employerId ||
     !!configuredPlans.find((p) => p.code === user?.plan)?.identity;
-  const { email: _email, domain: _domain, url: _url, company, ...safe } = job;
+  const { email: _email, domain: _domain, url: _url, company, feed, ...safe } = job;
   const scrub = (text: string) => {
     if (identityVisible) return text;
     let result = text;
@@ -271,6 +278,7 @@ export function publicJob(
     source: scrub(safe.source),
     company: identityVisible ? company : 'Company identity protected',
     identityVisible,
+    ...(feed?.publicListing ? { sourceLink: feed.attributionUrl } : {}),
   };
 }
 export function isRecent(job: Job, days = 90, now = Date.now()) {
@@ -288,6 +296,7 @@ export function matchJob(job: Job, profile: Profile, preferences: Preferences) {
     job.title.toLowerCase().includes(r.toLowerCase()),
   );
   const experience =
+    job.experienceDisclosed !== false &&
     profile.experience !== null && profile.experience >= job.experienceMin &&
     profile.experience <= job.experienceMax;
   const location =
