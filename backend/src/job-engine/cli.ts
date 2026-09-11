@@ -11,7 +11,14 @@ try {
   if (!process.env.MONGODB_URI) throw Error('MONGODB_REQUIRED');
   await bootstrapIndexes();
   const command = process.argv[2] || 'status';
-  if (command === 'seed-jooble') {
+  if (command === 'seed-employers') {
+    const configs = JSON.parse(await readFile(new URL('../../job-sources.employers.json', import.meta.url), 'utf8'));
+    for (const input of configs) {
+      const source = sourceSchema.parse(input);
+      if (!(await read(r => r.get('jobFeedSources', source.id)))) await upsertSource(source);
+    }
+    console.log('Public employer board configurations seeded; existing settings preserved.');
+  } else if (command === 'seed-jooble') {
     const configured = configuredJoobleSources();
     for (const source of configured) {
       if (!(await read(r => r.get('jobFeedSources', source.id)))) await upsertSource(source);

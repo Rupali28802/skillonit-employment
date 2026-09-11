@@ -80,3 +80,16 @@ All 39 issued Jooble keys are now connected to the existing catalog. Initial bou
 Jooble official REST API documentation https://help.jooble.org/en/support/solutions/articles/60001448238 clarifies the free allowance is 500 lifetime requests per key. Earlier notes recording an unknown reset period are superseded by this guidance; the worker never resets its persistent budget automatically.
 
 LinkedIn partnership form reviewed again in the browser. Customer region, company HQ, customer count and largest customers are mandatory; these must be supplied accurately. More fundamentally, its integration selector does not offer general job-search/post redistribution. A separate provider confirmation of that use case is required; selecting Job Postings would not establish retrieval rights. Indeed publisher enquiry is still pending. No approval or connected feed is claimed for either.
+
+## LinkedIn enquiry submitted — 11 September 2026
+
+Submitted a human-support enquiry using the signed-in owner-authorized LinkedIn session. The Developer Support form required an existing app ID; LinkedIn Help Assistant instead directed the enquiry to its general human-support form. Submission was verified on the Thanks for contacting us page with the explicit successful-submission message.
+
+Requested routing to Developer Support/licensed content partnerships for employer job listings and public hiring-post retrieval and attributed display, initially India. Disclosed that the project is local-only and has no company Page/developer app. Asked for supported access, permission/consent requirements, country scope, caching/removal rules, limits and pricing. Supplied the project business email as alternate contact. No app was created, no paid service was purchased, and no API access has been approved. Awaiting provider response; do not submit a duplicate enquiry.
+
+
+## Follow-up and employer feeds — 11 September 2026
+
+LinkedIn case **260911-002232**, https://www.linkedin.com/help/linkedin/cases/82741810, had closed with only an automated acknowledgement. Reopened the existing case asking for a human answer on retrieval/redistribution rights. Verified Open; no approval received. No duplicate application.
+
+Connected public employer boards Ema (Ashby), Razorpay Software Private Limited (Greenhouse), and Employ (Lever): 47 published jobs verified. This is limited board coverage, not an employer partnership or entire ATS network access. UI and authentication unchanged.

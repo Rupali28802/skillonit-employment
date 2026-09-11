@@ -1,0 +1,85 @@
+{
+  "checkedAt": "2026-09-11T07:16:25.400Z",
+  "byType": [
+    {
+      "type": "arbeitnow",
+      "configured": 1,
+      "enabled": 1,
+      "successful": 1,
+      "failed": 0,
+      "publishedLive": 647
+    },
+    {
+      "type": "arbeitnow-uk",
+      "configured": 1,
+      "enabled": 1,
+      "successful": 1,
+      "failed": 0,
+      "publishedLive": 499
+    },
+    {
+      "type": "remotive",
+      "configured": 1,
+      "enabled": 1,
+      "successful": 1,
+      "failed": 0,
+      "publishedLive": 18
+    },
+    {
+      "type": "jobicy",
+      "configured": 1,
+      "enabled": 1,
+      "successful": 1,
+      "failed": 0,
+      "publishedLive": 230
+    },
+    {
+      "type": "himalayas",
+      "configured": 251,
+      "enabled": 251,
+      "successful": 251,
+      "failed": 0,
+      "publishedLive": 1582
+    },
+    {
+      "type": "remoteok",
+      "configured": 1,
+      "enabled": 1,
+      "successful": 1,
+      "failed": 0,
+      "publishedLive": 98
+    },
+    {
+      "type": "jooble",
+      "configured": 39,
+      "enabled": 39,
+      "successful": 39,
+      "failed": 0,
+      "publishedLive": 3452
+    },
+    {
+      "type": "greenhouse",
+      "configured": 1,
+      "enabled": 1,
+      "successful": 1,
+      "failed": 0,
+      "publishedLive": 22
+    },
+    {
+      "type": "lever",
+      "configured": 1,
+      "enabled": 1,
+      "successful": 1,
+      "failed": 0,
+      "publishedLive": 3
+    },
+    {
+      "type": "ashby",
+      "configured": 1,
+      "enabled": 1,
+      "successful": 1,
+      "failed": 0,
+      "publishedLive": 22
+    }
+  ]
+}
