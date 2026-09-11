@@ -20,6 +20,16 @@ export function canonicalUrl(raw: string) {
   return u.href;
 }
 const categories: [string, RegExp][] = [
+  ['Healthcare', /sjukskötersk|underskötersk|läkare|infirmi[eè]r|enfermer|enfermagem|ممرض|تمريض|चिकित्सक|नर्स/iu],
+  ['Education', /lärare|förskollär|enseignant|professeur|maestro|docente|معلم|مدرس|शिक्षक/iu],
+  ['Engineering', /ingenjör|ingénieur|ingeniero|مهندس|अभियंता/iu],
+  ['Hospitality', /kock|servitör|cuisinier|camarero|مطعم|طباخ/iu],
+  ['Logistics', /lagerarbet|lastbilsförare|chauffeur|almac[eé]n|سائق|चालक/iu],
+  ['Finance', /redovisning|comptable|contable|محاسب|लेखाकार/iu],
+  ['Technology', /utvecklare|développeur|desarrollador|برمج|डेवलपर/iu],
+  ['Agriculture', /agricultur|farm worker|agronom|lantbruk|jordbruk|زارع|कृषि/iu],
+  ['Manufacturing', /manufactur|production operator|montör|fabriksarbet|fabrication|operario/iu],
+  ['Skilled trades', /electrician|plumber|carpenter|welder|elektriker|snickare|soudeur|électricien|سباك|बढ़ई/iu],
   ['Healthcare', /\b(nurs|health|medical|physician|doctor|clinical|pflege|arzt|therap)/i],
   ['Education', /\b(teach|education|professor|teacher|lehrer|trainer)/i],
   ['Legal', /\b(legal|lawyer|counsel|compliance|rechts)/i],

@@ -4,7 +4,7 @@ import { joobleDomains, joobleKey } from './jooble-regions.js';
 
 export const sourceSchema = z.object({
   id: z.string().regex(/^[a-z0-9_-]{1,80}$/),
-  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'himalayas', 'remoteok', 'jooble', 'jobtech', 'reed', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever']),
+  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'himalayas', 'remoteok', 'jooble', 'jobtech', 'reed', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever', 'smartrecruiters']),
   countryCode: z.string().regex(/^[a-z]{2}$/).optional(),
   keywords: z.string().trim().max(100).optional(),
   name: z.string().trim().min(1).max(100),
@@ -27,8 +27,9 @@ export const sourceSchema = z.object({
     ctx.addIssue({ code: 'custom', message: 'Select a supported Adzuna country; account access still must be confirmed.' });
   if (['jobicy', 'adzuna', 'usajobs', 'jobtech', 'reed'].includes(s.type) && (s.intervalMinutes < 60 || !s.publicListing))
     ctx.addIssue({ code: 'custom', message: 'Public source attribution and at least an hourly interval required.' });
+  if (s.type === 'smartrecruiters' && (s.maxPages > 4 || s.intervalMinutes < 360 || !s.publicListing)) ctx.addIssue({ code: 'custom', message: 'SmartRecruiters requires attribution, six-hour refresh and at most four pages.' });
   if (s.enabled && !s.approved) ctx.addIssue({ code: 'custom', message: 'Source must be approved before enabling.' });
-  if (['ashby', 'greenhouse', 'lever'].includes(s.type) && (!s.board || !s.company))
+  if (['ashby', 'greenhouse', 'lever', 'smartrecruiters'].includes(s.type) && (!s.board || !s.company))
     ctx.addIssue({ code: 'custom', message: 'Employer boards require a board identifier and confirmed company name.' });
   if (s.type === 'remotive' && (s.intervalMinutes < 360 || !s.publicListing))
     ctx.addIssue({ code: 'custom', message: 'Remotive requires public attribution, ungated listings and a minimum six-hour interval.' });

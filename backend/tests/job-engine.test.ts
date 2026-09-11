@@ -1,6 +1,6 @@
 import { test, before, after, beforeEach } from 'node:test';
 import { countryEntries, countriesInLocation, normalizeCountry } from '../src/lib/countries.ts';
-import { coverageReport } from '../src/job-engine/coverage.ts';
+import { coverageReport, saveCoverageAudit } from '../src/job-engine/coverage.ts';
 import { worldwideSources } from '../src/job-engine/sources.ts';
 import { reserveJoobleRequest, JOOBLE_REQUEST_LIMIT } from '../src/job-engine/jooble-budget.ts';
 import assert from 'node:assert/strict';
@@ -376,4 +376,38 @@ test('Reed requires private access and safely handles bounded search results and
     await assert.rejects(fetchFeed(config, async () => { throw Error('fixture-secret'); }), { message: 'REED_REQUEST_FAILED' });
     await assert.rejects(fetchFeed(config, async () => ({})), /INVALID_FEED/);
   } finally { if (old === undefined) delete process.env.REED_API_KEY; else process.env.REED_API_KEY = old; }
+});
+
+
+test('multilingual occupations retain original facts and unmatched roles remain searchable', () => {
+  const examples = [['Sjuksköterska', 'Healthcare'], ['Enseignant', 'Education'], ['مهندس', 'Engineering'], ['नर्स', 'Healthcare'], ['Desarrollador', 'Technology'], ['Lantbrukare', 'Agriculture'], ['Montör', 'Manufacturing'], ['Plumber', 'Skilled trades']];
+  for (const [title, category] of examples) {
+    const job = normalize(candidate({ title }), source);
+    assert.equal(job.title, title); assert.equal(job.category, category);
+  }
+  const unknown = normalize(candidate({ title: 'Specialist role XYZ', employmentType: 'Unusual seasonal arrangement' }), source);
+  assert.equal(unknown.category, 'Other'); assert.equal(unknown.type, 'Unusual seasonal arrangement');
+});
+
+test('coverage audit is persisted with actual inventory rather than country filter totals', async () => {
+  await transaction(r => r.put('jobs', normalize(candidate(), source)));
+  const report = await saveCoverageAudit();
+  const saved = await read(r => r.get('jobEngineState', 'coverage-latest'));
+  assert.equal(saved?.total, report.total); assert.equal(report.total, 1);
+  assert.equal(report.countries.find(c => c.name === 'India')?.indexedListings, 0);
+});
+
+
+test('SmartRecruiters only retrieves public active postings from a fixed company endpoint', async () => {
+  const config = sourceSchema.parse({ ...source, type: 'smartrecruiters', intervalMinutes: 360 });
+  const urls: string[] = [];
+  const result = await fetchFeed(config, async url => {
+    urls.push(url);
+    if (url.includes('?')) return { totalFound: 2, content: [{ id: 'one', ref: 'https://evil.invalid/private' }, { id: 'two' }] };
+    return { active: url.endsWith('/one'), name: 'Teacher', postingUrl: 'https://jobs.smartrecruiters.com/example/one', jobAd: { sections: { jobDescription: { text: 'Teach and support students in a welcoming classroom.' } } }, location: { country: 'in' } };
+  }, async () => undefined);
+  assert.equal(result.jobs.length, 1); assert.equal(result.requests, 3); assert.equal(result.complete, true);
+  assert.ok(urls.every(url => url.startsWith('https://api.smartrecruiters.com/v1/companies/example/postings')));
+  await assert.rejects(fetchFeed(config, async () => ({ content: [{ id: '../private' }] })), /INVALID_POSTING_ID/);
+  assert.equal(sourceSchema.safeParse({ ...config, board: undefined }).success, false);
 });

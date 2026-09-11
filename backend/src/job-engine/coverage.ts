@@ -1,4 +1,4 @@
-import { read } from '../lib/store.js';
+import { read, transaction } from '../lib/store.js';
 import type { Job } from '../lib/domain.js';
 import { countryEntries } from '../lib/countries.js';
 import type { FeedSource } from './sources.js';
@@ -34,4 +34,12 @@ export async function coverageReport() {
     countries: countryEntries.map(c => ({ ...c, indexedListings: countryCounts.get(c.name)!, status: countryCounts.get(c.name) ? 'partial_inventory' : 'no_explicit_inventory',
       countryFeeds: sources.filter(s => s.countryCode?.toUpperCase() === c.code).map(s => ({ id: s.id, status: s.status, lastSuccessAt: s.lastSuccessAt, errorCode: s.errorCode })) })),
     notes: ['Counts describe stored live listings, not platform completeness or applicant eligibility.', 'Worldwide jobs are reported separately, not counted as evidence of local jobs in every country.', 'Website reachability from each country is not established by this report.'] };
+}
+
+
+// Store a reproducible measurement after a worker run changes inventory or reports a failure.
+export async function saveCoverageAudit() {
+  const report = await coverageReport();
+  await transaction(r => r.put('jobEngineState', { id: 'coverage-latest', ...report }));
+  return report;
 }

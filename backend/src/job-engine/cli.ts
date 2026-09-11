@@ -3,7 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { bootstrapIndexes, closeStore, read, transaction } from '../lib/store.js';
 import { runEngine, upsertSource, engineStatus } from './engine.js';
 import { publicSources, worldwideSources, configuredJoobleSources, sourceSchema } from './sources.js';
-import { coverageReport } from './coverage.js';
+import { coverageReport, saveCoverageAudit } from './coverage.js';
 
 let stopping = false;
 for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => { stopping = true; });
@@ -47,6 +47,10 @@ try {
     do {
       const result = await runEngine(undefined, command === 'once-jooble' ? 'jooble' : undefined);
       const changed = result.results.filter(r => r.counts || r.status === 'failed' || r.status === 'invalid_configuration');
+      if (changed.length || result.expired) {
+        try { await saveCoverageAudit(); }
+        catch { console.error('COVERAGE_AUDIT_FAILED: ingestion result preserved; retry coverage export.'); }
+      }
       if (command !== 'watch') console.log(JSON.stringify(result));
       else if (changed.length || result.expired) console.log(JSON.stringify({ ...result, results: changed }));
       if (command !== 'watch') break;

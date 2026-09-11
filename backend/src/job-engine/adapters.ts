@@ -234,6 +234,31 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
   }
   if (!source.board || !/^[a-zA-Z0-9_-]{1,80}$/.test(source.board)) throw new FeedError('INVALID_BOARD');
   const board = encodeURIComponent(source.board);
+  if (source.type === 'smartrecruiters') {
+    let complete = false;
+    for (let page = 0; page < source.maxPages; page++) {
+      if (page) await pause(2000);
+      const root = 'https://api.smartrecruiters.com/v1/companies/' + board + '/postings';
+      const payload = await get(root + '?limit=20&offset=' + page * 20) as Json; requests++;
+      if (!Array.isArray(payload.content) || payload.content.length > 20) throw new FeedError('INVALID_FEED');
+      for (const item of payload.content) {
+        const id = text(item.id);
+        if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id)) throw new FeedError('INVALID_POSTING_ID');
+        await pause(200);
+        // Never follow response-provided ref URLs or include private/internal posting credentials.
+        const j = await get(root + '/' + encodeURIComponent(id)) as Json; requests++;
+        if (j.active !== true) continue;
+        const sections = j.jobAd?.sections || {};
+        jobs.push({ externalId: id, title: text(j.name), company: source.company!, url: text(j.postingUrl),
+          description: ['jobDescription', 'qualifications', 'additionalInformation'].map(k => text(sections[k]?.text)).filter(Boolean).join('\n'),
+          location: [text(j.location?.city), text(j.location?.region), text(j.location?.country)].filter(Boolean).join(', '), country: text(j.location?.country),
+          category: text(j.function?.label), tags: [text(j.industry?.label)].filter(Boolean), employmentType: text(j.typeOfEmployment?.label),
+          mode: j.location?.remote === true ? 'Remote' : undefined, postedAt: iso(j.releasedDate) });
+      }
+      if (payload.content.length < 20 || (typeof payload.totalFound === 'number' && (page + 1) * 20 >= payload.totalFound)) { complete = true; break; }
+    }
+    return { jobs, complete, snapshot: true, requests };
+  }
   if (source.type === 'ashby') {
     const payload = await get(`https://api.ashbyhq.com/posting-api/job-board/${board}`) as Json;
     if (!Array.isArray(payload.jobs)) throw new FeedError('INVALID_FEED');
