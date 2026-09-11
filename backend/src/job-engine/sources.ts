@@ -4,7 +4,7 @@ import { joobleDomains, joobleKey } from './jooble-regions.js';
 
 export const sourceSchema = z.object({
   id: z.string().regex(/^[a-z0-9_-]{1,80}$/),
-  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'himalayas', 'remoteok', 'jooble', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever']),
+  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'himalayas', 'remoteok', 'jooble', 'jobtech', 'reed', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever']),
   countryCode: z.string().regex(/^[a-z]{2}$/).optional(),
   keywords: z.string().trim().max(100).optional(),
   name: z.string().trim().min(1).max(100),
@@ -25,7 +25,7 @@ export const sourceSchema = z.object({
     ctx.addIssue({ code: 'custom', message: 'Unknown country code.' });
   if (s.type === 'adzuna' && (!s.countryCode || !['au','at','be','br','ca','ch','de','es','fr','gb','in','it','mx','nl','nz','pl','sg','us','za'].includes(s.countryCode)))
     ctx.addIssue({ code: 'custom', message: 'Select a supported Adzuna country; account access still must be confirmed.' });
-  if (['jobicy', 'adzuna', 'usajobs'].includes(s.type) && (s.intervalMinutes < 60 || !s.publicListing))
+  if (['jobicy', 'adzuna', 'usajobs', 'jobtech', 'reed'].includes(s.type) && (s.intervalMinutes < 60 || !s.publicListing))
     ctx.addIssue({ code: 'custom', message: 'Public source attribution and at least an hourly interval required.' });
   if (s.enabled && !s.approved) ctx.addIssue({ code: 'custom', message: 'Source must be approved before enabling.' });
   if (['ashby', 'greenhouse', 'lever'].includes(s.type) && (!s.board || !s.company))
@@ -44,6 +44,9 @@ export function configuredJoobleSources(): FeedSource[] {
 }
 
 export const publicSources: FeedSource[] = [
+  { id: 'jobtech-sweden', type: 'jobtech', name: 'Arbetsförmedlingen / JobSearch', enabled: true, approved: true,
+    policyEvidence: 'Official public CC0 job search API, no key or registration: https://data.arbetsformedlingen.se/dataservice/jobsearch/',
+    publicListing: true, publish: true, intervalMinutes: 360, maxPages: 4 },
   { id: 'arbeitnow-europe', type: 'arbeitnow', name: 'Arbeitnow', enabled: true, approved: true,
     policyEvidence: 'Public job aggregation API: https://www.arbeitnow.com/blog/job-board-api', publicListing: true, publish: true, intervalMinutes: 60, maxPages: 4 },
   { id: 'arbeitnow-uk', type: 'arbeitnow-uk', name: 'Arbeitnow UK', enabled: true, approved: true,

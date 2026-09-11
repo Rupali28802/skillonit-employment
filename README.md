@@ -124,3 +124,7 @@ The frontend integration check starts an isolated MongoDB replica set, Express o
 # Jooble regional feeds
 
 Setup, quota limits and verification notes are in [docs/JOOBLE_INTEGRATION.md](docs/JOOBLE_INTEGRATION.md). Feed credentials belong only in ignored `backend/.env`; the existing frontend displays imported jobs through its normal API.
+
+### Worldwide source research and latest connectors
+
+See [research report](docs/WORLDWIDE_JOB_ENGINE_RESEARCH.md) and [source audit](docs/JOB_SOURCE_MASTER_AUDIT.md) for verified connections, access requirements and remaining work. JobSearch (Sweden) is provisioned by `npm run jobs:seed` in backend after building. Reed search support is implemented but requires a private `REED_API_KEY` and approved source configuration before activation. Neither country filters nor a built adapter imply complete coverage.

@@ -1,15 +1,15 @@
 {
-  "checkedAt": "2026-09-11T07:16:25.400Z",
+  "checkedAt": "2026-09-11T07:31:53.144Z",
   "scope": "Working inventory of named portals/ATS/social channels. Not a complete census of every world website. Regional Jooble requests are tracked separately and are not added as platform counts.",
   "counts": {
-    "Connected": 10,
-    "Connector built - access/config needed": 2,
+    "Connected": 11,
+    "Connector built - access/config needed": 3,
     "Documented API - implementation pending": 2,
-    "Request unconfirmed": 1,
     "Enquiry submitted - approval pending": 2,
-    "Research/access route needed": 155
+    "Access required - implementation pending": 7,
+    "Research/access route needed": 149
   },
-  "total": 172,
+  "total": 174,
   "live": [
     {
       "type": "arbeitnow",
@@ -90,6 +90,14 @@
       "successful": 1,
       "failed": 0,
       "publishedLive": 22
+    },
+    {
+      "type": "jobtech",
+      "configured": 1,
+      "enabled": 1,
+      "successful": 1,
+      "failed": 0,
+      "publishedLive": 399
     }
   ],
   "sources": [
@@ -171,8 +179,8 @@
       "status": "Documented API - implementation pending",
       "code": "",
       "reference": "https://www.careerjet.com/partners/api",
-      "evidence": "Official documentation identified; access not established",
-      "next": "API verified; requires publisher key and real triggering user's IP/user-agent. Use a future user-triggered federation adapter, not fabricated visitor data in a scheduled crawler."
+      "evidence": "Publisher v4 search requires key plus actual triggering visitor IP and user agent.",
+      "next": "Implement user-triggered federation after publisher approval; do not fabricate visitors for batch crawling."
     },
     {
       "name": "USAJOBS",
@@ -186,11 +194,11 @@
     {
       "name": "Reed",
       "region": "UK general jobs",
-      "status": "Request unconfirmed",
+      "status": "Connector built - access/config needed",
       "code": "",
       "reference": "https://www.reed.co.uk/developers/jobseeker",
-      "evidence": "Saved application record",
-      "next": "Request response unconfirmed; no issued key saved. Confirm issuance, then implement search/details adapter."
+      "evidence": "Search connector implemented and fixture-tested. Previous key request remains unconfirmed; not live.",
+      "next": "Obtain private REED_API_KEY and confirm display/caching access before enabling."
     },
     {
       "name": "Indeed",
@@ -213,11 +221,11 @@
     {
       "name": "SEEK",
       "region": "Australia/NZ and Asia-Pacific ecosystem",
-      "status": "Research/access route needed",
+      "status": "Access required - implementation pending",
       "code": "",
       "reference": "https://developer.seek.com/",
-      "evidence": "Official documentation identified; access not established",
-      "next": "Integration approval required; documented posting/application APIs are not assumed to grant all-marketplace extraction."
+      "evidence": "Official API requires approval; documented job posting/apply products are not a global export feed.",
+      "next": "Request explicit retrieval and redisplay scope."
     },
     {
       "name": "Bayt",
@@ -269,9 +277,9 @@
       "region": "Employer-specific global boards",
       "status": "Documented API - implementation pending",
       "code": "",
-      "reference": "https://developers.smartrecruiters.com/docs/posting-api",
-      "evidence": "Official documentation identified; access not established",
-      "next": "Posting API documentation identified; adapter and employer review pending."
+      "reference": "https://developers.smartrecruiters.com/docs/get-job-postings",
+      "evidence": "Company-scoped public postings and a separate token-protected job-board publication feed documented. Neither gives automatic access to all employers.",
+      "next": "Confirm employer/partner scope and implement bounded listing/detail fetching."
     },
     {
       "name": "Glassdoor",
@@ -798,11 +806,11 @@
     {
       "name": "France Travail",
       "region": "Continental Europe",
-      "status": "Research/access route needed",
+      "status": "Access required - implementation pending",
       "code": "",
-      "reference": "",
-      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
-      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+      "reference": "https://www.data.gouv.fr/dataservices/api-offres-demploi",
+      "evidence": "Official job API covers active offers including consenting partners; reuse registration required.",
+      "next": "Register an application and confirm permitted redistribution."
     },
     {
       "name": "APEC",
@@ -1365,11 +1373,11 @@
     {
       "name": "ReliefWeb",
       "region": "NGOs/research/specialists",
-      "status": "Research/access route needed",
+      "status": "Access required - implementation pending",
       "code": "",
-      "reference": "",
-      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
-      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+      "reference": "https://apidoc.reliefweb.int/parameters",
+      "evidence": "Official jobs API requires a pre-approved appname since November 2025.",
+      "next": "Apply for appname, then implement humanitarian jobs adapter."
     },
     {
       "name": "UN Careers",
@@ -1590,29 +1598,29 @@
     {
       "name": "X",
       "region": "Social/community",
-      "status": "Research/access route needed",
+      "status": "Access required - implementation pending",
       "code": "",
-      "reference": "",
-      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
-      "next": "Identify owner-authorized channels and approved read scopes; verify vacancies and publication rights. Not a connected job feed."
+      "reference": "https://docs.x.com/x-api/fundamentals/post-cap",
+      "evidence": "Post search is metered; no credentials or spending authorization configured.",
+      "next": "Obtain approved account and agreed budget; validate hiring posts before indexing."
     },
     {
       "name": "Reddit",
       "region": "Social/community",
-      "status": "Research/access route needed",
+      "status": "Access required - implementation pending",
       "code": "",
-      "reference": "",
-      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
-      "next": "Identify owner-authorized channels and approved read scopes; verify vacancies and publication rights. Not a connected job feed."
+      "reference": "https://redditinc.com/policies/data-api-terms",
+      "evidence": "Commercial API use requires a separate agreement.",
+      "next": "Request commercial access and select authorized hiring communities."
     },
     {
       "name": "Telegram channels",
       "region": "Social/community",
-      "status": "Research/access route needed",
+      "status": "Access required - implementation pending",
       "code": "",
-      "reference": "",
-      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
-      "next": "Identify owner-authorized channels and approved read scopes; verify vacancies and publication rights. Not a connected job feed."
+      "reference": "https://core.telegram.org/bots/api",
+      "evidence": "Bot API supports updates from channels accessible to the bot, not every channel.",
+      "next": "Obtain participating channel access and bot token; use only authorized sources."
     },
     {
       "name": "Discord servers",
@@ -1640,6 +1648,24 @@
       "reference": "",
       "evidence": "Discovery backlog only; current API and redistribution rights unverified",
       "next": "Identify owner-authorized channels and approved read scopes; verify vacancies and publication rights. Not a connected job feed."
+    },
+    {
+      "name": "Arbetsförmedlingen JobSearch",
+      "region": "Sweden; source-reported overseas locations",
+      "status": "Connected",
+      "code": "jobtech",
+      "reference": "https://data.arbetsformedlingen.se/dataservice/jobsearch/",
+      "evidence": "Official public CC0 API. Live sweep: 400 records, 399 added, one within-sweep update; 399 published listings. Frontend API verified HTTP 200.",
+      "next": "Six-hour bounded refresh; expand measured local/sector coverage without claiming complete inventory."
+    },
+    {
+      "name": "NAV Arbeidsplassen",
+      "region": "Norway",
+      "status": "Access required - implementation pending",
+      "code": "not implemented",
+      "reference": "https://navikt.github.io/pam-stilling-feed/",
+      "evidence": "Official vacancy feed offers an experimental public token; production token request includes written terms confirmation.",
+      "next": "Obtain production access and implement withdrawal/update stream."
     }
   ]
 }

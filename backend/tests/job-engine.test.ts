@@ -114,14 +114,14 @@ test('accepts all domains with an Other fallback and retains geographical restri
 });
 test('approved-source gates and Remotive public attribution/cooldowns are mandatory', async () => {
   assert.equal(sourceSchema.safeParse({ ...source, approved: false }).success, false);
-  assert.equal(sourceSchema.safeParse({ ...publicSources[2], intervalMinutes: 30 }).success, false);
-  assert.equal(sourceSchema.safeParse({ ...publicSources[2], publicListing: false }).success, false);
+  assert.equal(sourceSchema.safeParse({ ...publicSources.find(s => s.type === 'remotive')!, intervalMinutes: 30 }).success, false);
+  assert.equal(sourceSchema.safeParse({ ...publicSources.find(s => s.type === 'remotive')!, publicListing: false }).success, false);
   let calls = 0;
   await assert.rejects(fetchFeed({ ...source, enabled: false }, async () => { calls++; return {}; })); assert.equal(calls, 0);
 });
 test('paginated adapters never follow arbitrary next URLs and report truncation', async () => {
   const urls: string[] = [];
-  const result = await fetchFeed({ ...publicSources[0], maxPages: 2 }, async url => {
+  const result = await fetchFeed({ ...publicSources.find(s => s.type === 'arbeitnow')!, maxPages: 2 }, async url => {
     urls.push(url); return { data: [{ slug: url, title: 'Teacher', company_name: 'School', url: 'https://www.arbeitnow.com/jobs/teacher', description: 'A complete teaching position description with requirements.', created_at: Date.now() / 1000 }], links: { next: 'http://127.0.0.1/private' } };
   }, async () => undefined);
   assert.equal(result.jobs.length, 2); assert.equal(result.complete, false);
@@ -134,7 +134,7 @@ test('Ashby, Greenhouse, Lever and Remotive adapters preserve supplied dates and
   assert.equal(gh.jobs[0].postedAt, undefined);
   const lever = await fetchFeed({ ...source, type: 'lever' }, async () => [{ id: '1', text: 'Role', hostedUrl: 'https://jobs.lever.co/example/1', categories: { location: 'Remote' }, descriptionPlain: 'Role facts' }]);
   assert.equal(lever.jobs.length, 1); assert.equal(lever.complete, true);
-  const remote = await fetchFeed(publicSources[2], async () => ({ jobs: [{ id: 1, title: 'Role', url: 'https://remotive.com/jobs/role', company_name: 'Employer', publication_date: '2026-09-01T10:00:00', candidate_required_location: 'Worldwide' }] }));
+  const remote = await fetchFeed(publicSources.find(s => s.type === 'remotive')!, async () => ({ jobs: [{ id: 1, title: 'Role', url: 'https://remotive.com/jobs/role', company_name: 'Employer', publication_date: '2026-09-01T10:00:00', candidate_required_location: 'Worldwide' }] }));
   assert.equal(remote.jobs[0].postedAt, '2026-09-01T10:00:00.000Z'); assert.equal(remote.snapshot, false);
 });
 test('repeated syncs are idempotent, keep first discovery date and respect schedule', async () => {
@@ -338,4 +338,42 @@ test('equivalent persisted policy property order does not reject a country impor
   const result = await runEngine(async () => batch([candidate({ country: 'India' })]));
   assert.equal(result.results[0].counts?.added, 1);
   assert.equal(await read(r => r.count('jobs')), 1);
+});
+
+
+test('JobSearch paginates, preserves occupations, maps only explicit Sweden and excludes removed ads', async () => {
+  const config = sourceSchema.parse({ ...source, type: 'jobtech', intervalMinutes: 360 });
+  let calls = 0;
+  const result = await fetchFeed(config, async url => {
+    const parsed = new URL(url); assert.equal(parsed.origin, 'https://jobsearch.api.jobtechdev.se');
+    assert.equal(parsed.searchParams.get('sort'), 'pubdate-desc');
+    assert.equal(parsed.searchParams.get('offset'), String(calls++ * 100));
+    const ad = { id: 'a', headline: 'Lärare', employer: { name: 'School' }, webpage_url: 'https://arbetsformedlingen.se/platsbanken/annonser/a',
+      description: { text: 'Teaching children in a supportive school environment.' }, workplace_address: { country: 'Sverige', municipality: 'Stockholm' },
+      working_hours_type: { label: 'Heltid' }, occupation: { label: 'Lärare' }, publication_date: '2026-09-11T09:00:00', application_deadline: '2026-12-31T23:59:59' };
+    return { total: { value: 101 }, hits: calls === 1 ? Array.from({ length: 100 }, () => ad) : [{ ...ad, removed: true }] };
+  }, async () => undefined);
+  assert.equal(calls, 2); assert.equal(result.jobs.length, 100); assert.equal(result.complete, true); assert.equal(result.snapshot, false);
+  assert.equal(result.jobs[0].country, 'Sweden'); assert.equal(result.jobs[0].employmentType, 'Full-time');
+  assert.equal(result.jobs[0].postedAt, undefined); assert.equal(result.jobs[0].closesAt, '2026-12-31T00:00:00.000Z');
+  assert.deepEqual(result.jobs[0].tags, ['Lärare']);
+  const partial = await fetchFeed({ ...config, maxPages: 1 }, async () => ({ hits: Array(100).fill({}), total: { value: 900 } }));
+  assert.equal(partial.complete, false);
+});
+
+test('Reed requires private access and safely handles bounded search results and errors', async () => {
+  const old = process.env.REED_API_KEY; const config = sourceSchema.parse({ ...source, type: 'reed', intervalMinutes: 360 });
+  try {
+    delete process.env.REED_API_KEY;
+    await assert.rejects(fetchFeed(config, async () => { throw Error('Must not call'); }), /MISSING_REED_CREDENTIALS/);
+    process.env.REED_API_KEY = 'fixture-secret';
+    const result = await fetchFeed(config, async (url, headers) => {
+      assert.equal(new URL(url).hostname, 'www.reed.co.uk');
+      assert.equal(headers?.Authorization, 'Basic ' + Buffer.from('fixture-secret:').toString('base64'));
+      return { results: [{ jobId: 42, jobTitle: 'Nurse', employerName: 'Hospital', jobDescription: 'Provide excellent care to patients and their families.', locationName: 'London', jobUrl: 'https://www.reed.co.uk/jobs/nurse/42' }], totalResults: 1 };
+    });
+    assert.equal(result.jobs[0].country, undefined); assert.equal(result.jobs[0].postedAt, undefined); assert.equal(result.snapshot, false);
+    await assert.rejects(fetchFeed(config, async () => { throw Error('fixture-secret'); }), { message: 'REED_REQUEST_FAILED' });
+    await assert.rejects(fetchFeed(config, async () => ({})), /INVALID_FEED/);
+  } finally { if (old === undefined) delete process.env.REED_API_KEY; else process.env.REED_API_KEY = old; }
 });

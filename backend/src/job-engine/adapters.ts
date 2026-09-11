@@ -49,6 +49,51 @@ export async function fetchJson(url: string, extraHeaders: Record<string, string
 export async function fetchFeed(source: FeedSource, get = fetchJson, pause = delay, reserve = reserveJoobleRequest): Promise<FeedBatch> {
   if (!source.enabled || !source.approved) throw new FeedError('SOURCE_DISABLED');
   const jobs: Candidate[] = []; let requests = 0;
+  if (source.type === 'jobtech') {
+    let complete = false;
+    for (let page = 0; page < source.maxPages; page++) {
+      if (page) await pause(2000);
+      const query = new URLSearchParams({ limit: '100', offset: String(page * 100), sort: 'pubdate-desc', ...(source.keywords ? { q: source.keywords } : {}) });
+      const payload = await get('https://jobsearch.api.jobtechdev.se/search?' + query) as Json; requests++;
+      if (!Array.isArray(payload.hits)) throw new FeedError('INVALID_FEED');
+      for (const j of payload.hits) {
+        if (j.removed === true) continue;
+        const address = j.workplace_address || {};
+        // The national taxonomy is not ISO. Only the explicit Swedish name is mapped here.
+        const country = address.country === 'Sverige' ? 'Sweden' : text(address.country);
+        const hours = text(j.working_hours_type?.label);
+        jobs.push({ externalId: text(j.id), title: text(j.headline), company: text(j.employer?.name),
+          url: text(j.webpage_url), description: text(j.description?.text),
+          location: [text(address.city) || text(address.municipality), text(address.region), country].filter(Boolean).join(', '), country,
+          // Close at the start of the reported deadline day (UTC), conservatively before a local end-of-day deadline.
+          closesAt: /^\d{4}-\d{2}-\d{2}T/.test(text(j.application_deadline)) ? text(j.application_deadline).slice(0, 10) + 'T00:00:00.000Z' : undefined,
+          category: text(j.occupation_field?.label), tags: [text(j.occupation?.label), text(j.occupation_group?.label)].filter(Boolean),
+          employmentType: [hours === 'Heltid' ? 'Full-time' : hours === 'Deltid' ? 'Part-time' : hours, text(j.employment_type?.label)].filter(Boolean).join(', '),
+          // Source timestamps have no timezone contract; retain their text rather than invent an instant.
+          ...(j.publication_date ? { description: text(j.description?.text) + '\nSource publication date: ' + text(j.publication_date) } : {}) });
+      }
+      if (payload.hits.length < 100 || (typeof payload.total?.value === 'number' && (page + 1) * 100 >= payload.total.value)) { complete = true; break; }
+    }
+    return { jobs, complete, snapshot: false, requests };
+  }
+  if (source.type === 'reed') {
+    const key = process.env.REED_API_KEY;
+    if (!key) throw new FeedError('MISSING_REED_CREDENTIALS');
+    let complete = false;
+    for (let page = 0; page < source.maxPages; page++) {
+      if (page) await pause(2000);
+      const query = new URLSearchParams({ resultsToTake: '100', resultsToSkip: String(page * 100), ...(source.keywords ? { keywords: source.keywords } : {}) });
+      let payload: Json;
+      try { payload = await get('https://www.reed.co.uk/api/1.0/search?' + query, { Authorization: 'Basic ' + Buffer.from(key + ':').toString('base64') }) as Json; }
+      catch (error) { if (error instanceof FeedError) throw error; throw new FeedError('REED_REQUEST_FAILED'); }
+      requests++;
+      if (!Array.isArray(payload.results)) throw new FeedError('INVALID_FEED');
+      for (const j of payload.results) jobs.push({ externalId: String(j.jobId ?? ''), title: text(j.jobTitle), company: text(j.employerName),
+        url: text(j.jobUrl), description: text(j.jobDescription), location: text(j.locationName) });
+      if (payload.results.length < 100 || (typeof payload.totalResults === 'number' && (page + 1) * 100 >= payload.totalResults)) { complete = true; break; }
+    }
+    return { jobs, complete, snapshot: false, requests };
+  }
   if (source.type === 'jooble') {
     const country = source.countryCode || '', domain = joobleDomains[country], key = joobleKey(country);
     if (!domain) throw new FeedError('INVALID_JOOBLE_REGION');
