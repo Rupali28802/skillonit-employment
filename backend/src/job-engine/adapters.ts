@@ -151,6 +151,7 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
           description: text(j.description) + `\nReported location eligibility: ${location}` + (timezones.length ? `\nRequired timezone overlap: ${timezones.join(', ')}` : ''),
           category: list(j.parentCategories).join(', '), tags: [...list(j.categories), ...list(j.parentCategories)], mode: 'Remote',
           employmentType: text(j.employmentType), postedAt: sourceDate(j.pubDate), closesAt: sourceDate(j.expiryDate),
+          salary: { min: j.minSalary, max: j.maxSalary, currency: text(j.currency), period: text(j.salaryPeriod) },
           salaryText: Number.isFinite(j.minSalary) && Number.isFinite(j.maxSalary) && j.currency
             ? `${text(j.currency)} ${j.minSalary}–${j.maxSalary} ${text(j.salaryPeriod) || 'annual'}` : undefined });
       }
@@ -164,6 +165,7 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
     for (const j of payload.jobs) jobs.push({ externalId: String(j.id ?? ''), title: text(j.jobTitle), company: text(j.companyName),
       url: text(j.url), description: text(j.jobDescription), location: text(j.jobGeo), category: list(j.jobIndustry).join(', '),
       tags: list(j.jobIndustry), employmentType: list(j.jobType).join(', '), mode: 'Remote', postedAt: iso(j.pubDate),
+      salary: { min: j.salaryMin, max: j.salaryMax, currency: text(j.salaryCurrency), period: text(j.salaryPeriod) },
       salaryText: j.salaryCurrency && j.salaryPeriod && Number.isFinite(j.salaryMin) && Number.isFinite(j.salaryMax)
         ? `${j.salaryCurrency} ${j.salaryMin}–${j.salaryMax} ${j.salaryPeriod}` : undefined });
     // Latest N is a rolling feed, never a full inventory snapshot.

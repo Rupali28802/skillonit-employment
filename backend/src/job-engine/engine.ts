@@ -213,6 +213,8 @@ export async function engineStatus() {
   return read(async r => ({
     sources: await r.find('jobFeedSources', {}, 1000), states: await r.find('jobFeedStates', {}, 1000),
     lease: await r.get('jobEngineState', leaseId),
+    coverage: await r.get('jobEngineState', 'coverage-latest'),
+    providerBackoffs: await r.find('jobEngineState', { id: { $regex: '^provider-' } }, 100),
     joobleBudgets: await r.find('jobEngineState', { id: { $regex: '^jooble-budget-' } }, 100),
     published: await r.count('jobs', { status: 'published' }),
   }));

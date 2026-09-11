@@ -8,6 +8,7 @@ export async function coverageReport() {
   const countryCounts = new Map(countryEntries.map(c => [c.name, 0]));
   const domains: Record<string, number> = {}, types: Record<string, number> = {};
   let cursor = '', total = 0, worldwide = 0, unknownGeography = 0;
+  const completeness = { normalized: 0, skills: 0, experience: 0, salary: 0, city: 0, state: 0, postedAt: 0, updatedAt: 0, sourceExpiry: 0, verified: 0 };
   const now = new Date();
   for (;;) {
     const jobs = await read(r => r.scan<Job>('jobs', { status: 'published', sample: { $ne: true },
@@ -15,6 +16,16 @@ export async function coverageReport() {
     if (!jobs.length) break;
     for (const j of jobs) {
       total++; domains[j.category] = (domains[j.category] || 0) + 1; types[j.type] = (types[j.type] || 0) + 1;
+      if (j.normalizedFacts) completeness.normalized++;
+      if (j.skills.length) completeness.skills++;
+      if (j.experienceDisclosed === true) completeness.experience++;
+      if (j.salaryDisclosed === true) completeness.salary++;
+      if (j.normalizedFacts?.city) completeness.city++;
+      if (j.normalizedFacts?.state) completeness.state++;
+      if (j.sourcePostedAt) completeness.postedAt++;
+      if (j.sourceUpdatedAt) completeness.updatedAt++;
+      if (j.sourceExpiresAt) completeness.sourceExpiry++;
+      if (j.trust === 'verified') completeness.verified++;
       if (j.country === 'Worldwide') worldwide++;
       const names = [...new Set([j.country, ...(j.eligibleCountries || [])])].filter(c => countryCounts.has(c));
       if (!names.length && j.country !== 'Worldwide') unknownGeography++;
@@ -30,7 +41,7 @@ export async function coverageReport() {
       lastSuccessAt: states.get(s.id)?.lastSuccessAt ?? null, status: states.get(s.id)?.status ?? 'not_run',
       errorCode: states.get(s.id)?.errorCode ?? null, counts: states.get(s.id)?.counts ?? null }));
   });
-  return { generatedAt: now.toISOString(), total, worldwide, unknownGeography, domains, employmentTypes: types, sources,
+  return { generatedAt: now.toISOString(), total, worldwide, unknownGeography, completeness, domains, employmentTypes: types, sources,
     credentialsAvailable: { adzuna: !!(process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY), usajobs: !!(process.env.USAJOBS_API_KEY && process.env.USAJOBS_USER_AGENT) },
     countries: countryEntries.map(c => ({ ...c, indexedListings: countryCounts.get(c.name)!, status: countryCounts.get(c.name) ? 'partial_inventory' : 'no_explicit_inventory',
       countryFeeds: sources.filter(s => s.countryCode?.toUpperCase() === c.code).map(s => ({ id: s.id, status: s.status, lastSuccessAt: s.lastSuccessAt, errorCode: s.errorCode })) })),

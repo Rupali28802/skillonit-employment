@@ -453,3 +453,21 @@ test('fast employer cadence preserves failure cooldowns and rejects restricted s
   assert.equal(calls, 1);
   assert.equal(await read(r => r.count('jobs', { status: 'published' })), 2);
 });
+
+test('structured filters combine skills, city, trust and compatible salary without exposing gated companies', async () => {
+  const base = normalize(candidate({city:'London',skills:['Patient care','First aid'],salary:{min:30000,max:45000,currency:'GBP',period:'annual'}}),source);
+  await transaction(r => r.putMany('jobs', [
+    {...base,id:'filter-good',trust:'verified',mnc:true},
+    {...base,id:'filter-currency',currency:'USD',normalizedFacts:{...base.normalizedFacts!,salary:{...base.normalizedFacts!.salary,currency:'USD'}}},
+    {...base,id:'filter-unknown',salaryDisclosed:false},
+    {...base,id:'filter-hidden',company:'Secret Employer',feed:undefined},
+  ]));
+  const result = await searchJobs(new URLSearchParams('city=london&skills=Patient%20care,First%20aid&salaryMin=35000&currency=GBP&salaryPeriod=annual&trust=verified&mnc=true'));
+  assert.deepEqual(result.jobs.map(j=>j.id),['filter-good']);
+  assert.equal((await searchJobs(new URLSearchParams('company=Secret%20Employer'))).total,0);
+  assert.equal((await searchJobs(new URLSearchParams('salaryMin=35000'))).total,0);
+  assert.equal((await searchJobs(new URLSearchParams('salaryMin=50000&salaryMax=1&currency=GBP&salaryPeriod=annual'))).total,0);
+  assert.equal((await searchJobs(new URLSearchParams('skills=Patient%20care,Unknown'))).total,0);
+  const report = await coverageReport();
+  assert.equal(report.completeness.normalized,4); assert.equal(report.completeness.verified,1);
+});
