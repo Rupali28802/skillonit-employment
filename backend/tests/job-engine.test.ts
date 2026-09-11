@@ -12,7 +12,7 @@ import { publicJob, type Job } from '../src/lib/domain.ts';
 import { sourceSchema, publicSources, type FeedSource } from '../src/job-engine/sources.ts';
 import { canonicalUrl, normalize, categoryFor } from '../src/job-engine/normalize.ts';
 import { fetchFeed, FeedError, type Candidate, type FeedBatch } from '../src/job-engine/adapters.ts';
-import { runEngine, upsertSource } from '../src/job-engine/engine.ts';
+import { runEngine, upsertSource, setEmployerRefresh } from '../src/job-engine/engine.ts';
 import { searchJobs } from '../src/lib/search.ts';
 import { expireJobs } from '../src/lib/lifecycle.ts';
 
@@ -427,4 +427,29 @@ test('normalized facts preserve unknowns, source updates, salary units and separ
   assert.equal(unknown.normalizedFacts?.salary.min, null); assert.equal(unknown.salaryDisclosed, false);
   assert.equal(unknown.normalizedFacts?.city, null); assert.equal(unknown.sourceUpdatedAt, undefined);
   assert.equal(unknown.trust, 'pending');
+});
+
+
+test('fast employer cadence preserves failure cooldowns and rejects restricted sources', async () => {
+  assert.equal(sourceSchema.safeParse({ ...source, intervalMinutes: 5 }).success, true);
+  assert.equal(sourceSchema.safeParse({ ...source, intervalMinutes: 4 }).success, false);
+  for (const type of ['jooble','himalayas','remotive','usajobs','arbeitnow','smartrecruiters'])
+    assert.equal(sourceSchema.safeParse({ ...source, type, intervalMinutes: 10 }).success, false);
+  await upsertSource(source);
+  await runEngine(async () => batch());
+  await setEmployerRefresh(source.id, 10);
+  let state = await read(r => r.get<any>('jobFeedStates', source.id));
+  assert.equal(state.nextRunAt, Date.parse(state.lastSuccessAt) + 600000);
+  let calls = 0;
+  await runEngine(async () => { calls++; return batch(); });
+  assert.equal(calls, 0);
+  const cooldown = Date.now() + 7200000;
+  await transaction(r => r.put('jobFeedStates', { ...state, status: 'failed', failures: 1, nextRunAt: cooldown }));
+  await setEmployerRefresh(source.id, 5);
+  state = await read(r => r.get<any>('jobFeedStates', source.id));
+  assert.equal(state.nextRunAt, cooldown);
+  await transaction(r => r.put('jobFeedStates', { ...state, status: 'completed', failures: 0, nextRunAt: Date.now() - 1 }));
+  await runEngine(async () => { calls++; return batch([candidate(), candidate({ externalId: 'new-role', url: 'https://careers.example.com/jobs/new-role', title: 'New nursing position' })]); });
+  assert.equal(calls, 1);
+  assert.equal(await read(r => r.count('jobs', { status: 'published' })), 2);
 });

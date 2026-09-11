@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { bootstrapIndexes, closeStore, read, transaction } from '../lib/store.js';
-import { runEngine, upsertSource, engineStatus } from './engine.js';
+import { runEngine, upsertSource, engineStatus, setEmployerRefresh } from './engine.js';
 import { publicSources, worldwideSources, configuredJoobleSources, sourceSchema } from './sources.js';
 import { coverageReport, saveCoverageAudit } from './coverage.js';
 
@@ -11,7 +11,13 @@ try {
   if (!process.env.MONGODB_URI) throw Error('MONGODB_REQUIRED');
   await bootstrapIndexes();
   const command = process.argv[2] || 'status';
-  if (command === 'seed-employers') {
+  if (command === 'refresh-employers') {
+    const interval = Number(process.argv[3] || 10);
+    if (![5, 10].includes(interval)) throw Error('USE_FIVE_OR_TEN_MINUTES');
+    const sources = await read(r => r.find<{ id: string }>('jobFeedSources', { type: { $in: ['ashby', 'greenhouse', 'lever'] }, enabled: true, approved: true, publicListing: true }, 1000));
+    for (const source of sources) await setEmployerRefresh(source.id, interval);
+    console.log(JSON.stringify({ sources: sources.map(s => s.id), intervalMinutes: interval }));
+  } else if (command === 'seed-employers') {
     const configs = JSON.parse(await readFile(new URL('../../job-sources.employers.json', import.meta.url), 'utf8'));
     for (const input of configs) {
       const source = sourceSchema.parse(input);

@@ -26,6 +26,7 @@ export async function coverageReport() {
     const configs = await r.find<FeedSource>('jobFeedSources', {}, 1000);
     const states = new Map((await r.find<SourceState>('jobFeedStates', {}, 1000)).map(s => [s.id, s]));
     return configs.map(s => ({ id: s.id, type: s.type, countryCode: s.countryCode || null, enabled: s.enabled, approved: s.approved,
+      intervalMinutes: s.intervalMinutes, nextRunAt: states.get(s.id)?.nextRunAt ?? null,
       lastSuccessAt: states.get(s.id)?.lastSuccessAt ?? null, status: states.get(s.id)?.status ?? 'not_run',
       errorCode: states.get(s.id)?.errorCode ?? null, counts: states.get(s.id)?.counts ?? null }));
   });

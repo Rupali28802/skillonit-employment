@@ -14,9 +14,11 @@ export const sourceSchema = z.object({
   policyEvidence: z.string().min(20).max(2000),
   publicListing: z.boolean().default(false),
   publish: z.boolean().default(false),
-  intervalMinutes: z.number().int().min(30).max(10080).default(60),
+  intervalMinutes: z.number().int().min(5).max(10080).default(60),
   maxPages: z.number().int().min(1).max(20).default(4),
 }).superRefine((s, ctx) => {
+  if (s.intervalMinutes < 30 && (!['ashby', 'greenhouse', 'lever'].includes(s.type) || !s.publicListing))
+    ctx.addIssue({ code: 'custom', message: 'Sub-30-minute refresh is limited to reviewed public employer boards.' });
   if (s.type === 'jooble' && (!s.countryCode || !joobleDomains[s.countryCode] || s.intervalMinutes < 1440 || !s.publicListing || s.maxPages !== 1))
     ctx.addIssue({ code: 'custom', message: 'Jooble requires a supported region, public attribution and one page per daily refresh.' });
   if (['himalayas', 'remoteok'].includes(s.type) && (s.intervalMinutes < 1440 || !s.publicListing))

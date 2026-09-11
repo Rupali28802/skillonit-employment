@@ -9,7 +9,7 @@
     "approved": true,
     "publicListing": true,
     "publish": true,
-    "intervalMinutes": 1440,
+    "intervalMinutes": 10,
     "maxPages": 4,
     "policyEvidence": "Public published job-board endpoint reviewed for owner-requested discovery; no private or application data. Board: https://razorpay.com/careers/ API: https://docs.greenhouse.io/job-board.html. Not an employer partnership claim."
   },
@@ -23,7 +23,7 @@
     "approved": true,
     "publicListing": true,
     "publish": true,
-    "intervalMinutes": 1440,
+    "intervalMinutes": 10,
     "maxPages": 4,
     "policyEvidence": "Public published job-board endpoint reviewed for owner-requested discovery; no private or application data. Board: https://jobs.lever.co/employ API: https://github.com/lever/postings-api. Not an employer partnership claim."
   },
@@ -37,7 +37,7 @@
     "approved": true,
     "publicListing": true,
     "publish": true,
-    "intervalMinutes": 1440,
+    "intervalMinutes": 10,
     "maxPages": 4,
     "policyEvidence": "Public published job-board endpoint reviewed for owner-requested discovery; no private or application data. Board: https://jobs.ashbyhq.com/ema API: https://developers.ashbyhq.com/docs/public-job-posting-api. Not an employer partnership claim."
   }

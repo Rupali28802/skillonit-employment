@@ -29,6 +29,22 @@ export async function upsertSource(input: unknown) {
   });
   return source;
 }
+
+// Change cadence without discarding failures, provider backoff or in-flight claims.
+export async function setEmployerRefresh(id: string, intervalMinutes: number) {
+  await transaction(async r => {
+    const current = await r.get<FeedSource>('jobFeedSources', id);
+    if (!current || !['ashby', 'greenhouse', 'lever'].includes(current.type) || !current.enabled || !current.approved || !current.publicListing)
+      throw Error('PUBLIC_EMPLOYER_SOURCE_REQUIRED');
+    const source = sourceSchema.parse({ ...current, intervalMinutes });
+    await r.put('jobFeedSources', source);
+    const state = await r.get<SourceState>('jobFeedStates', id);
+    if (state && !state.failures && ['completed', 'partial'].includes(state.status) && state.lastSuccessAt) {
+      const last = Date.parse(state.lastSuccessAt);
+      if (Number.isFinite(last)) await r.put('jobFeedStates', { ...state, nextRunAt: Math.max(Date.now(), last + intervalMinutes * 60000) });
+    }
+  });
+}
 async function closeVariant(r: Repository, v: Variant) {
   await r.put('jobFeedVariants', { ...v, active: false });
   const others = await r.find<Variant>('jobFeedVariants', { jobId: v.jobId, active: true }, 1);
