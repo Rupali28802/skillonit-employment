@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { bootstrapIndexes, closeStore, read, transaction } from '../lib/store.js';
 import { runEngine, upsertSource, engineStatus } from './engine.js';
-import { publicSources, worldwideSources, sourceSchema } from './sources.js';
+import { publicSources, worldwideSources, configuredJoobleSources, sourceSchema } from './sources.js';
 import { coverageReport } from './coverage.js';
 
 let stopping = false;
@@ -11,7 +11,13 @@ try {
   if (!process.env.MONGODB_URI) throw Error('MONGODB_REQUIRED');
   await bootstrapIndexes();
   const command = process.argv[2] || 'status';
-  if (command === 'seed-worldwide') {
+  if (command === 'seed-jooble') {
+    const configured = configuredJoobleSources();
+    for (const source of configured) {
+      if (!(await read(r => r.get('jobFeedSources', source.id)))) await upsertSource(source);
+    }
+    console.log(JSON.stringify({ configuredRegions: configured.length, message: 'Existing settings preserved; credentials never stored in source records.' }));
+  } else if (command === 'seed-worldwide') {
     await transaction(async r => {
       const existing = new Set((await r.find<{ id: string }>('jobFeedSources', {}, 1000)).map(s => s.id));
       const missing = worldwideSources.filter(s => !existing.has(s.id)).map(s => sourceSchema.parse(s));
@@ -30,13 +36,13 @@ try {
     console.log(JSON.stringify({ id: source.id, enabled: source.enabled }));
   } else if (command === 'coverage') console.log(JSON.stringify(await coverageReport(), null, 2));
   else if (command === 'status') console.log(JSON.stringify(await engineStatus(), null, 2));
-  else if (command === 'once' || command === 'watch') {
+  else if (command === 'once' || command === 'once-jooble' || command === 'watch') {
     do {
-      const result = await runEngine();
+      const result = await runEngine(undefined, command === 'once-jooble' ? 'jooble' : undefined);
       const changed = result.results.filter(r => r.counts || r.status === 'failed' || r.status === 'invalid_configuration');
-      if (command === 'once') console.log(JSON.stringify(result));
+      if (command !== 'watch') console.log(JSON.stringify(result));
       else if (changed.length || result.expired) console.log(JSON.stringify({ ...result, results: changed }));
-      if (command === 'once') break;
+      if (command !== 'watch') break;
       for (let i = 0; i < 30 && !stopping; i++) await delay(1000);
     } while (!stopping);
   } else throw Error('UNKNOWN_COMMAND');

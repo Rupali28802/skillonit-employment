@@ -111,7 +111,7 @@ async function ingest(source: FeedSource, batch: FeedBatch, owner: string, runId
   if (batch.complete && batch.snapshot && counts.rejected === 0) counts.closed = await deactivate(source.id, owner, runId);
   return counts;
 }
-export async function runEngine(discover: (source: FeedSource) => Promise<FeedBatch> = fetchFeed) {
+export async function runEngine(discover: (source: FeedSource) => Promise<FeedBatch> = fetchFeed, sourceType?: FeedSource['type']) {
   const owner = randomUUID();
   let acquired = false;
   try {
@@ -131,6 +131,7 @@ export async function runEngine(discover: (source: FeedSource) => Promise<FeedBa
       const sources = await read(r => r.scan<FeedSource>('jobFeedSources', {}, cursor, 50));
       if (!sources.length) break;
       for (const raw of sources) {
+        if (sourceType && raw.type !== sourceType) continue;
         const parsed = sourceSchema.safeParse(raw);
         if (!parsed.success) { results.push({ source: raw.id, status: 'invalid_configuration' }); continue; }
         const source = parsed.data;
@@ -196,6 +197,7 @@ export async function engineStatus() {
   return read(async r => ({
     sources: await r.find('jobFeedSources', {}, 1000), states: await r.find('jobFeedStates', {}, 1000),
     lease: await r.get('jobEngineState', leaseId),
+    joobleBudgets: await r.find('jobEngineState', { id: { $regex: '^jooble-budget-' } }, 100),
     published: await r.count('jobs', { status: 'published' }),
   }));
 }

@@ -1,0 +1,477 @@
+{
+  "updatedAt": "2026-09-10T12:50:36.567Z",
+  "source": "https://jooble.org/",
+  "scope": "Official regional directory; a listed country site does not itself prove its API form is available or access is granted.",
+  "contactDetails": "Not stored in this tracker",
+  "countries": [
+    {
+      "domain": "jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://jooble.org/api/about"
+    },
+    {
+      "domain": "ua.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://ua.jooble.org/api/about"
+    },
+    {
+      "domain": "pl.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://pl.jooble.org/api/about"
+    },
+    {
+      "domain": "cz.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://cz.jooble.org/api/about"
+    },
+    {
+      "domain": "ro.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://ro.jooble.org/api/about"
+    },
+    {
+      "domain": "sk.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://sk.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "rs.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://rs.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "hu.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://hu.jooble.org/api/about"
+    },
+    {
+      "domain": "gr.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://gr.jooble.org/api/about"
+    },
+    {
+      "domain": "fr.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://fr.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "fi.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://fi.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "no.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://no.jooble.org/api/about"
+    },
+    {
+      "domain": "es.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://es.jooble.org/api/about"
+    },
+    {
+      "domain": "pt.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://pt.jooble.org/api/about"
+    },
+    {
+      "domain": "ch.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://ch.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "se.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://se.jooble.org/api/about"
+    },
+    {
+      "domain": "dk.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://dk.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "be.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://be.jooble.org/api/about"
+    },
+    {
+      "domain": "de.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://de.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "at.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://at.jooble.org/api/about"
+    },
+    {
+      "domain": "nl.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://nl.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "it.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://it.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "uk.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://uk.jooble.org/api/about"
+    },
+    {
+      "domain": "ie.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://ie.jooble.org/api/about"
+    },
+    {
+      "domain": "tr.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://tr.jooble.org/api/about"
+    },
+    {
+      "domain": "ba.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://ba.jooble.org/api/about"
+    },
+    {
+      "domain": "hr.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://hr.jooble.org/api/about"
+    },
+    {
+      "domain": "bg.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://bg.jooble.org/api/about"
+    },
+    {
+      "domain": "kz.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://kz.jooble.org/api/about"
+    },
+    {
+      "domain": "in.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://in.jooble.org/api/about"
+    },
+    {
+      "domain": "sg.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://sg.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "ph.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://ph.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "pk.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://pk.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "th.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://th.jooble.org/api/about"
+    },
+    {
+      "domain": "ja.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://ja.jooble.org/api/about"
+    },
+    {
+      "domain": "tw.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://tw.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "hk.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://hk.jooble.org/api/about"
+    },
+    {
+      "domain": "id.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://id.jooble.org/api/about"
+    },
+    {
+      "domain": "kr.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://kr.jooble.org/api/about"
+    },
+    {
+      "domain": "az.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://az.jooble.org/api/about"
+    },
+    {
+      "domain": "my.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://my.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "ae.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://ae.jooble.org/api/about"
+    },
+    {
+      "domain": "sa.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://sa.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "qa.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://qa.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "kw.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://kw.jooble.org/api/about"
+    },
+    {
+      "domain": "bh.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://bh.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "uz.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://uz.jooble.org/api/about"
+    },
+    {
+      "domain": "mx.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://mx.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "ar.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://ar.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "cl.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://cl.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "co.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://co.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "pe.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://pe.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "do.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://do.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "cr.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://cr.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "uy.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://uy.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "sv.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://sv.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "pr.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://pr.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "br.jooble.org",
+      "status": "response_unconfirmed",
+      "applicationUrl": "https://br.jooble.org/api/about"
+    },
+    {
+      "domain": "ca.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://ca.jooble.org/api/about"
+    },
+    {
+      "domain": "ec.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://ec.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "nz.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://nz.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "au.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://au.jooble.org/api/about"
+    },
+    {
+      "domain": "ng.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://ng.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "za.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://za.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "eg.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://eg.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    },
+    {
+      "domain": "ma.jooble.org",
+      "status": "credential_verified",
+      "applicationUrl": "https://ma.jooble.org/api/about",
+      "verification": {
+        "httpStatus": 200,
+        "returnedJobs": 30
+      }
+    }
+  ],
+  "notes": [
+    "Same owner-supplied business details used in each remaining regional form.",
+    "Localhost website supplied by owner; not a public deployment.",
+    "Unconfirmed means form returned without a visible key confirmation; do not blindly resubmit.",
+    "Credentials saved only in ignored backend/.env. Each new credential consumed one verification request.",
+    "Default 500-request limit has an unspecified reset period; recurring feed ingestion is not enabled."
+  ]
+}

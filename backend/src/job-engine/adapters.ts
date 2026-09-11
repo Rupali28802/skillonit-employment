@@ -1,5 +1,8 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import type { FeedSource } from './sources.js';
+import { joobleDomains, joobleKey } from './jooble-regions.js';
+import { reserveJoobleRequest } from './jooble-budget.js';
+import { normalizeCountry } from '../lib/countries.js';
 
 export type Candidate = {
   externalId: string; title: string; company: string; url: string; description: string;
@@ -20,8 +23,9 @@ const iso = (v: unknown) => {
   return Number.isFinite(stamp) && Math.abs(stamp) <= 8640000000000000 ? new Date(stamp).toISOString() : 'invalid';
 };
 
-export async function fetchJson(url: string, extraHeaders: Record<string, string> = {}): Promise<Json | Json[]> {
+export async function fetchJson(url: string, extraHeaders: Record<string, string> = {}, body?: Record<string, unknown>): Promise<Json | Json[]> {
   const r = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(20000),
+    ...(body ? { method: 'POST', body: JSON.stringify(body) } : {}),
     headers: { Accept: 'application/json', 'User-Agent': 'SkillonIT-JobFeed/1.0', ...extraHeaders } });
   if (!r.ok) {
     const retry = r.headers.get('retry-after') || '';
@@ -42,9 +46,31 @@ export async function fetchJson(url: string, extraHeaders: Record<string, string
 }
 
 // Every network origin is fixed here. Source configuration never supplies fetch URLs.
-export async function fetchFeed(source: FeedSource, get = fetchJson, pause = delay): Promise<FeedBatch> {
+export async function fetchFeed(source: FeedSource, get = fetchJson, pause = delay, reserve = reserveJoobleRequest): Promise<FeedBatch> {
   if (!source.enabled || !source.approved) throw new FeedError('SOURCE_DISABLED');
   const jobs: Candidate[] = []; let requests = 0;
+  if (source.type === 'jooble') {
+    const country = source.countryCode || '', domain = joobleDomains[country], key = joobleKey(country);
+    if (!domain) throw new FeedError('INVALID_JOOBLE_REGION');
+    if (!key) throw new FeedError('MISSING_JOOBLE_CREDENTIALS');
+    if (!await reserve(country)) throw new FeedError('JOOBLE_BUDGET_EXHAUSTED');
+    let payload: Json;
+    try {
+      payload = await get(`https://${domain}/api/${encodeURIComponent(key)}`, { 'Content-Type': 'application/json' },
+        { keywords: source.keywords || '', location: normalizeCountry(country) || '', page: 1, ResultOnPage: 100 }) as Json;
+    } catch (e) {
+      // A transport error may contain the credential-bearing URL. Never expose it.
+      throw new FeedError(e instanceof FeedError && /^HTTP_\d{3}$/.test(e.code) ? e.code : 'JOOBLE_REQUEST_FAILED', e instanceof FeedError ? e.retryAfterMs : 0);
+    }
+    if (!payload || !Array.isArray(payload.jobs) || !Number.isSafeInteger(payload.totalCount) || payload.totalCount < 0) throw new FeedError('INVALID_FEED');
+    for (const j of payload.jobs) {
+      if (!j || typeof j !== 'object') continue;
+      jobs.push({ externalId: String(j.id ?? ''), title: text(j.title), company: text(j.company),
+        url: text(j.link), description: text(j.snippet), location: text(j.location), salaryText: text(j.salary), employmentType: text(j.type) });
+      // `updated` is an update timestamp, not a publication date. Regional query != applicant eligibility.
+    }
+    return { jobs, requests: 1, snapshot: false, complete: payload.totalCount <= payload.jobs.length };
+  }
   if (source.type === 'remoteok') {
     const payload = await get('https://remoteok.com/api');
     if (!Array.isArray(payload)) throw new FeedError('INVALID_FEED');

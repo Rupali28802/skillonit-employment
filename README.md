@@ -121,3 +121,6 @@ node scripts/scan-secrets.mjs
 ```
 
 The frontend integration check starts an isolated MongoDB replica set, Express on 3101 and Next.js on 3100. It does not load private environment files or use the real database. It verifies current hero rendering, auth/session routing, authenticated pages, profile revision conflicts, preference persistence, CV metadata, unsupported photo routes and the original Google PKCE redirect. It does not perform live Google consent or send real mail.
+# Jooble regional feeds
+
+Setup, quota limits and verification notes are in [docs/JOOBLE_INTEGRATION.md](docs/JOOBLE_INTEGRATION.md). Feed credentials belong only in ignored `backend/.env`; the existing frontend displays imported jobs through its normal API.

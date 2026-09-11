@@ -10,9 +10,12 @@ export async function expireJobs() {
       r.scan<Job>('jobs', { status: 'published' }, cursor),
     );
     if (!batch.length) return expired;
-    expired += await transaction(async (r) => {
+    // Most imported rows are fresh. Avoid one database round trip per live job.
+    // Recheck candidates inside the transaction so a concurrent refresh is preserved.
+    const candidates = batch.filter(item => !isRecent(item));
+    if (candidates.length) expired += await transaction(async (r) => {
       let changed = 0;
-      for (const item of batch) {
+      for (const item of candidates) {
         const latest = await r.get<Job>('jobs', item.id);
         if (latest?.status === 'published' && !isRecent(latest)) {
           await r.put('jobs', { ...latest, status: 'closed', ...(latest.feed ? { feed: { ...latest.feed, closedByEngine: true } } : {}) });

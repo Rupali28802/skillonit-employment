@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { countryEntries } from '../lib/countries.js';
+import { joobleDomains, joobleKey } from './jooble-regions.js';
 
 export const sourceSchema = z.object({
   id: z.string().regex(/^[a-z0-9_-]{1,80}$/),
-  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'himalayas', 'remoteok', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever']),
+  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'himalayas', 'remoteok', 'jooble', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever']),
   countryCode: z.string().regex(/^[a-z]{2}$/).optional(),
   keywords: z.string().trim().max(100).optional(),
   name: z.string().trim().min(1).max(100),
@@ -16,6 +17,8 @@ export const sourceSchema = z.object({
   intervalMinutes: z.number().int().min(30).max(10080).default(60),
   maxPages: z.number().int().min(1).max(20).default(4),
 }).superRefine((s, ctx) => {
+  if (s.type === 'jooble' && (!s.countryCode || !joobleDomains[s.countryCode] || s.intervalMinutes < 1440 || !s.publicListing || s.maxPages !== 1))
+    ctx.addIssue({ code: 'custom', message: 'Jooble requires a supported region, public attribution and one page per daily refresh.' });
   if (['himalayas', 'remoteok'].includes(s.type) && (s.intervalMinutes < 1440 || !s.publicListing))
     ctx.addIssue({ code: 'custom', message: 'Daily refresh and public source attribution required.' });
   if (s.type === 'himalayas' && s.countryCode && !countryEntries.some(c => c.code.toLowerCase() === s.countryCode))
@@ -31,6 +34,14 @@ export const sourceSchema = z.object({
     ctx.addIssue({ code: 'custom', message: 'Remotive requires public attribution, ungated listings and a minimum six-hour interval.' });
 });
 export type FeedSource = z.infer<typeof sourceSchema>;
+
+export function configuredJoobleSources(): FeedSource[] {
+  return Object.keys(joobleDomains).filter(code => joobleKey(code)).map(code => sourceSchema.parse({
+    id: `jooble-${code}`, type: 'jooble', name: 'Jooble', countryCode: code, keywords: '',
+    enabled: true, approved: true, publicListing: true, publish: true, intervalMinutes: 1440, maxPages: 1,
+    policyEvidence: 'Owner-requested regional API key; attributed search-result display: https://help.jooble.org/en/support/solutions/articles/60001448238',
+  }));
+}
 
 export const publicSources: FeedSource[] = [
   { id: 'arbeitnow-europe', type: 'arbeitnow', name: 'Arbeitnow', enabled: true, approved: true,

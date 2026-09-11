@@ -41,7 +41,7 @@ export function normalize(c: Candidate, source: FeedSource, now = Date.now()): J
   const title = plain(c.title, 240), company = plain(c.company, 150), description = plain(c.description);
   if (!c.externalId || c.externalId.length > 2000 || !title || !company || description.length < 30) throw Error('MISSING_JOB_FACTS');
   const canonical = canonicalUrl(c.url);
-  const url = source.type === 'adzuna' ? new URL(c.url).href : canonical;
+  const url = ['adzuna', 'jooble'].includes(source.type) ? new URL(c.url).href : canonical;
   if (source.type === 'remoteok' && new URL(url).hostname !== 'remoteok.com') throw Error('INVALID_ATTRIBUTION');
   if (source.type === 'jobicy' && new URL(url).hostname !== 'jobicy.com') throw Error('INVALID_ATTRIBUTION');
   if (source.type === 'usajobs' && !['www.usajobs.gov', 'usajobs.gov'].includes(new URL(url).hostname)) throw Error('INVALID_ATTRIBUTION');

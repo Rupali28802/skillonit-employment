@@ -2,7 +2,7 @@ import { test, before, after, beforeEach } from 'node:test';
 import { countryEntries, countriesInLocation, normalizeCountry } from '../src/lib/countries.ts';
 import { coverageReport } from '../src/job-engine/coverage.ts';
 import { worldwideSources } from '../src/job-engine/sources.ts';
-import { FeedError } from '../src/job-engine/adapters.ts';
+import { reserveJoobleRequest, JOOBLE_REQUEST_LIMIT } from '../src/job-engine/jooble-budget.ts';
 import assert from 'node:assert/strict';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { MongoClient } from 'mongodb';
@@ -14,6 +14,7 @@ import { canonicalUrl, normalize, categoryFor } from '../src/job-engine/normaliz
 import { fetchFeed, FeedError, type Candidate, type FeedBatch } from '../src/job-engine/adapters.ts';
 import { runEngine, upsertSource } from '../src/job-engine/engine.ts';
 import { searchJobs } from '../src/lib/search.ts';
+import { expireJobs } from '../src/lib/lifecycle.ts';
 
 let replica: MongoMemoryReplSet, client: MongoClient;
 const source: FeedSource = { id: 'test-board', type: 'ashby', name: 'Test employer', company: 'Example Employer', board: 'example',
@@ -22,6 +23,59 @@ const candidate = (overrides: Partial<Candidate> = {}): Candidate => ({ external
   url: 'https://careers.example.com/jobs/role-1', description: '<p>Provide excellent patient care &amp; support the clinical team.</p>',
   location: 'London, United Kingdom', postedAt: new Date(Date.now() - 86400000).toISOString(), ...overrides });
 const batch = (jobs = [candidate()], overrides: Partial<FeedBatch> = {}): FeedBatch => ({ jobs, complete: true, snapshot: true, requests: 1, ...overrides });
+const joobleSource = (): FeedSource => sourceSchema.parse({ ...source, id: 'jooble-gb', type: 'jooble', countryCode: 'gb', intervalMinutes: 1440, maxPages: 1 });
+
+test('expiry scans past a full fresh page and closes only expired jobs', async () => {
+  const base = normalize(candidate(), source);
+  await transaction(r => r.putMany('jobs', Array.from({ length: 302 }, (_, i) => ({ ...base, id: `expiry-${String(i).padStart(4, '0')}`,
+    ...(i >= 300 ? { expiresAt: new Date(Date.now() - 1000).toISOString() } : {}) }))));
+  assert.equal(await expireJobs(), 2);
+  assert.equal(await read(r => r.count('jobs', { status: 'published' })), 300);
+  assert.equal(await expireJobs(), 0);
+});
+
+test('Jooble uses regional POST, preserves referral links and does not invent posting dates or eligibility', async () => {
+  const old = process.env.JOOBLE_GB_API_KEY; process.env.JOOBLE_GB_API_KEY = 'fixture-key';
+  try {
+    const result = await fetchFeed(joobleSource(), async (url, headers, body) => {
+      assert.equal(url, 'https://uk.jooble.org/api/fixture-key');
+      assert.equal(headers?.['Content-Type'], 'application/json');
+      assert.deepEqual(body, { keywords: '', location: 'United Kingdom', page: 1, ResultOnPage: 100 });
+      return { totalCount: 5000, jobs: [{ id: 7, title: 'School teacher', company: 'School',
+        snippet: 'Help children learn in a supportive classroom setting.', location: 'London', type: 'Part-time',
+        link: 'https://uk.jooble.org/jdp/7?source=partner', updated: new Date().toISOString() }] };
+    }, async () => undefined, async region => { assert.equal(region, 'gb'); return true; });
+    assert.equal(result.requests, 1); assert.equal(result.complete, false); assert.equal(result.snapshot, false);
+    const job = normalize(result.jobs[0], joobleSource());
+    assert.equal(job.category, 'Education'); assert.equal(job.sourcePostedAt, undefined);
+    assert.equal(job.country, 'Not specified'); assert.equal(job.url, 'https://uk.jooble.org/jdp/7?source=partner');
+  } finally { if (old === undefined) delete process.env.JOOBLE_GB_API_KEY; else process.env.JOOBLE_GB_API_KEY = old; }
+});
+
+test('Jooble missing credentials and exhausted quota make no HTTP call; transport errors hide keys', async () => {
+  const old = process.env.JOOBLE_GB_API_KEY; delete process.env.JOOBLE_GB_API_KEY;
+  let calls = 0;
+  const get = async () => { calls++; throw Error('credential-bearing URL fixture-key'); };
+  try {
+    await assert.rejects(fetchFeed(joobleSource(), get), /MISSING_JOOBLE_CREDENTIALS/);
+    process.env.JOOBLE_GB_API_KEY = 'fixture-key';
+    await assert.rejects(fetchFeed(joobleSource(), get, async () => undefined, async () => false), /JOOBLE_BUDGET_EXHAUSTED/);
+    assert.equal(calls, 0);
+    await assert.rejects(fetchFeed(joobleSource(), get, async () => undefined, async () => true), { message: 'JOOBLE_REQUEST_FAILED' });
+    assert.equal(sourceSchema.safeParse({ ...joobleSource(), countryCode: 'xx' }).success, false);
+    assert.equal(sourceSchema.safeParse({ ...joobleSource(), maxPages: 2 }).success, false);
+    assert.equal(sourceSchema.safeParse({ ...joobleSource(), intervalMinutes: 60 }).success, false);
+  } finally { if (old === undefined) delete process.env.JOOBLE_GB_API_KEY; else process.env.JOOBLE_GB_API_KEY = old; }
+});
+
+test('Jooble quota persists in MongoDB, is regional and cannot exceed its cap concurrently', async () => {
+  await transaction(r => r.put('jobEngineState', { id: 'jooble-budget-gb', used: JOOBLE_REQUEST_LIMIT - 1 }));
+  const results = await Promise.all([reserveJoobleRequest('gb'), reserveJoobleRequest('gb')]);
+  assert.equal(results.filter(Boolean).length, 1);
+  assert.equal(await reserveJoobleRequest('gb'), false);
+  assert.equal(await reserveJoobleRequest('in'), true);
+  assert.equal((await read(r => r.get<any>('jobEngineState', 'jooble-budget-gb'))).used, JOOBLE_REQUEST_LIMIT);
+});
 async function due(id = source.id) { await transaction(async r => { const s = await r.get<any>('jobFeedStates', id); await r.put('jobFeedStates', { ...s, id, nextRunAt: 0 }); }); }
 before(async () => {
   replica = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
