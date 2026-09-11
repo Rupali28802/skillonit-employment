@@ -38,6 +38,7 @@ import {
 } from "./lib/domain.js";
 import { searchJobs } from "./lib/search.js";
 import { engineStatus } from './job-engine/engine.js';
+import { socialSourceSchema, ingestSocial } from './job-engine/social.js';
 import { providerHealth, RazorpayProvider } from "./lib/providers.js";
 import { featureRoute, notify } from "./features.js";
 import { authMailConfig, sendAuthMail } from "./lib/auth-mail.js";
@@ -347,6 +348,20 @@ export async function handle(
     if (p === 'admin/job-engine' && method === 'GET') {
       await requireUser('admin');
       return ok(await engineStatus());
+    }
+    if (p === 'admin/social-sources' && method === 'POST') {
+      const actor = await requireUser('admin');
+      const source = socialSourceSchema.parse(await body());
+      await transaction(async r => { await r.put('socialSources', source); await audit(r,actor.id,'social.source_configured',source.id); });
+      return ok({id:source.id});
+    }
+    if (p === 'admin/social-posts' && method === 'POST') {
+      const actor = await requireUser('admin');
+      return ok(await ingestSocial(await body(), actor.id));
+    }
+    if (p === 'admin/social-posts' && method === 'GET') {
+      await requireUser('admin');
+      return ok(await read(r => r.page('socialPosts',{}, {updatedAt:-1,id:1},0,100)));
     }
     if (p === "jobs" && method === "GET")
       return ok(await searchJobs(url.searchParams, await currentUser()));

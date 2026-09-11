@@ -471,3 +471,29 @@ test('structured filters combine skills, city, trust and compatible salary witho
   const report = await coverageReport();
   assert.equal(report.completeness.normalized,4); assert.equal(report.completeness.verified,1);
 });
+
+test('social intake holds incomplete posts, enforces permissions and handles removal idempotently', async () => {
+ const {ingestSocial}=await import('../src/job-engine/social.ts');
+ const input={sourceId:'channel',externalId:'one',url:'https://social.example.com/posts/one',text:'Hiring nurses. Contact our recruitment team for information.',postedAt:new Date().toISOString()};
+ await assert.rejects(()=>ingestSocial(input,'admin'));
+ await transaction(r=>r.put('socialSources',{id:'channel',name:'Channel',hostname:'social.example.com',permissionEvidence:'Explicit fixture permission for isolated tests.',approved:true,expiresAt:new Date(Date.now()+86400000).toISOString()}));
+ assert.equal((await ingestSocial(input,'admin')).state,'review');
+ await ingestSocial(input,'admin'); assert.equal(await read(r=>r.count('socialPosts')),1);
+ assert.equal(await read(r=>r.count('jobs')),0);
+ assert.equal((await ingestSocial({...input,deleted:true},'admin')).state,'removed');
+ await assert.rejects(()=>ingestSocial({...input,url:'https://other.example.com/one'},'admin'));
+ const risky=normalize(candidate({description:'Please provide your bank login and verification code to get this job.'}),source);
+ assert.equal(risky.status,'review'); assert.ok(risky.risk?.reasons.includes('credential_request'));
+});
+
+test('semantic index orders vector matches and ignores incompatible vectors', async () => {
+ const {semanticMatches}=await import('../src/job-engine/semantic.ts');
+ await transaction(r=>r.putMany('jobVectors',[
+ {id:'relevant',model:'Xenova/all-MiniLM-L6-v2',fingerprint:'a',vector:[1,0]},
+ {id:'unrelated',model:'Xenova/all-MiniLM-L6-v2',fingerprint:'b',vector:[0,1]},
+ {id:'wrong-dimension',model:'Xenova/all-MiniLM-L6-v2',fingerprint:'c',vector:[1]},
+ ]));
+ assert.deepEqual(await semanticMatches('patient care',async()=>[1,0]),[{id:'relevant',score:1}]);
+ const {payPeriod}=await import('../src/job-engine/normalize.ts');
+ assert.equal(payPeriod('PA'),'annual'); assert.equal(payPeriod('PH'),'hourly'); assert.equal(payPeriod(''),null);
+});

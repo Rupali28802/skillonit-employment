@@ -4,6 +4,7 @@ import { bootstrapIndexes, closeStore, read, transaction } from '../lib/store.js
 import { runEngine, upsertSource, engineStatus, setEmployerRefresh } from './engine.js';
 import { publicSources, worldwideSources, configuredJoobleSources, sourceSchema } from './sources.js';
 import { coverageReport, saveCoverageAudit } from './coverage.js';
+import { indexSemantic } from './semantic.js';
 
 let stopping = false;
 for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => { stopping = true; });
@@ -11,7 +12,15 @@ try {
   if (!process.env.MONGODB_URI) throw Error('MONGODB_REQUIRED');
   await bootstrapIndexes();
   const command = process.argv[2] || 'status';
-  if (command === 'refresh-employers') {
+  if (command === 'watch-semantic') {
+    do {
+      try { const indexed = await indexSemantic(100); if(indexed) console.log(JSON.stringify({indexed})); }
+      catch { console.error('SEMANTIC_INDEX_FAILED'); }
+      for(let i=0;i<30&&!stopping;i++) await delay(1000);
+    } while(!stopping);
+  } else if (command === 'index-semantic') {
+    console.log(JSON.stringify({indexed:await indexSemantic(10000)}));
+  } else if (command === 'refresh-employers') {
     const interval = Number(process.argv[3] || 10);
     if (![5, 10].includes(interval)) throw Error('USE_FIVE_OR_TEN_MINUTES');
     const sources = await read(r => r.find<{ id: string }>('jobFeedSources', { type: { $in: ['ashby', 'greenhouse', 'lever'] }, enabled: true, approved: true, publicListing: true }, 1000));

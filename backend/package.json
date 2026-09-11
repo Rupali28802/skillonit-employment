@@ -34,10 +34,13 @@
     "test:mongo": "node --import tsx tests/mongo-integration.ts",
     "test:architecture": "node tests/architecture.mjs",
     "jobs:coverage": "node --env-file-if-exists=.env dist/job-engine/cli.js coverage",
-    "jobs:seed-worldwide": "node --env-file-if-exists=.env dist/job-engine/cli.js seed-worldwide"
+    "jobs:seed-worldwide": "node --env-file-if-exists=.env dist/job-engine/cli.js seed-worldwide",
+    "jobs:index-semantic": "node --env-file-if-exists=.env dist/job-engine/cli.js index-semantic",
+    "worker:semantic": "node --env-file-if-exists=.env dist/job-engine/cli.js watch-semantic"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",
+    "@huggingface/transformers": "^3.8.1",
     "bullmq": "^6.3.4",
     "express": "^5.1.0",
     "google-auth-library": "^11.0.2",
@@ -62,5 +65,8 @@
     "tsx": "^4.20.0",
     "typescript": "5.9.3",
     "yazl": "^3.3.1"
+  },
+  "overrides": {
+    "sharp": "^0.35.4"
   }
 }

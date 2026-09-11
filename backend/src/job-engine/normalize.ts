@@ -5,8 +5,14 @@ import type { Job } from '../lib/domain.js';
 import type { Candidate } from './adapters.js';
 import type { FeedSource } from './sources.js';
 import { countriesInLocation, normalizeCountry } from '../lib/countries.js';
+import { assessRisk } from './risk.js';
 
 export const hash = (s: string) => createHash('sha256').update(s).digest('hex');
+export function payPeriod(value: string) {
+  const key=value.trim().toLowerCase();
+  const periods:Record<string,string>={pa:'annual',year:'annual',yearly:'annual',annually:'annual',annual:'annual','per annum':'annual',ph:'hourly',hour:'hourly',hourly:'hourly','per hour':'hourly',month:'monthly',monthly:'monthly',week:'weekly',weekly:'weekly',day:'daily',daily:'daily'};
+  return periods[key] || plain(value,80) || null;
+}
 export function plain(input: string, limit = 30000) {
   return he.decode(input.slice(0, 200000)).replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
     .replace(/<[^>]+>/g, ' ').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/\s+/g, ' ').trim().slice(0, limit);
@@ -61,7 +67,8 @@ export function normalize(c: Candidate, source: FeedSource, now = Date.now()): J
   const closing = c.closesAt ? Date.parse(c.closesAt) : undefined;
   if (closing !== undefined && (!Number.isFinite(closing) || closing <= now)) throw Error('CLOSED_OR_INVALID_DATE');
   if (posted !== undefined && (!Number.isFinite(posted) || posted > now + 300000 || posted < now - 90 * 86400000)) throw Error('STALE_OR_INVALID_DATE');
-  const suspicious = /\b(pay|send|transfer)\b.{0,50}\b(fee|deposit|password|otp)\b|registration fee/i.test(description);
+  const risk = assessRisk(description, url);
+  const suspicious = risk.reasons.length > 0;
   const stamp = new Date(now).toISOString();
   const amount = (v: unknown): number | null => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
   const salaryMin = amount(c.salary?.min), salaryMax = amount(c.salary?.max);
@@ -74,7 +81,7 @@ export function normalize(c: Candidate, source: FeedSource, now = Date.now()): J
   const facts = {
     city: plain(c.city || '', 240) || null, state: plain(c.state || '', 240) || null, locationText: plain(c.location, 500), skills,
     salary: { min: salaryValid ? salaryMin : null, max: salaryValid ? salaryMax : null, currency: salaryValid ? c.salary!.currency! : null,
-      period: plain(c.salary?.period || '', 80) || null, text: plain(c.salaryText || '', 300) || null },
+      period: payPeriod(c.salary?.period || ''), text: plain(c.salaryText || '', 300) || null },
     experience: { min: experienceValid ? experienceMin : null, max: experienceValid ? experienceMax : null, text: plain(c.experience?.text || '', 1000) || null },
     postedAt: posted !== undefined ? new Date(posted).toISOString() : null, updatedAt,
     expiresAt: closing !== undefined ? new Date(closing).toISOString() : null,
@@ -91,7 +98,7 @@ export function normalize(c: Candidate, source: FeedSource, now = Date.now()): J
     mode: c.mode || 'Not specified', type: plain(c.employmentType || '', 120) || 'Not specified',
     salaryMin: facts.salary.min ?? 0, salaryMax: facts.salary.max ?? 0, currency: facts.salary.currency || '', salaryDisclosed: salaryValid, salaryText: plain(c.salaryText || '', 300),
     experienceMin: facts.experience.min ?? 0, experienceMax: facts.experience.max ?? 0, experienceDisclosed: experienceValid,
-    normalizedFacts: facts,
+    normalizedFacts: facts, risk,
     ...(updatedAt ? { sourceUpdatedAt: updatedAt } : {}),
     ...(facts.expiresAt ? { sourceExpiresAt: facts.expiresAt } : {}),
     description, requirements: 'See the original listing for the complete requirements.', method: 'external', url,

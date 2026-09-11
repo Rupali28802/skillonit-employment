@@ -37,6 +37,7 @@ export type Job = {
   salaryText?: string;
   sourcePostedAt?: string;
   sourceUpdatedAt?: string;
+  risk?: { reasons: string[]; assessedAt: string; method: 'rules-v1' };
   sourceExpiresAt?: string;
   normalizedFacts?: {
     city: string | null; state: string | null; locationText: string;

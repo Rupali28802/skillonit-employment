@@ -2,6 +2,7 @@ import type { Job, User } from './domain.js';
 import { publicJob } from './domain.js';
 import { read, configuredPlans, demoMode } from './store.js';
 import { normalizeCountry } from './countries.js';
+import { semanticMatches } from '../job-engine/semantic.js';
 
 export async function searchJobs(params: URLSearchParams, user: User | null = null) {
   const query = (params.get('q') || '').slice(0, 200).toLowerCase();
@@ -49,7 +50,12 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
     filter.experienceMin = { $lte: Number(experience) }; filter.experienceMax = { $gte: Number(experience) };
     filter.experienceDisclosed = { $ne: false };
   }
-  if (words.length) clauses.push(...words.map(w => {
+  let semantic: {id:string;score:number}[] | undefined;
+  if (query && params.get('searchMode') === 'semantic') {
+    try { semantic = await semanticMatches(query); } catch { /* Text fallback if model unavailable. */ }
+  }
+  if (semantic) { clauses.push({ id: { $in: semantic.map(m => m.id) } }); filter['feed.publicListing'] = true; }
+  if (!semantic && words.length) clauses.push(...words.map(w => {
     const regex = new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     const country = normalizeCountry(w);
     return { $or: [...['title', 'category', 'state', 'city', 'country', 'mode', 'skills', 'type', 'description', 'normalizedFacts.sourceCategory', 'normalizedFacts.sourceTags'].map(field => ({ [field]: regex })),
@@ -62,5 +68,12 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
     ? { currency: 1, salaryMin: -1, id: 1 } : { sourcePostedAt: -1, discoveredAt: -1, id: 1 };
   const result = await read(async r => ({ jobs: await r.page<Job>('jobs', filter, sort, (page - 1) * 12, 12), total: await r.count('jobs', filter) }));
   const plans = await configuredPlans();
+  if (semantic) {
+    // Apply every eligibility/facet filter before ranking or pagination.
+    const jobs = await read(r => r.find<Job>('jobs',filter,10000));
+    const scores = new Map(semantic.map(m=>[m.id,m.score]));
+    jobs.sort((a,b)=>(scores.get(b.id)||0)-(scores.get(a.id)||0)||a.id.localeCompare(b.id));
+    return {jobs:jobs.slice((page-1)*12,page*12).map(j=>({...publicJob(j,user,plans),semanticScore:scores.get(j.id)})),total:jobs.length,page,hasMore:page*12<jobs.length,searchMode:'semantic',indexScope:'public indexed vacancies'};
+  }
   return { jobs: result.jobs.map(j => publicJob(j, user, plans)), total: result.total, page, hasMore: page * 12 < result.total };
 }
