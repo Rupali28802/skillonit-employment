@@ -9,6 +9,9 @@ export type Candidate = {
   location: string; country?: string; countryCodes?: string[]; category?: string; tags?: string[];
   mode?: 'Remote' | 'Hybrid' | 'On-site'; employmentType?: string;
   postedAt?: string; closesAt?: string; salaryText?: string;
+  updatedAt?: string; city?: string; state?: string; skills?: string[];
+  salary?: { min?: number; max?: number; currency?: string; period?: string };
+  experience?: { min?: number; max?: number; text?: string };
 };
 export type FeedBatch = { jobs: Candidate[]; complete: boolean; snapshot: boolean; requests: number };
 export class FeedError extends Error {
@@ -111,7 +114,7 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
     for (const j of payload.jobs) {
       if (!j || typeof j !== 'object') continue;
       jobs.push({ externalId: String(j.id ?? ''), title: text(j.title), company: text(j.company),
-        url: text(j.link), description: text(j.snippet), location: text(j.location), salaryText: text(j.salary), employmentType: text(j.type) });
+        url: text(j.link), description: text(j.snippet), location: text(j.location), salaryText: text(j.salary), employmentType: text(j.type), updatedAt: iso(j.updated) });
       // `updated` is an update timestamp, not a publication date. Regional query != applicant eligibility.
     }
     return { jobs, requests: 1, snapshot: false, complete: payload.totalCount <= payload.jobs.length };
@@ -195,8 +198,14 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
       for (const item of result.SearchResultItems) {
         const j = item.MatchedObjectDescriptor, details = j?.UserArea?.Details;
         const locations: Json[] = Array.isArray(j?.PositionLocation) ? j.PositionLocation : [];
+        const pay = j?.PositionRemuneration?.[0];
+        const numeric = (v: unknown) => typeof v === 'number' ? v : typeof v === 'string' && v.trim() && Number.isFinite(Number(v)) ? Number(v) : undefined;
         jobs.push({ externalId: String(item.MatchedObjectId ?? ''), title: text(j?.PositionTitle), company: text(j?.OrganizationName),
           url: text(j?.ApplyURI?.[0]) || text(j?.PositionURI), location: text(j?.PositionLocationDisplay),
+          city: locations.length === 1 ? text(locations[0].CityName) : undefined,
+          state: locations.length === 1 ? text(locations[0].CountrySubDivisionCode) : undefined,
+          salaryText: pay ? [pay.MinimumRange, pay.MaximumRange, pay.RateIntervalCode].filter(v => v !== undefined).join(' / ') : undefined,
+          salary: pay ? { min: numeric(pay.MinimumRange), max: numeric(pay.MaximumRange), currency: 'USD', period: text(pay.RateIntervalCode) } : undefined,
           country: [...new Set(locations.map(l => text(l.CountryCode)).filter(Boolean))].join('; '),
           category: (j?.JobCategory || []).map((c: Json) => text(c.Name)).join(', '),
           description: [text(details?.JobSummary), text(j?.QualificationSummary), text(details?.WhoMayApply?.Name), text(details?.Requirements)].filter(Boolean).join('\n'),
@@ -239,7 +248,7 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
     for (let page = 0; page < source.maxPages; page++) {
       if (page) await pause(2000);
       const root = 'https://api.smartrecruiters.com/v1/companies/' + board + '/postings';
-      const payload = await get(root + '?limit=20&offset=' + page * 20) as Json; requests++;
+      const payload = await get(root + '?destination=PUBLIC&limit=20&offset=' + page * 20) as Json; requests++;
       if (!Array.isArray(payload.content) || payload.content.length > 20) throw new FeedError('INVALID_FEED');
       for (const item of payload.content) {
         const id = text(item.id);
@@ -251,7 +260,7 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
         const sections = j.jobAd?.sections || {};
         jobs.push({ externalId: id, title: text(j.name), company: source.company!, url: text(j.postingUrl),
           description: ['jobDescription', 'qualifications', 'additionalInformation'].map(k => text(sections[k]?.text)).filter(Boolean).join('\n'),
-          location: [text(j.location?.city), text(j.location?.region), text(j.location?.country)].filter(Boolean).join(', '), country: text(j.location?.country),
+          location: [text(j.location?.city), text(j.location?.region), text(j.location?.country)].filter(Boolean).join(', '), country: text(j.location?.country), city: text(j.location?.city), state: text(j.location?.region),
           category: text(j.function?.label), tags: [text(j.industry?.label)].filter(Boolean), employmentType: text(j.typeOfEmployment?.label),
           mode: j.location?.remote === true ? 'Remote' : undefined, postedAt: iso(j.releasedDate) });
       }
@@ -267,6 +276,7 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
       jobs.push({ externalId: text(j.id) || text(j.jobUrl), title: text(j.title), company: source.company!,
         url: text(j.jobUrl), description: text(j.descriptionPlain) || text(j.descriptionHtml),
         location: text(j.location), country: text(j.address?.postalAddress?.addressCountry), category: text(j.department),
+        city: text(j.address?.postalAddress?.addressLocality), state: text(j.address?.postalAddress?.addressRegion),
         mode: j.isRemote === true ? 'Remote' : ['Remote', 'Hybrid', 'On-site'].includes(j.workplaceType) ? j.workplaceType : undefined,
         employmentType: text(j.employmentType), postedAt: iso(j.publishedAt) });
     }
@@ -277,7 +287,7 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
     if (!Array.isArray(payload.jobs)) throw new FeedError('INVALID_FEED');
     for (const j of payload.jobs) jobs.push({ externalId: String(j.id ?? ''), title: text(j.title), company: source.company!,
       url: text(j.absolute_url), description: text(j.content), location: text(j.location?.name),
-      category: text(j.departments?.[0]?.name) }); // updated_at is not an original posting date.
+      category: text(j.departments?.[0]?.name), updatedAt: iso(j.updated_at) }); // updated_at is not an original posting date.
     return { jobs, complete: true, snapshot: true, requests: 1 };
   }
   let complete = false;

@@ -93,3 +93,19 @@ Requested routing to Developer Support/licensed content partnerships for employe
 LinkedIn case **260911-002232**, https://www.linkedin.com/help/linkedin/cases/82741810, had closed with only an automated acknowledgement. Reopened the existing case asking for a human answer on retrieval/redistribution rights. Verified Open; no approval received. No duplicate application.
 
 Connected public employer boards Ema (Ashby), Razorpay Software Private Limited (Greenhouse), and Employ (Lever): 47 published jobs verified. This is limited board coverage, not an employer partnership or entire ATS network access. UI and authentication unchanged.
+
+## USAJOBS request submitted - 11 September 2026
+
+With the owner's approval, accepted the API terms and submitted the prepared official request once using the project mailbox. The confirmation page at https://developer.usajobs.gov/apirequest/addrequestvalid states that a verification email was sent; after email verification an API token will be emailed. Email verification and token issuance remain pending. The project mailbox is not signed in in the available browser; a sign-in tab has been opened. Do not submit a duplicate application or count this source as connected.
+
+## ReliefWeb onboarding prerequisite - 11 September 2026
+
+The official appname request form linked from https://apidoc.reliefweb.int/parameters requires an official organization-domain email and states that Gmail, Yahoo and Hotmail requests will not be processed. No organization-domain mailbox has been supplied. No application was submitted and no approved appname is claimed. An actual organization email is needed to continue; credentials must not be recorded in this report.
+
+## USAJOBS email verified - 11 September 2026
+
+Opened the owner-supplied official email verification link. The provider redirected to https://developer.usajobs.gov/apirequest/getapikey and confirmed that an email containing the API key has been sent. Email verification is complete; credential receipt, private configuration and a live API test remain pending. The verification token is intentionally excluded from this report. Do not submit another application.
+
+## USAJOBS live integration verified - 11 September 2026
+
+The owner supplied the issued credential. Saved only in ignored, untracked backend/.env with the registered project email as User-Agent. Official search endpoint returned HTTP 200. First bounded import fetched and added 400 vacancies in four requests, with zero rejected records. This is a partial newest-listings import, not the complete federal inventory. Enabled source usajobs-federal at six-hour intervals, maximum four pages per run; restarted the job worker to load private credentials. Coverage audit is refreshed after imports. No credential or email verification token is included here.

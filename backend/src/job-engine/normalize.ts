@@ -63,16 +63,37 @@ export function normalize(c: Candidate, source: FeedSource, now = Date.now()): J
   if (posted !== undefined && (!Number.isFinite(posted) || posted > now + 300000 || posted < now - 90 * 86400000)) throw Error('STALE_OR_INVALID_DATE');
   const suspicious = /\b(pay|send|transfer)\b.{0,50}\b(fee|deposit|password|otp)\b|registration fee/i.test(description);
   const stamp = new Date(now).toISOString();
+  const amount = (v: unknown): number | null => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
+  const salaryMin = amount(c.salary?.min), salaryMax = amount(c.salary?.max);
+  const experienceMin = amount(c.experience?.min), experienceMax = amount(c.experience?.max);
+  const salaryValid = salaryMin !== null && salaryMax !== null && salaryMin <= salaryMax && /^[A-Z]{3}$/.test(c.salary?.currency || '');
+  const experienceValid = experienceMin !== null && experienceMax !== null && experienceMin <= experienceMax;
+  const updated = c.updatedAt ? Date.parse(c.updatedAt) : NaN;
+  const updatedAt = Number.isFinite(updated) && updated <= now + 300000 && (posted === undefined || updated >= posted) ? new Date(updated).toISOString() : null;
+  const skills = [...new Set((c.skills || []).map(t => plain(t, 80)).filter(Boolean))].slice(0, 100);
+  const facts = {
+    city: plain(c.city || '', 240) || null, state: plain(c.state || '', 240) || null, locationText: plain(c.location, 500), skills,
+    salary: { min: salaryValid ? salaryMin : null, max: salaryValid ? salaryMax : null, currency: salaryValid ? c.salary!.currency! : null,
+      period: plain(c.salary?.period || '', 80) || null, text: plain(c.salaryText || '', 300) || null },
+    experience: { min: experienceValid ? experienceMin : null, max: experienceValid ? experienceMax : null, text: plain(c.experience?.text || '', 1000) || null },
+    postedAt: posted !== undefined ? new Date(posted).toISOString() : null, updatedAt,
+    expiresAt: closing !== undefined ? new Date(closing).toISOString() : null,
+    sourceCategory: plain(c.category || '', 240) || null, sourceTags: (c.tags || []).map(t => plain(t, 80)).filter(Boolean).slice(0, 100),
+    normalizedAt: stamp, method: 'source-fields' as const,
+  };
   const eligibleCountries = c.countryCodes?.length ? [...new Set(c.countryCodes.map(normalizeCountry).filter((c): c is string => !!c))]
     : countriesInLocation(plain(c.country || c.location, 500));
   const country = eligibleCountries.length === 1 ? eligibleCountries[0] : eligibleCountries.length > 1 ? 'Multiple countries'
     : /^(worldwide|anywhere|global)$/i.test(c.location.trim()) ? 'Worldwide' : 'Not specified';
   return {
-    id: 'feed-' + hash(canonical), title, company, domain: '', country, eligibleCountries, state: '',
-    city: plain(c.location, 240) || 'Not specified', category: categoryFor(c), skills: [...new Set([c.category || '', ...(c.tags || [])].map(t => plain(t, 80)).filter(Boolean))].slice(0, 30),
+    id: 'feed-' + hash(canonical), title, company, domain: '', country, eligibleCountries, state: facts.state || '',
+    city: facts.city || plain(c.location, 240) || 'Not specified', category: categoryFor(c), skills,
     mode: c.mode || 'Not specified', type: plain(c.employmentType || '', 120) || 'Not specified',
-    salaryMin: 0, salaryMax: 0, currency: 'USD', salaryDisclosed: false, salaryText: plain(c.salaryText || '', 300),
-    experienceMin: 0, experienceMax: 0, experienceDisclosed: false,
+    salaryMin: facts.salary.min ?? 0, salaryMax: facts.salary.max ?? 0, currency: facts.salary.currency || '', salaryDisclosed: salaryValid, salaryText: plain(c.salaryText || '', 300),
+    experienceMin: facts.experience.min ?? 0, experienceMax: facts.experience.max ?? 0, experienceDisclosed: experienceValid,
+    normalizedFacts: facts,
+    ...(updatedAt ? { sourceUpdatedAt: updatedAt } : {}),
+    ...(facts.expiresAt ? { sourceExpiresAt: facts.expiresAt } : {}),
     description, requirements: 'See the original listing for the complete requirements.', method: 'external', url,
     status: source.publish && !suspicious ? 'published' : 'review', trust: suspicious ? 'flagged' : 'pending',
     employerId: '', source: source.name, discoveredAt: stamp,

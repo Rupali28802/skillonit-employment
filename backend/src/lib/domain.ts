@@ -36,6 +36,16 @@ export type Job = {
   experienceDisclosed?: boolean;
   salaryText?: string;
   sourcePostedAt?: string;
+  sourceUpdatedAt?: string;
+  sourceExpiresAt?: string;
+  normalizedFacts?: {
+    city: string | null; state: string | null; locationText: string;
+    skills: string[]; experience: { min: number | null; max: number | null; text: string | null };
+    salary: { min: number | null; max: number | null; currency: string | null; period: string | null; text: string | null };
+    postedAt: string | null; updatedAt: string | null; expiresAt: string | null;
+    sourceCategory: string | null; sourceTags: string[];
+    normalizedAt: string; method: 'source-fields';
+  };
   feed?: { sourceId: string; externalId: string; publicListing: boolean; attributionUrl: string; lastSeenAt: string; closedByEngine?: boolean };
 };
 export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company' | 'feed'> & {
@@ -43,6 +53,7 @@ export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company' | 'feed
   identityVisible: boolean;
   sourceLink?: string;
   publicApplicationLink?: string;
+  sourceJobId?: string;
 };
 export type Profile = {
   name: string;
@@ -271,7 +282,7 @@ export function publicJob(
     source: scrub(safe.source),
     company: identityVisible ? company : 'Company identity protected',
     identityVisible,
-    ...(feed?.publicListing ? { sourceLink: feed.attributionUrl, publicApplicationLink: job.url } : {}),
+    ...(feed?.publicListing ? { sourceLink: feed.attributionUrl, publicApplicationLink: job.url, sourceJobId: feed.externalId } : {}),
   };
 }
 export function isRecent(job: Job, days = 90, now = Date.now()) {

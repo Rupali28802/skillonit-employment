@@ -411,3 +411,20 @@ test('SmartRecruiters only retrieves public active postings from a fixed company
   await assert.rejects(fetchFeed(config, async () => ({ content: [{ id: '../private' }] })), /INVALID_POSTING_ID/);
   assert.equal(sourceSchema.safeParse({ ...config, board: undefined }).success, false);
 });
+
+test('normalized facts preserve unknowns, source updates, salary units and separate skill evidence', () => {
+  const now = Date.now();
+  const job = normalize(candidate({ city: 'London', state: 'England', tags: ['Healthcare'], skills: ['Patient care'],
+    updatedAt: new Date(now - 1000).toISOString(), salary: { min: 25000, max: 40000, currency: 'GBP', period: 'annual' },
+    experience: { min: 0, max: 2, text: '0 to 2 years' } }), source, now);
+  assert.equal(job.city, 'London'); assert.equal(job.state, 'England');
+  assert.deepEqual(job.skills, ['Patient care']); assert.deepEqual(job.normalizedFacts?.sourceTags, ['Healthcare']);
+  assert.equal(job.salaryDisclosed, true); assert.equal(job.currency, 'GBP');
+  assert.equal(job.normalizedFacts?.salary.period, 'annual'); assert.equal(job.experienceDisclosed, true);
+  assert.equal(job.normalizedFacts?.expiresAt, null); assert.ok(job.sourceUpdatedAt);
+  assert.equal(publicJob(job).sourceJobId, 'role-1');
+  const unknown = normalize(candidate({ updatedAt: new Date(now + 86400000).toISOString(), salary: { min: 100, max: 1, currency: 'USD' } }), source, now);
+  assert.equal(unknown.normalizedFacts?.salary.min, null); assert.equal(unknown.salaryDisclosed, false);
+  assert.equal(unknown.normalizedFacts?.city, null); assert.equal(unknown.sourceUpdatedAt, undefined);
+  assert.equal(unknown.trust, 'pending');
+});

@@ -30,7 +30,8 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
   if (words.length) filter.$and = words.map(w => {
     const regex = new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
     const country = normalizeCountry(w);
-    return { $or: [...['title', 'category', 'city', 'country', 'mode', 'skills', 'type', 'description'].map(field => ({ [field]: regex })),
+    return { $or: [...['title', 'category', 'state', 'city', 'country', 'mode', 'skills', 'type', 'description', 'normalizedFacts.sourceCategory', 'normalizedFacts.sourceTags'].map(field => ({ [field]: regex })),
+      { company: regex, 'feed.publicListing': true },
       ...(country ? [{ country }, { eligibleCountries: country }] : [])] };
   });
   const page = Math.max(1, Math.min(100000, Math.floor(Number(params.get('page')) || 1)));
