@@ -1,10 +1,10 @@
 import type { Job, Profile, Preferences, User } from './domain.js';
 import type { Repository } from './store.js';
 
-const normalize = (value: string) => value.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
-const unique = (values: string[]) => [...new Set(values.map(normalize).filter(Boolean))];
+export const normalize = (value: string) => value.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
+export const unique = (values: string[]) => [...new Set(values.map(normalize).filter(Boolean))];
 const includes = (values: string[] | undefined, value: string) => unique(values ?? []).includes(normalize(value));
-const phrase = (text: string, value: string) => {
+export const phrase = (text: string, value: string) => {
   const needle = normalize(value);
   if (!needle) return false;
   const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -91,11 +91,13 @@ export async function matchingInputs(r: Repository, user: User) {
   }
   const profile = structuredClone(user.profile);
   // Preserve legacy manually confirmed profiles, but never use explicitly unconfirmed fields.
-  for (const field of ['skills', 'experience', 'headline', 'employmentHistory'] as const) {
+  for (const field of ['skills', 'experience', 'headline', 'employmentHistory', 'education', 'matching'] as const) {
     if (user.profileProvenance?.[field] && user.profileProvenance[field].status !== 'CANDIDATE_CONFIRMED') {
       if (field === 'skills') profile.skills = [];
       else if (field === 'experience') profile.experience = null;
       else if (field === 'headline') profile.headline = '';
+      else if (field === 'education') profile.education = '';
+      else if (field === 'matching') delete profile.matching;
       else profile.employmentHistory = [];
     }
   }

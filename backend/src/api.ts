@@ -37,7 +37,8 @@ import {
   isRecent,
 } from "./lib/domain.js";
 import { searchJobs } from "./lib/search.js";
-import { matchingInputs, rankJobs } from './lib/job-matching.js';
+import { getMatches, runMatching, getRankingPolicy, configureRankingPolicy } from './lib/matching-engine.js';
+import { matchingQuerySchema } from './lib/matching-contracts.js';
 import { providerHealth, RazorpayProvider } from "./lib/providers.js";
 import { featureRoute, notify } from "./features.js";
 import { authMailConfig, sendAuthMail } from "./lib/auth-mail.js";
@@ -102,13 +103,13 @@ export async function handle(
     }
     if (p === "me/dashboard" && method === "GET") {
       const user = await requireUser("student");
+      await rateLimit('matching:' + user.id, 30);
       const data = await read(async (r) => {
         const apps = await r.find("applications", { userId: user.id });
         const saved = await r.find("savedJobs", { userId: user.id });
-        const jobs = await r.find<Job>("jobs", { status: "published", trust: "verified" }, 1000);
         const plans = await configuredPlans();
-        const input = await matchingInputs(r, user);
-        const matches = rankJobs(jobs, input.profile, input.preferences)
+        const result = await runMatching(r, user, { limit: 4 });
+        const matches = result.items
           .map(({ job, match }) => ({ job: publicJob(job, user, plans), match }))
           .slice(0, 4);
         return { apps, saved, matches };
@@ -420,15 +421,19 @@ export async function handle(
         return ok(await savePreferences(u.id, await body()));
       }
     }
-    if (p === "me/matches" && method === "GET") {
+    if ((p === "me/matches" || p === "me/matches/details") && method === "GET") {
       const u = await requireUser("student");
+      await rateLimit('matching:' + u.id, 30);
       const plans = await configuredPlans();
-      return ok(await read(async r => {
-        const jobs = await r.find<Job>('jobs', { status: 'published', trust: 'verified' }, 1000);
-        const input = await matchingInputs(r, u);
-        return rankJobs(jobs, input.profile, input.preferences).slice(0, 30)
-          .map(({ job, match }) => ({ ...publicJob(job, u, plans), match }));
-      }));
+      const query = matchingQuerySchema.parse(Object.fromEntries(['q', 'limit', 'offset'].filter(k => url.searchParams.has(k)).map(k => [k, url.searchParams.get(k)])));
+      const { items, ...metadata } = await getMatches(u.id, query);
+      const results = items.map(({ job, match }) => ({ ...publicJob(job, u, plans), match }));
+      return ok(p.endsWith('/details') ? { items: results, ...metadata } : results);
+    }
+    if (p === 'admin/matching-policy') {
+      const actor = await requireUser('admin');
+      if (method === 'GET') return ok(await read(getRankingPolicy));
+      if (method === 'PUT') return ok(await configureRankingPolicy(actor, await body()));
     }
     if (p === "me/templates") {
       const u = await requireUser("student");

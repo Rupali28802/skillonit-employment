@@ -7,6 +7,8 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+    "matching:index": "node --env-file-if-exists=.env --import tsx src/matching-index.ts",
+    "test:matching": "node --import tsx --test tests/job-matching*.test.ts tests/matching*.test.ts",
     "dev": "node --env-file-if-exists=.env --import tsx --watch src/index.ts",
     "build": "tsc",
     "start": "node --env-file-if-exists=.env dist/index.js",

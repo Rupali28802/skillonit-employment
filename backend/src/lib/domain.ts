@@ -1,3 +1,4 @@
+import type { CandidateMatching, JobMatching } from './matching-contracts.js';
 export type Role = 'student' | 'employer' | 'admin';
 export type PlanCode = 'basic' | 'pro' | 'premium';
 export type Job = {
@@ -30,6 +31,7 @@ export type Job = {
   expiresAt: string;
   sample?: boolean;
   mnc?: boolean;
+  matching?: JobMatching;
 };
 export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company'> & {
   company: string;
@@ -48,6 +50,7 @@ export type Profile = {
   country: string;
   city: string;
   confirmed: boolean;
+  matching?: CandidateMatching;
   employmentHistory?: { title: string; employer: string; start: string; end: string; description: string }[];
 };
 export type Preferences = {
@@ -64,7 +67,7 @@ export type Preferences = {
   regions?: string[];
   indiaStates?: string[];
   cities?: string[];
-  salary?: { min: number; max: number; currency: string };
+  salary?: { min: number; max: number; currency: string; period?: 'hour' | 'month' | 'year' };
   industries?: string[];
   employmentTypes?: string[];
   companyPreferences?: { preferred: string[]; excluded: string[] };

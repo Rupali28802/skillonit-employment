@@ -185,6 +185,8 @@ export async function bootstrapIndexes() {
   if (!hello.setName && hello.msg !== 'isdbgrid')
     throw new Error('MongoDB transaction-capable topology required.');
   const db = mongo().db(process.env.MONGODB_DATABASE || 'skillonit');
+  await db.collection('matchingIndexState').createIndex({ id: 1 }, { unique: true });
+  await db.collection('jobs').createIndex({ status: 1, trust: 1, id: 1 });
   for (const c of [
     'users',
     'sessions',

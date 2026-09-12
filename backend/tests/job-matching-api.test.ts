@@ -33,7 +33,13 @@ test('matching HTTP API uses session owner, confirmed profile and persisted pref
     assert.equal(response.headers.get('cache-control'), 'private, no-store');
     const matches = (await response.json()).data;
     assert.ok(matches.length > 0);
-    assert.ok(matches.every((row: any) => row.match.version === 'confirmed-profile-v1' && row.match.score <= 100 && !('email' in row)));
+    assert.ok(matches.every((row: any) => row.match.version === 'enterprise-matching-v2' && row.match.score <= 100 && !('email' in row)));
+    const details = (await (await request('me/matches/details?limit=1')).json()).data;
+    assert.equal(details.items.length, 1);
+    assert.ok(details.items[0].match.explanations.length > 0);
+    assert.equal(details.provider, 'local');
+    assert.equal((await request('me/matches?limit=999')).status, 400);
+    assert.equal((await request('admin/matching-policy')).status, 403);
     const dashboard = (await (await request('me/dashboard')).json()).data;
     assert.deepEqual(dashboard.matches.map((row: any) => row.job.id), matches.slice(0, 4).map((row: any) => row.id));
     assert.equal((await request('me/preferences', 'PUT', { modes: ['On-site'], countries: ['No matching country'] })).status, 200);
