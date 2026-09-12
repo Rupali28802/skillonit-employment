@@ -45,6 +45,12 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
     filter.type = new RegExp(type, 'i');
   }
   const experience = params.get('experience');
+  if (params.has('experienceMin') || params.has('experienceMax')) {
+    const min = Number(params.get('experienceMin') || 0), max = Number(params.get('experienceMax') || 100);
+    if (Number.isFinite(min) && Number.isFinite(max) && min >= 0 && max >= min) {
+      filter.experienceMin = {$lte:max}; filter.experienceMax = {$gte:min}; filter.experienceDisclosed = {$ne:false};
+    } else filter.id='__invalid_experience_filter__';
+  }
   if (query.includes('fresher')) { filter.experienceMin = 0; filter.experienceDisclosed = { $ne: false }; }
   if (experience && Number.isFinite(Number(experience)) && Number(experience) >= 0) {
     filter.experienceMin = { $lte: Number(experience) }; filter.experienceMax = { $gte: Number(experience) };
@@ -65,7 +71,7 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
   if (clauses.length) filter.$and = clauses;
   const page = Math.max(1, Math.min(100000, Math.floor(Number(params.get('page')) || 1)));
   const sort: Record<string, 1 | -1> = params.get('sort') === 'salary'
-    ? { currency: 1, salaryMin: -1, id: 1 } : { sourcePostedAt: -1, discoveredAt: -1, id: 1 };
+    ? { currency: 1, salaryMin: -1, id: 1 } : params.get('sort') === 'discovered' ? {discoveredAt:-1,id:1} : { sourcePostedAt: -1, discoveredAt: -1, id: 1 };
   const result = await read(async r => ({ jobs: await r.page<Job>('jobs', filter, sort, (page - 1) * 12, 12), total: await r.count('jobs', filter) }));
   const plans = await configuredPlans();
   if (semantic) {

@@ -363,6 +363,26 @@ export async function handle(
       await requireUser('admin');
       return ok(await read(r => r.page('socialPosts',{}, {updatedAt:-1,id:1},0,100)));
     }
+    if (p === 'jobs/discovery-status' && method === 'GET') {
+      const now = new Date(), today = new Date(now); today.setUTCHours(0,0,0,0);
+      const sinceValue = url.searchParams.get('since');
+      const since = sinceValue ? Date.parse(sinceValue) : NaN;
+      return ok(await read(async r=> {
+        const sources = await r.find<{id:string;intervalMinutes:number}>('jobFeedSources',{enabled:true,approved:true},1000);
+        const states = new Map((await r.find<{id:string;lastSuccessAt?:string;failures:number}>('jobFeedStates',{},1000)).map(s=>[s.id,s]));
+        const audit = await r.get<{countries:{indexedListings:number}[];generatedAt:string}>('jobEngineState','coverage-latest');
+        const heartbeat = await r.get<{updatedAt:string}>('jobEngineState','discovery-heartbeat');
+        const base={status:'published',sample:{$ne:true},expiresAt:{$gt:now.toISOString()}};
+        return {sourcesOnline:sources.filter(s=>{const state=states.get(s.id);return state?.lastSuccessAt && !state.failures && now.getTime()-Date.parse(state.lastSuccessAt)<s.intervalMinutes*120000;}).length,
+          workerOnline: !!heartbeat && now.getTime()-Date.parse(heartbeat.updatedAt)<600000,
+          workerLastSeenAt: heartbeat?.updatedAt ?? null,
+          detectedToday:await r.count('jobs',{...base,discoveredAt:{$gte:today.toISOString()}}),
+          newJobs:await r.count('jobs',{...base,discoveredAt:{$gte:new Date(now.getTime()-600000).toISOString()}}),
+          newSince: Number.isFinite(since) && since <= now.getTime() && since >= now.getTime()-86400000
+            ? await r.count('jobs',{...base,discoveredAt:{$gt:new Date(since).toISOString(),$lte:now.toISOString()}}) : 0,
+          countries:audit?.countries.filter(c=>c.indexedListings>0).length ?? null, measuredAt:now.toISOString(), countryAuditAt:audit?.generatedAt ?? null};
+      }));
+    }
     if (p === "jobs" && method === "GET")
       return ok(await searchJobs(url.searchParams, await currentUser()));
     if (p === "plans" && method === "GET")

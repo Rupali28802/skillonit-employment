@@ -1,6 +1,8 @@
 import isoCountries from 'i18n-iso-countries';
-const names = new Intl.DisplayNames(['en'], { type: 'region' });
-export const countryEntries = Object.keys(isoCountries.getAlpha2Codes()).map(code => ({ code, name: names.of(code)! })).sort((a, b) => a.name.localeCompare(b.name, 'en'));
+import countryNames from './country-names.json';
+// Keep labels and ordering identical during server rendering and hydration.
+// Browser and Node ICU versions can return different Intl.DisplayNames values.
+export const countryEntries = countryNames;
 export const countries = countryEntries.map(c => c.name);
 const aliases: Record<string, string> = { UK: 'GB', USA: 'US', UAE: 'AE', 'U.S.': 'US', 'U.S.A.': 'US', 'UNITED STATES OF AMERICA': 'US', 'SOUTH KOREA': 'KR', 'RUSSIA': 'RU', 'VIETNAM': 'VN', 'TURKEY': 'TR' };
 export function normalizeCountry(value: string): string | undefined {

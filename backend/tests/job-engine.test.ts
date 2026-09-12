@@ -497,3 +497,14 @@ test('semantic index orders vector matches and ignores incompatible vectors', as
  const {payPeriod}=await import('../src/job-engine/normalize.ts');
  assert.equal(payPeriod('PA'),'annual'); assert.equal(payPeriod('PH'),'hourly'); assert.equal(payPeriod(''),null);
 });
+
+test('live discovery sorts by discovery and filters overlapping disclosed experience', async () => {
+  const base={...sampleJobs()[0],sample:false};
+  const now=Date.now();
+  await transaction(async r=>{for(const [i,min,max,disclosed] of [[0,0,2,true],[1,3,5,true],[2,0,0,false]] as const)await r.put('jobs',{...base,id:`live-${i}`,discoveredAt:new Date(now-i*60000).toISOString(),sourcePostedAt:new Date(now+i*60000).toISOString(),experienceMin:min,experienceMax:max,experienceDisclosed:disclosed});});
+  const latest=await searchJobs(new URLSearchParams('sort=discovered'));
+  assert.equal(latest.jobs[0].id,'live-0');
+  assert.equal((await searchJobs(new URLSearchParams('experienceMin=0&experienceMax=2'))).total,1);
+  assert.equal((await searchJobs(new URLSearchParams('experienceMin=5&experienceMax=100'))).total,1);
+  assert.equal((await searchJobs(new URLSearchParams('experienceMin=bad'))).total,0);
+});

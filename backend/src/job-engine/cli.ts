@@ -59,7 +59,19 @@ try {
   } else if (command === 'coverage') console.log(JSON.stringify(await coverageReport(), null, 2));
   else if (command === 'status') console.log(JSON.stringify(await engineStatus(), null, 2));
   else if (command === 'once' || command === 'once-jooble' || command === 'watch') {
+    let recordingHeartbeat=false;
+    const heartbeat=async()=>{
+      if(recordingHeartbeat)return;
+      recordingHeartbeat=true;
+      try {await transaction(r=>r.put('jobEngineState',{id:'discovery-heartbeat',updatedAt:new Date().toISOString(),status:'running'}));}
+      catch {console.error('DISCOVERY_HEARTBEAT_FAILED');}
+      finally {recordingHeartbeat=false;}
+    };
+    const heartbeatTimer=command==='watch'?setInterval(()=>void heartbeat(),30000):undefined;
+    heartbeatTimer?.unref();
+    try {
     do {
+      if(command==='watch') await heartbeat();
       const result = await runEngine(undefined, command === 'once-jooble' ? 'jooble' : undefined);
       const changed = result.results.filter(r => r.counts || r.status === 'failed' || r.status === 'invalid_configuration');
       if (changed.length || result.expired) {
@@ -71,6 +83,7 @@ try {
       if (command !== 'watch') break;
       for (let i = 0; i < 30 && !stopping; i++) await delay(1000);
     } while (!stopping);
+    } finally {if(heartbeatTimer)clearInterval(heartbeatTimer);}
   } else throw Error('UNKNOWN_COMMAND');
 } catch {
   console.error('Job engine failed. Check MongoDB, source configuration and saved source status; private connection details withheld.');
