@@ -1,4 +1,5 @@
 import { googleAuth } from './google-auth.js';
+import { mailboxAuth } from './mailbox-auth.js';
 import { isLocalPreviewOrigin } from './lib/runtime-config.js';
 import { createCvUploadRouter } from './student-module.js';
 import express, { type ErrorRequestHandler } from 'express';
@@ -37,6 +38,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use('/api/v1/auth', googleAuth);
+app.use('/api/v1/mail', mailboxAuth);
 app.use(createCvUploadRouter());
 app.get('/api/v1/jobs/stream', (req, res) => {
   res.set({

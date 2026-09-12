@@ -370,22 +370,35 @@ async function Candidate({ section, user }: { section: string; user: User }) {
         </Link>
       </div>
     );
-  if (section === 'mail')
+  if (section === 'mail') {
+    const mailbox = await api<{
+      available: boolean;
+      connected: boolean;
+      provider: string | null;
+      email: string | null;
+    }>('mail/status');
     return (
       <div className="panel">
-        <span className="pill">Not connected</span>
+        <span className="pill">{mailbox.connected ? 'Connected' : 'Not connected'}</span>
         <h2 style={{ marginTop: 20 }}>Your mailbox, with your permission.</h2>
         <p>
-          Mailbox integration uses OAuth. SkillonIT will never ask for your
-          email password. You can revoke access at any time.
+          {mailbox.connected
+            ? `${mailbox.email} can send approved job applications. SkillOnIT cannot read your inbox.`
+            : 'Connect Gmail securely. SkillOnIT will never ask for your email password or read your inbox.'}
         </p>
-        <Action endpoint="mail/connect" label="Connect a mailbox" />
+        {mailbox.connected ? (
+          <Action endpoint="mail/disconnect" label="Disconnect mailbox" confirm />
+        ) : (
+          <Action endpoint="mail/connect" label="Connect Gmail" />
+        )}
         <p className="small" style={{ marginTop: 20 }}>
-          Provider setup is pending. Clicking this control does not grant access
-          or send email.
+          {mailbox.available
+            ? 'You approve the send-only permission on Google. Access can be revoked at any time.'
+            : 'Mailbox authorization is awaiting Google project configuration.'}
         </p>
       </div>
     );
+  }
   if (section === 'billing') {
     const plan = (await configuredPlans()).find((p) => p.code === user.plan)!;
     return (

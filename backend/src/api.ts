@@ -34,10 +34,10 @@ import {
   publicJob,
   eligibility,
   canTransition,
-  matchJob,
   isRecent,
 } from "./lib/domain.js";
 import { searchJobs } from "./lib/search.js";
+import { matchingInputs, rankJobs } from './lib/job-matching.js';
 import { providerHealth, RazorpayProvider } from "./lib/providers.js";
 import { featureRoute, notify } from "./features.js";
 import { authMailConfig, sendAuthMail } from "./lib/auth-mail.js";
@@ -46,6 +46,11 @@ import { issuePasswordReset, resetPassword, revokeSessions } from "./lib/auth-li
 import { getStudentProfileStatus, updateStudentProfile } from "./lib/student-profile.js";
 import { studentModuleRoute } from "./student-module.js";
 import { savePreferences } from "./lib/student-onboarding.js";
+import {
+  disconnectMailbox,
+  mailboxConnectStartUrl,
+  mailboxStatus,
+} from './mailbox-auth.js';
 type App = {
   id: string;
   userId: string;
@@ -100,15 +105,11 @@ export async function handle(
       const data = await read(async (r) => {
         const apps = await r.find("applications", { userId: user.id });
         const saved = await r.find("savedJobs", { userId: user.id });
-        const jobs = await r.find<Job>("jobs", { status: "published" });
+        const jobs = await r.find<Job>("jobs", { status: "published", trust: "verified" }, 1000);
         const plans = await configuredPlans();
-        const matches = jobs
-          .filter((job) => isRecent(job))
-          .map((job) => ({
-            job: publicJob(job, user, plans),
-            match: matchJob(job, user.profile, user.preferences),
-          }))
-          .sort((a, b) => b.match.score - a.match.score)
+        const input = await matchingInputs(r, user);
+        const matches = rankJobs(jobs, input.profile, input.preferences)
+          .map(({ job, match }) => ({ job: publicJob(job, user, plans), match }))
           .slice(0, 4);
         return { apps, saved, matches };
       });
@@ -422,17 +423,12 @@ export async function handle(
     if (p === "me/matches" && method === "GET") {
       const u = await requireUser("student");
       const plans = await configuredPlans();
-      const jobs = await read((r) => r.find<Job>("jobs", { status: "published" }, 1000));
-      return ok(
-        jobs
-          .filter((job) => isRecent(job))
-          .map((j) => ({
-            ...publicJob(j, u, plans),
-            match: matchJob(j, u.profile, u.preferences),
-          }))
-          .sort((a, b) => b.match.score - a.match.score)
-          .slice(0, 30),
-      );
+      return ok(await read(async r => {
+        const jobs = await r.find<Job>('jobs', { status: 'published', trust: 'verified' }, 1000);
+        const input = await matchingInputs(r, u);
+        return rankJobs(jobs, input.profile, input.preferences).slice(0, 30)
+          .map(({ job, match }) => ({ ...publicJob(job, u, plans), match }));
+      }));
     }
     if (p === "me/templates") {
       const u = await requireUser("student");
@@ -495,20 +491,15 @@ export async function handle(
     }
     if (p.startsWith("mail/")) {
       const u = await requireUser("student");
-      if (p === "mail/status")
-        return ok({
-          connected: false,
-          provider: null,
-          status: "Not configured",
-        });
-      if (p === "mail/disconnect") {
-        await transaction((r) => audit(r, u.id, "mail.disconnected", u.id));
-        return ok({ connected: false });
-      }
+      if (p === "mail/status" && method === 'GET') return ok(await mailboxStatus(u.id));
+      if (p === "mail/connect" && method === 'POST')
+        return ok({ startUrl: mailboxConnectStartUrl(u) });
+      if (p === "mail/disconnect" && method === 'POST')
+        return ok(await disconnectMailbox(u));
       throw new ApiError(
-        503,
-        "OAUTH_UNAVAILABLE",
-        "Mailbox authorization is not configured yet. No mailbox has been accessed.",
+        404,
+        "NOT_FOUND",
+        "Mailbox endpoint not found.",
       );
     }
     if (p === "applications" && method === "GET") {

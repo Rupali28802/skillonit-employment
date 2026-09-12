@@ -192,7 +192,12 @@ export function Action({
               throw Error(
                 j.error?.message || 'The action could not be completed.',
               );
-            if (redirect) window.location.href = redirect;
+            if (typeof j.data?.startUrl === 'string') {
+              const destination = new URL(j.data.startUrl, window.location.origin);
+              if (destination.origin !== window.location.origin)
+                throw Error('The authorization destination is invalid.');
+              window.location.assign(destination.href);
+            } else if (redirect) window.location.href = redirect;
             else {
               setMessage(j.data?.message || 'Updated successfully.');
               window.location.reload();

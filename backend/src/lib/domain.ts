@@ -284,43 +284,7 @@ export function isRecent(job: Job, days = 90, now = Date.now()) {
     Date.parse(job.expiresAt) > now
   );
 }
-export function matchJob(job: Job, profile: Profile, preferences: Preferences) {
-  const skills = profile.skills.filter((s) =>
-    job.skills.some((t) => t.toLowerCase() === s.toLowerCase()),
-  );
-  const role = [...preferences.roles, ...preferences.relatedRoles].some((r) =>
-    job.title.toLowerCase().includes(r.toLowerCase()),
-  );
-  const experience =
-    profile.experience !== null && profile.experience >= job.experienceMin &&
-    profile.experience <= job.experienceMax;
-  const location =
-    !preferences.countries.length ||
-    preferences.countries.includes(job.country);
-  const mode =
-    !preferences.modes.length || preferences.modes.includes(job.mode);
-  const excluded = preferences.exclusions.some((s) =>
-    (job.title + ' ' + job.company).toLowerCase().includes(s.toLowerCase()),
-  );
-  return {
-    score: excluded
-      ? 0
-      : Math.round(
-          (skills.length / Math.max(job.skills.length, 1)) * 40 +
-            Number(role) * 25 +
-            Number(experience) * 15 +
-            Number(location) * 10 +
-            Number(mode) * 10,
-        ),
-    reasons: [
-      skills.length ? `${skills.length} matching skills` : null,
-      role ? 'Target or related role' : null,
-      experience ? 'Experience fits' : null,
-      location ? 'Location fits' : null,
-      mode ? 'Work arrangement fits' : null,
-    ].filter(Boolean),
-  };
-}
+export { matchJob } from './job-matching.js';
 export function eligibility(
   user: User,
   job: Job,
