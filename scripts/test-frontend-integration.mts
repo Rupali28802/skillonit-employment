@@ -82,10 +82,10 @@ try {
   }
   assert.ok(ready, 'Test frontend started');
   const homepage = await (await request('/')).text();
-  assert.ok(homepage.includes('Find the Right Job.') && homepage.includes('job-hero-art'), 'Existing homepage preserved');
+  assert.ok(homepage.includes('Find the Right Job.') && homepage.includes('live-discovery-heading'), 'Job-hunting homepage preserved');
   const styles = [...homepage.matchAll(/href="([^"\s]+\.css(?:\?[^"\s]*)?)"/g)].map(match => match[1]);
   const css = (await Promise.all(styles.map(async path => (await request(path.replaceAll('&amp;', '&'))).text()))).join('\n');
-  for (const selector of ['.auth-card', '.profile-sidebar', '.job-hero', '.vertical-job-feed']) assert.ok(css.includes(selector), `Production CSS includes ${selector}`);
+  for (const selector of ['.auth-card', '.profile-sidebar', '.live-discovery', '.vertical-job-feed']) assert.ok(css.includes(selector), `Production CSS includes ${selector}`);
   const { upsertSource, runEngine } = await import('../backend/src/job-engine/engine.js');
   await upsertSource({ id: 'integration-feed', type: 'ashby', name: 'Fixture careers', board: 'fixture', company: 'Fixture Company',
     enabled: true, approved: true, publicListing: true, publish: true, intervalMinutes: 30, maxPages: 1,
