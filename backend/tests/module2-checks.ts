@@ -73,7 +73,10 @@ export async function checkModule2() {
     const confirmation = { profile: { ...profile, confirmed: true }, confirmed: true, expectedRevision: review.revision, expectedProfileRevision: 0, name: 'Reviewed CV', targetRoles: ['Backend engineer'], summary: 'Candidate-reviewed summary for testing.' };
     await assert.rejects(confirmCv(id, cv.id, { ...confirmation, confirmed: false }));
     await assert.rejects(confirmCv(otherId, cv.id, confirmation), { code: 'NOT_FOUND' });
+    await transaction(async r => { const existing = (await r.get<User>('users', id))!; await r.put('users', { ...existing, profile: { ...existing.profile, avatarVersion: 'existing-avatar', coverTheme: 'design' } }); });
     const version = await confirmCv(id, cv.id, confirmation); assert.equal(version.documentId, cv.id);
+    const confirmedProfile = (await read(r => r.get<User>('users', id)))!.profile;
+    assert.equal(confirmedProfile.avatarVersion, 'existing-avatar'); assert.equal(confirmedProfile.coverTheme, 'design');
     assert.equal((await read(r => r.get<User>('users', id)))!.profile.confirmed, true);
     assert.equal((await read(r => r.get<User>('users', id)))!.passwordHash, user.passwordHash);
     await assert.rejects(confirmCv(id, cv.id, confirmation), { code: 'CV_REVIEW_CONFLICT' });

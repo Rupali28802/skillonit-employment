@@ -6,6 +6,7 @@ import {
   randomUUID,
 } from 'node:crypto';
 import { cookies, requestContext } from '../request-context.js';
+import { isLocalPreviewOrigin } from './runtime-config.js';
 import { read, transaction, type Repository } from './store.js';
 import type { User, Role } from './domain.js';
 export class ApiError extends Error {
@@ -137,7 +138,7 @@ export function sameOrigin(request: Request) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return;
   const origin = request.headers.get('origin');
   const expected = process.env.APP_URL || new URL(request.url).origin;
-  if (origin && origin !== expected)
+  if (origin && origin !== expected && !isLocalPreviewOrigin(origin))
     throw new ApiError(
       403,
       'ORIGIN_REJECTED',

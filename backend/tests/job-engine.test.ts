@@ -14,7 +14,7 @@ import { canonicalUrl, normalize, categoryFor } from '../src/job-engine/normaliz
 import { fetchFeed, FeedError, type Candidate, type FeedBatch } from '../src/job-engine/adapters.ts';
 import { runEngine, upsertSource, setEmployerRefresh } from '../src/job-engine/engine.ts';
 import { searchJobs } from '../src/lib/search.ts';
-import { expireJobs } from '../src/lib/lifecycle.ts';
+import { expireJobs, expectedJobExpiry } from '../src/lib/lifecycle.ts';
 
 let replica: MongoMemoryReplSet, client: MongoClient;
 const source: FeedSource = { id: 'test-board', type: 'ashby', name: 'Test employer', company: 'Example Employer', board: 'example',
@@ -25,13 +25,40 @@ const candidate = (overrides: Partial<Candidate> = {}): Candidate => ({ external
 const batch = (jobs = [candidate()], overrides: Partial<FeedBatch> = {}): FeedBatch => ({ jobs, complete: true, snapshot: true, requests: 1, ...overrides });
 const joobleSource = (): FeedSource => sourceSchema.parse({ ...source, id: 'jooble-gb', type: 'jooble', countryCode: 'gb', intervalMinutes: 1440, maxPages: 1 });
 
+test('jobs expire 90 days after posting or at an earlier employer close date', () => {
+  const now = Date.parse('2026-09-17T12:00:00.000Z');
+  const postedAt = new Date(now - 10 * 86400000).toISOString();
+  const ninetyDayExpiry = new Date(Date.parse(postedAt) + 90 * 86400000).toISOString();
+  assert.equal(normalize(candidate({ postedAt }), source, now).expiresAt, ninetyDayExpiry);
+
+  const closesAt = new Date(now + 7 * 86400000).toISOString();
+  assert.equal(normalize(candidate({ postedAt, closesAt }), source, now).expiresAt, closesAt);
+
+  const withoutPostedDate = normalize(candidate({ postedAt: undefined }), source, now);
+  assert.equal(withoutPostedDate.expiresAt, new Date(now + 90 * 86400000).toISOString());
+});
+
 test('expiry scans past a full fresh page and closes only expired jobs', async () => {
   const base = normalize(candidate(), source);
   await transaction(r => r.putMany('jobs', Array.from({ length: 302 }, (_, i) => ({ ...base, id: `expiry-${String(i).padStart(4, '0')}`,
-    ...(i >= 300 ? { expiresAt: new Date(Date.now() - 1000).toISOString() } : {}) }))));
+    ...(i >= 300 ? {
+      discoveredAt: new Date(Date.now() - 91 * 86400000).toISOString(),
+      sourcePostedAt: new Date(Date.now() - 91 * 86400000).toISOString(),
+      expiresAt: new Date(Date.now() - 86400000).toISOString(),
+    } : {}) }))));
   assert.equal(await expireJobs(), 2);
   assert.equal(await read(r => r.count('jobs', { status: 'published' })), 300);
   assert.equal(await expireJobs(), 0);
+});
+
+test('retention repairs legacy short feed deadlines without changing the posting date', async () => {
+  const job = normalize(candidate(), source);
+  const legacy = { ...job, expiresAt: new Date(Date.now() + 3600000).toISOString() };
+  await transaction(r => r.put('jobs', legacy));
+  assert.equal(await expireJobs(), 0);
+  const repaired = await read(r => r.get<Job>('jobs', job.id));
+  assert.equal(repaired?.expiresAt, expectedJobExpiry(job));
+  assert.equal(repaired?.sourcePostedAt, job.sourcePostedAt);
 });
 
 test('Jooble uses regional POST, preserves referral links and does not invent posting dates or eligibility', async () => {

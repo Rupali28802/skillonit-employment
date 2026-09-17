@@ -1,4 +1,5 @@
 export { countries } from './countries.js';
+import type { CandidateMatching, JobMatching } from './matching-contracts.js';
 export type Role = 'student' | 'employer' | 'admin';
 export type PlanCode = 'basic' | 'pro' | 'premium';
 export type Job = {
@@ -48,6 +49,7 @@ export type Job = {
     normalizedAt: string; method: 'source-fields';
   };
   feed?: { sourceId: string; externalId: string; publicListing: boolean; attributionUrl: string; lastSeenAt: string; closedByEngine?: boolean };
+  matching?: JobMatching;
 };
 export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company' | 'feed'> & {
   company: string;
@@ -57,6 +59,10 @@ export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company' | 'feed
   sourceJobId?: string;
 };
 export type Profile = {
+  avatarVersion?: string;
+  coverVersion?: string;
+  logoVersion?: string;
+  coverTheme?: string;
   name: string;
   headline: string;
   skills: string[];
@@ -65,6 +71,7 @@ export type Profile = {
   country: string;
   city: string;
   confirmed: boolean;
+  matching?: CandidateMatching;
   employmentHistory?: { title: string; employer: string; start: string; end: string; description: string }[];
 };
 export type Preferences = {
@@ -81,7 +88,7 @@ export type Preferences = {
   regions?: string[];
   indiaStates?: string[];
   cities?: string[];
-  salary?: { min: number; max: number; currency: string };
+  salary?: { min: number; max: number; currency: string; period?: 'hour' | 'month' | 'year' };
   industries?: string[];
   employmentTypes?: string[];
   companyPreferences?: { preferred: string[]; excluded: string[] };
@@ -287,50 +294,15 @@ export function publicJob(
   };
 }
 export function isRecent(job: Job, days = 90, now = Date.now()) {
+  const publishedAt = Date.parse(job.sourcePostedAt || job.discoveredAt);
   return (
     job.status === 'published' &&
-    Date.parse(job.discoveredAt) >= now - days * 86400000 &&
+    Number.isFinite(publishedAt) &&
+    publishedAt >= now - days * 86400000 &&
     Date.parse(job.expiresAt) > now
   );
 }
-export function matchJob(job: Job, profile: Profile, preferences: Preferences) {
-  const skills = profile.skills.filter((s) =>
-    job.skills.some((t) => t.toLowerCase() === s.toLowerCase()),
-  );
-  const role = [...preferences.roles, ...preferences.relatedRoles].some((r) =>
-    job.title.toLowerCase().includes(r.toLowerCase()),
-  );
-  const experience =
-    job.experienceDisclosed !== false &&
-    profile.experience !== null && profile.experience >= job.experienceMin &&
-    profile.experience <= job.experienceMax;
-  const location =
-    !preferences.countries.length ||
-    preferences.countries.includes(job.country);
-  const mode =
-    !preferences.modes.length || preferences.modes.includes(job.mode);
-  const excluded = preferences.exclusions.some((s) =>
-    (job.title + ' ' + job.company).toLowerCase().includes(s.toLowerCase()),
-  );
-  return {
-    score: excluded
-      ? 0
-      : Math.round(
-          (skills.length / Math.max(job.skills.length, 1)) * 40 +
-            Number(role) * 25 +
-            Number(experience) * 15 +
-            Number(location) * 10 +
-            Number(mode) * 10,
-        ),
-    reasons: [
-      skills.length ? `${skills.length} matching skills` : null,
-      role ? 'Target or related role' : null,
-      experience ? 'Experience fits' : null,
-      location ? 'Location fits' : null,
-      mode ? 'Work arrangement fits' : null,
-    ].filter(Boolean),
-  };
-}
+export { matchJob } from './job-matching.js';
 export function eligibility(
   user: User,
   job: Job,

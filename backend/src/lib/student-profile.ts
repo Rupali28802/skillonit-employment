@@ -8,6 +8,12 @@ const updateSchema = profileSchema.extend({
   expectedRevision: z.number().int().min(0).optional(),
 });
 
+/** Image references belong to the existing media API, not profile/CV input. */
+export function preserveProfileMedia(previous: Profile, next: Profile): Profile {
+  const keys = ['avatarVersion', 'coverVersion', 'logoVersion', 'coverTheme'] as const;
+  return { ...next, ...Object.fromEntries(keys.filter(key => Object.hasOwn(previous, key)).map(key => [key, previous[key]])) };
+}
+
 function requireStudent(user: User | null): User {
   if (!user || user.disabled)
     throw new ApiError(401, 'AUTH_REQUIRED', 'Please sign in again.');
@@ -49,7 +55,7 @@ export async function updateStudentProfile(userId: string, input: unknown): Prom
       throw new ApiError(409, 'PROFILE_CONFLICT', 'Your profile changed. Reload it before saving again.');
     const now = new Date().toISOString();
     const updated: User = {
-      ...latest, profile, name: profile.name || latest.name, profileRevision: revision + 1,
+      ...latest, profile: preserveProfileMedia(latest.profile, profile), name: profile.name || latest.name, profileRevision: revision + 1,
       profileUpdatedAt: now,
       profileProvenance: Object.fromEntries(Object.keys(profile).filter(k => k !== 'confirmed').map(key => [key, { source: 'MANUAL', status: profile.confirmed ? 'CANDIDATE_CONFIRMED' : 'UNCONFIRMED' }])),
     };

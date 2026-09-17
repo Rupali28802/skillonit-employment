@@ -46,7 +46,7 @@ export function AuthRecovery({ mode }: { mode: RecoveryMode }) {
           if (reset && !token.current) throw Error('Open the password reset link from your email again.');
           if (reset && fields.get('password') !== fields.get('confirmPassword')) throw Error('Your passwords do not match.');
           const data = await send(mode, reset ? { token: token.current, password: fields.get('password') } : { email, ...(verify ? { otp: fields.get('otp') } : {}) });
-          if (verify) { sessionStorage.removeItem('skillonit-verification-email'); window.location.assign(data.user?.role === 'employer' ? '/employer' : '/dashboard'); }
+          if (verify) { sessionStorage.removeItem('skillonit-verification-email'); window.location.assign('/dashboard'); }
           else { setMessage(data.message || 'Request completed.'); setComplete(true); token.current = ''; }
         } catch (error) { setMessage(error instanceof Error ? error.message : 'Please try again.'); }
         finally { setBusy(false); }

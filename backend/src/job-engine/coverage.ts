@@ -12,7 +12,7 @@ export async function coverageReport() {
   const now = new Date();
   for (;;) {
     const jobs = await read(r => r.scan<Job>('jobs', { status: 'published', sample: { $ne: true },
-      discoveredAt: { $gte: new Date(now.getTime() - 90 * 86400000).toISOString() }, expiresAt: { $gt: now.toISOString() } }, cursor, 500));
+      expiresAt: { $gt: now.toISOString() } }, cursor, 500));
     if (!jobs.length) break;
     for (const j of jobs) {
       total++; domains[j.category] = (domains[j.category] || 0) + 1; types[j.type] = (types[j.type] || 0) + 1;

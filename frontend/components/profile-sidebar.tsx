@@ -90,7 +90,6 @@ export function ProfileSidebar({
         body: file,
       });
       const result = await response.json();
-      if (response.status === 404) throw Error('Photo uploads are not supported by the connected backend yet. Your profile details can still be saved.');
       if (!response.ok) throw Error(result.error?.message || 'Upload failed.');
       await refresh();
       setMessage('Image saved to your profile.');
@@ -107,7 +106,6 @@ export function ProfileSidebar({
       const response = await fetch(`/api/v1/me/profile-image/${kind}`, {
         method: 'DELETE',
       });
-      if (response.status === 404) throw Error('Photo management is not supported by the connected backend yet.');
       if (!response.ok) throw Error('Could not remove image.');
       await refresh();
       setMessage('Image removed.');
@@ -126,7 +124,6 @@ export function ProfileSidebar({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ coverTheme }),
       });
-      if (response.status === 404) throw Error('Saving cover themes is not supported by the connected backend yet.');
       if (!response.ok) throw Error('Could not save cover theme.');
       await refresh();
       setMessage('Profession theme saved.');

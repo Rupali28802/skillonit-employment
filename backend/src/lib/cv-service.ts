@@ -1,4 +1,5 @@
 import { validateCvStructure } from './cv-file-validation.js';
+import { preserveProfileMedia } from './student-profile.js';
 import { bounded, module2Config } from './module2-config.js';
 import { randomUUID, createHash } from 'node:crypto';
 import { z } from 'zod';
@@ -151,10 +152,10 @@ export async function confirmCv(userId: string, id: string, input: unknown) {
     const now = new Date().toISOString();
     const profile = profileSchema.parse({ ...extractedDraft(row.draft ?? {}).profile, ...data.profile, confirmed: true });
     const provenance = { ...row.provenance };
-    for (const key of Object.keys(data.profile ?? {})) if (key !== 'confirmed' && JSON.stringify(data.profile?.[key as keyof Profile]) !== JSON.stringify(row.draft?.[key as keyof Profile])) provenance[key] = 'Candidate edited';
+    for (const key of Object.keys(data.profile ?? {})) if (key !== 'confirmed' && JSON.stringify(data.profile?.[key as keyof NonNullable<typeof data.profile>]) !== JSON.stringify(row.draft?.[key as keyof Profile])) provenance[key] = 'Candidate edited';
     const version = { id: randomUUID(), userId, documentId: id, name: data.name, targetRole: data.targetRoles[0] ?? '', targetRoles: data.targetRoles, summary: data.summary, profile, provenance, confirmed: true, source: 'candidate-reviewed', createdAt: now };
     await r.put('cvVersions', version);
-    await r.put('users', { ...u, activeCvVersionId: version.id, profileProvenance: Object.fromEntries(Object.keys(profile).filter(k => k !== 'confirmed').map(k => [k, { source: provenance[k] === 'Extracted from CV' ? 'CV_EXTRACTED' : 'MANUAL', status: 'CANDIDATE_CONFIRMED' }])), name: profile.name || u.name, profile, profileRevision: (u.profileRevision ?? 0) + 1, profileUpdatedAt: now, profileConfirmedAt: now });
+    await r.put('users', { ...u, activeCvVersionId: version.id, profileProvenance: Object.fromEntries(Object.keys(profile).filter(k => k !== 'confirmed').map(k => [k, { source: provenance[k] === 'Extracted from CV' ? 'CV_EXTRACTED' : 'MANUAL', status: 'CANDIDATE_CONFIRMED' }])), name: profile.name || u.name, profile: preserveProfileMedia(u.profile, profile), profileRevision: (u.profileRevision ?? 0) + 1, profileUpdatedAt: now, profileConfirmedAt: now });
     await r.put('cvDocuments', { ...row, activeVersionId: version.id, draft: { ...profile, confirmed: false }, provenance, status: 'confirmed', revision: row.revision + 1, updatedAt: now });
     await audit(r, userId, 'cv.confirmed', id); return version;
   });

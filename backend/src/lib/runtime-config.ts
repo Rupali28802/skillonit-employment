@@ -32,3 +32,13 @@ export function validateRuntime(env = process.env) {
   if (!Number.isInteger(port) || port < 1 || port > 65535)
     throw new Error('PORT must be an integer from 1 to 65535.');
 }
+
+// Optional loopback preview alongside the configured HTTPS application.
+// Never accepts arbitrary origins and never applies to a production backend.
+export function isLocalPreviewOrigin(origin: string, env = process.env) {
+  if (env.NODE_ENV === 'production' || env.HOST !== '127.0.0.1' || !env.LOCAL_PREVIEW_ORIGIN) return false;
+  try {
+    const local = new URL(env.LOCAL_PREVIEW_ORIGIN);
+    return ['localhost', '127.0.0.1', '[::1]'].includes(local.hostname) && local.protocol === 'http:' && local.origin === origin && local.href === local.origin + '/';
+  } catch { return false; }
+}

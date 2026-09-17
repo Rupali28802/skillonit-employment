@@ -1,4 +1,6 @@
 import { googleAuth } from './google-auth.js';
+import { mailboxAuth } from './mailbox-auth.js';
+import { isLocalPreviewOrigin } from './lib/runtime-config.js';
 import { createCvUploadRouter } from './student-module.js';
 import express, { type ErrorRequestHandler } from 'express';
 import { handle } from './api.js';
@@ -17,7 +19,7 @@ app.use((req, res, next) => {
     'X-Frame-Options': 'DENY',
   });
   const origin = req.get('origin');
-  if (origin && origin === (process.env.APP_URL || 'http://localhost:3000')) {
+  if (origin && (origin === (process.env.APP_URL || 'http://localhost:3000') || isLocalPreviewOrigin(origin))) {
     res.set({
       'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Credentials': 'true',
@@ -28,7 +30,7 @@ app.use((req, res, next) => {
   }
   if (req.method === 'OPTIONS') {
     res.sendStatus(
-      origin && origin !== (process.env.APP_URL || 'http://localhost:3000')
+      origin && origin !== (process.env.APP_URL || 'http://localhost:3000') && !isLocalPreviewOrigin(origin)
         ? 403
         : 204,
     );
@@ -37,6 +39,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use('/api/v1/auth', googleAuth);
+app.use('/api/v1/mail', mailboxAuth);
 app.use(createCvUploadRouter());
 app.get('/api/v1/jobs/stream', (req, res) => {
   res.set({
@@ -51,6 +54,7 @@ app.get('/api/v1/jobs/stream', (req, res) => {
   res.on('close', () => { clearInterval(timer); unsubscribe(); });
 });
 // Keep bytes unchanged for payment webhook signatures; business parsing is in the handler.
+app.use('/api/v1/me/profile-image', express.raw({ type: () => true, limit: '2mb' }));
 app.use(
   '/api/v1',
   express.raw({ type: () => true, limit: '64kb' }),

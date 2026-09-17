@@ -36,6 +36,7 @@ export type Job = {
   experienceDisclosed?: boolean;
   salaryText?: string;
   sourcePostedAt?: string;
+  sourceUpdatedAt?: string;
   normalizedFacts?: {salary:{period:string|null}};
 };
 export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company'> & {
@@ -79,6 +80,7 @@ export type User = {
   disabled?: boolean;
   createdAt: string;
   profile: Profile;
+  profileRevision?: number;
   preferences: Preferences;
 };
 export type Plan = {
