@@ -222,11 +222,9 @@ export function Action({
 export function AuthForm({
   register = false,
   demo = false,
-  googleAuthUrl = '/api/v1/auth/google',
 }: {
   register?: boolean;
   demo?: boolean;
-  googleAuthUrl?: string;
 }) {
   const [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false),
@@ -357,7 +355,7 @@ export function AuthForm({
                 const response = await fetch('/api/v1/auth/google/status');
                 const result = await response.json();
                 if (!response.ok || !result.data?.available) throw Error('Google sign-in is not available yet. Please use email sign-in.');
-                window.location.assign(result.data.startUrl || googleAuthUrl);
+                window.location.assign(result.data.startUrl);
               } catch (error) { setMessage(error instanceof Error ? error.message : 'Google sign-in is unavailable.'); setBusy(false); }
             }}><span className="auth-google-mark" aria-hidden="true">G</span>Continue with Google</button>
             <div className="auth-divider"><span>or continue with email</span></div>
