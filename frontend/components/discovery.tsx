@@ -1,5 +1,5 @@
 'use client';
-import '@/app/live-stack.css';
+import '@/app/vertical-feed.css';
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import {
@@ -44,6 +44,9 @@ export function Discovery({
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false);
   const sequence = useRef(0);
+  const filterKey = useRef('');
+  const requestPending = useRef(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [removed, setRemoved] = useState<string[]>([]);
   const [connected, setConnected] = useState(false);
   const [updatedAt, setUpdatedAt] = useState('');
@@ -59,23 +62,7 @@ export function Discovery({
   const [stats, setStats] = useState<{sourcesOnline:number;detectedToday:number;newJobs:number;countries:number|null;workerOnline?:boolean}|null>(null);
   const previousJobs = useRef<PublicJob[]>(initialJobs);
   const feed = useRef<HTMLDivElement>(null);
-  const [activeCard, setActiveCard] = useState(0);
-  const [rotationPaused, setRotationPaused] = useState(false);
-  const [interacting, setInteracting] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
-  const activeIndex=jobs.length?activeCard%jobs.length:0;
-  useEffect(()=>{
-    const preference=window.matchMedia('(prefers-reduced-motion: reduce)');
-    const initial=setTimeout(()=>setReduceMotion(preference.matches),0);
-    const update=()=>setReduceMotion(preference.matches);
-    preference.addEventListener('change',update);
-    return()=>{clearTimeout(initial);preference.removeEventListener('change',update);};
-  },[]);
-  useEffect(()=>{
-    if(rotationPaused||interacting||reduceMotion||jobs.length<2)return;
-    const timer=setInterval(()=>{if(document.visibilityState==='visible')setActiveCard(index=>index+1);},6000);
-    return()=>clearInterval(timer);
-  },[rotationPaused,interacting,reduceMotion,jobs.length]);
+  const [savedIds, setSavedIds] = useState<string[]>([]);
   useEffect(()=>{const initial=setTimeout(()=>setClock(Date.now()),0);const timer=setInterval(()=>setClock(Date.now()),30000);return()=>{clearTimeout(initial);clearInterval(timer);};},[]);
   useEffect(()=>{
     let cancelled=false, loading=false;
@@ -96,7 +83,7 @@ export function Discovery({
     void refresh();const timer=setInterval(()=>void refresh(),15000);
     return()=>{cancelled=true;clearInterval(timer);};
   },[]);
-  function discoveredTime(value:string){const age=clock-Date.parse(value);if(!clock||!Number.isFinite(age))return 'Discovery time unavailable';const minutes=Math.max(0,Math.floor(age/60000));return minutes===0?'Just now':minutes<60?`${minutes} min ago`:minutes<1440?`${Math.floor(minutes/60)} hour${minutes>=120?'s':''} ago`:`${Math.floor(minutes/1440)} days ago`;}
+  function discoveredTime(value:string){const age=clock-Date.parse(value);if(!clock||!Number.isFinite(age))return 'Time unavailable';const minutes=Math.max(0,Math.floor(age/60000));return minutes===0?'Just now':minutes<60?`${minutes} min ago`:minutes<1440?`${Math.floor(minutes/60)} hour${minutes>=120?'s':''} ago`:`${Math.floor(minutes/1440)} days ago`;}
   const intent = useMemo(() => searchIntent(query, countries), [query]);
   const roleQuery = removed.includes('role') ? '' : intent.role;
   const activeCountry = country || (removed.includes('country') ? '' : intent.country);
@@ -121,7 +108,10 @@ export function Discovery({
   const search = useCallback(
     async (e?: { preventDefault: () => void }, live = false) => {
       e?.preventDefault();
+      if (live && (requestPending.current || page !== 1)) return;
       const requestId = ++sequence.current;
+      requestPending.current = true;
+      setLoadFailed(false);
       setBusy(true);
       setMessage('');
       try {
@@ -134,22 +124,36 @@ export function Discovery({
           experience: activeExperience,
           state,
           sort: intent.highSalary&&!removed.includes('salary')?'salary':sort,
-          page: String(page),
+          page: String((page - 1) * 2 + 1),
           searchMode: semantic ? 'semantic' : 'keyword',
         });
         const range:Record<string,string[]>={'0–2 years':['0','2'],'2–5 years':['2','5'],'5+ years':['5','100']};
         if(range[activeExperience]){p.delete('experience');p.set('experienceMin',range[activeExperience][0]);p.set('experienceMax',range[activeExperience][1]);}
-        const r = await fetch(`/api/v1/jobs?${p}`);
-        const j = await r.json();
-        if (!r.ok) throw Error(j.error?.message || 'Search unavailable');
+        const keyParams = new URLSearchParams(p); keyParams.delete('page');
+        const key = keyParams.toString();
+        if (filterKey.current !== key) {
+          filterKey.current = key;
+          if (page !== 1) { setPage(1); return; }
+        }
+        const secondPage = new URLSearchParams(p);
+        secondPage.set('page', String(page * 2));
+        const results = await Promise.all([p, secondPage].map(async params => {
+          const response = await fetch(`/api/v1/jobs?${params}`);
+          const payload = await response.json();
+          if (!response.ok) throw Error(payload.error?.message || 'Search unavailable');
+          return payload.data;
+        }));
+        const j = {data: {jobs: [...results[0].jobs, ...results[1].jobs], total: results[0].total, hasMore: results[1].hasMore}};
         if (requestId === sequence.current) {
-          if(live && page===1 && sort==='discovered') {const known=new Set(previousJobs.current.map(job=>job.id));const arrivals=j.data.jobs.filter((job:PublicJob)=>!known.has(job.id)).map((job:PublicJob)=>job.id);setNewIds(prev=>[...new Set([...prev,...arrivals])]);}
-          if(!live){setNewIds([]);setActiveCard(0);}
-          previousJobs.current=j.data.jobs;setJobs(j.data.jobs);setTotal(j.data.total);setHasMore(j.data.hasMore);setUpdatedAt(new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));}
+          if(live && sort==='discovered') {const known=new Set(previousJobs.current.map(job=>job.id));const arrivals=j.data.jobs.filter((job:PublicJob)=>!known.has(job.id)).map((job:PublicJob)=>job.id);setNewIds(prev=>[...new Set([...prev,...arrivals])]);}
+          if(!live){setNewIds([]);}
+          const incoming: PublicJob[] = j.data.jobs;
+          previousJobs.current=incoming;setJobs(incoming);setTotal(j.data.total);
+          setHasMore(j.data.hasMore);setUpdatedAt(new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));}
       } catch (e) {
-        if(requestId===sequence.current)setMessage((e as Error).message);
+        if(requestId===sequence.current){setMessage((e as Error).message);setLoadFailed(true);}
       } finally {
-        if (requestId === sequence.current) setBusy(false);
+        if (requestId === sequence.current) {setBusy(false);requestPending.current=false;}
       }
     },
     [roleQuery, category, activeCountry, activeMode, jobType, activeExperience, state, sort, page, semantic, intent.highSalary, removed],
@@ -167,6 +171,11 @@ export function Discovery({
     const refreshTimer=setInterval(()=>{if(document.visibilityState==='visible')void search(undefined,true);},30000);
     return () => {clearInterval(refreshTimer);stream.close();setConnected(false);};
   }, [paused, search]);
+  function changePage(next: number) {
+    if (busy) return;
+    setPage(next);
+    document.getElementById('job-results')?.scrollIntoView({behavior:'smooth'});
+  }
   async function save(id: string) {
     const r = await fetch(`/api/v1/jobs/${id}/save`, { method: 'POST' });
     if (r.status === 401) {
@@ -174,6 +183,7 @@ export function Discovery({
       return;
     }
     const j = await r.json();
+    if (r.ok) setSavedIds(ids => ids.includes(id) ? ids : [...ids, id]);
     setMessage(
       r.ok
         ? 'Saved to your collection.'
@@ -353,25 +363,26 @@ export function Discovery({
               <p>Try a broader role or another location.</p>
             </div>
           ) : (
-            <section className="rotating-job-feed" aria-label="Rotating live job cards" aria-roledescription="carousel" onPointerEnter={()=>setInteracting(true)} onPointerLeave={()=>setInteracting(false)} onFocusCapture={()=>setInteracting(true)} onBlurCapture={event=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))setInteracting(false);}}>
-            <div className="stack-controls"><span>GLOBAL HIRING RADAR · {activeIndex+1} / {jobs.length}</span><div><button className="secondary" aria-label="Previous job card" onClick={()=>setActiveCard(index=>(index%jobs.length+jobs.length-1)%jobs.length)}>←</button><button className="secondary" aria-label={rotationPaused?'Resume card rotation':'Pause card rotation'} aria-pressed={rotationPaused} onClick={()=>setRotationPaused(!rotationPaused)}>{rotationPaused?<Play size={15}/>:<Pause size={15}/>}</button><button className="secondary" aria-label="Next job card" onClick={()=>setActiveCard(index=>index+1)}>→</button></div></div>
-            <div className="job-card-stack" ref={feed}>
-              {jobs.map((job,index) => {
-                const slot=(index-activeIndex+jobs.length)%jobs.length;
-                return <article className={`job-card stack-card stack-slot-${slot<3?slot:'hidden'}`} aria-hidden={slot!==0} inert={slot!==0} data-job-id={job.id} data-new={newIds.includes(job.id)} key={job.id}>
+            <section className="vertical-job-feed" aria-label="Latest job opportunities">
+            <div className="vertical-job-list" ref={feed}>
+              {jobs.map((job) => {
+                const freshness = job.sourcePostedAt || job.discoveredAt;
+                const freshnessLabel = job.sourcePostedAt ? 'Posted' : 'Discovered';
+                return <article className="job-card vertical-job-card" data-job-id={job.id} data-new={newIds.includes(job.id)} key={job.id}>
                   <div className="company-heading">
                     <div className="company-monogram" aria-label={`${job.company} initials`}>{job.company.split(/\s+/).slice(0,2).map(word=>word[0]).join('')}</div>
-                    <time dateTime={job.discoveredAt} title={`Discovered ${job.discoveredAt}`}>{discoveredTime(job.discoveredAt)}</time>
+                    <time className="job-freshness" data-fresh={clock > 0 && clock-Date.parse(freshness)<60000} dateTime={freshness} title={`${freshnessLabel} ${freshness}`}>{freshnessLabel} {discoveredTime(freshness)}</time>
                   </div>
                   <div className="job-main">
                     <div className="job-top">
                       <span className="job-category">{job.category}</span>
                       <button
                         className="icon-button"
-                        aria-label={`Save ${job.title}`}
+                        aria-label={`${savedIds.includes(job.id) ? 'Saved' : 'Save'} ${job.title}`}
+                        aria-pressed={savedIds.includes(job.id)}
                         onClick={() => void save(job.id)}
                       >
-                        <Bookmark size={19} />
+                        <Bookmark size={19} fill={savedIds.includes(job.id) ? 'currentColor' : 'none'} />
                       </button>
                     </div>
                     <Link className="job-title" href={`/jobs/${job.id}`}>
@@ -383,12 +394,12 @@ export function Discovery({
                     <div className="job-facts">
                       <span>
                         <MapPin size={14} />
-                        {job.city}, {job.country}
+                        {[job.city,job.country].filter((value,index,all)=>value && all.indexOf(value)===index).join(', ')}
                       </span>
                       <span>{job.mode}</span>
                       <span>{job.type}</span>
                       <span>
-                        {job.experienceDisclosed === false ? 'Experience not specified' : job.experienceMin === 0
+                        {job.experienceDisclosed === false ? 'Experience not specified' : job.experienceMin === 0 && job.experienceMax === 0
                           ? 'Fresher welcome'
                           : `${job.experienceMin}–${job.experienceMax} years`}
                       </span>
@@ -422,43 +433,34 @@ export function Discovery({
                     </div>
                     {job.sourceLink && <a className="small" href={job.sourceLink} target="_blank" rel="noopener noreferrer">Source: {job.source} ↗</a>}
                     {!job.sourceLink && <span className="small">Source: {job.source}</span>}
-                    <span className={`trust-label ${job.trust}`}>{job.trust==='verified'?'✓ Verified':job.trust==='flagged'?'Needs review':'Verification pending'}</span>
-                    <div className="feed-card-actions"><button className="secondary" onClick={()=>void save(job.id)}><Bookmark size={15}/> Save Job</button>
+                    <span className={`trust-label ${job.trust}`}>{job.trust==='verified'?'✓ Verified listing':job.trust==='flagged'?'Needs review':'Verification pending'}</span>
+                    <div className="job-match-status"><Sparkles size={14}/> AI match score unavailable</div>
+                    {job.sourceUpdatedAt && <span className="job-updated">Updated {discoveredTime(job.sourceUpdatedAt)}</span>}
+                    <div className="feed-card-actions">
                     <Link
-                      className="primary full job-apply"
+                      className="secondary job-apply"
                       href={`/jobs/${job.id}`}
                       aria-label={`View job ${job.title}`}
                     >
                       View Job <ArrowUpRight size={17} />
                     </Link>
+                    {job.publicApplicationLink && /^https?:\/\//i.test(job.publicApplicationLink) ? <a className="primary job-apply" href={job.publicApplicationLink} target="_blank" rel="noopener noreferrer" aria-label={`Apply for ${job.title} on original source`}>Apply <ArrowUpRight size={17}/></a> : <Link className="primary job-apply" href={`/jobs/${job.id}`} aria-label={`Application details for ${job.title}`}>Apply <ArrowRight size={17}/></Link>}
                     </div>
                   </div>
                 </article>;
               })}
             </div>
-            <p className="stack-caption">{reduceMotion?'Use the arrows to explore jobs.':rotationPaused?'Rotation paused.':interacting?'Rotation pauses while you explore.':'New opportunities, continuously in view.'}</p>
             </section>
           )}
-          <div className="pagination">
-            <button
-              className="secondary"
-              disabled={page === 1}
-              onClick={() => {
-                setPage(Math.max(1, page - 1));
-              }}
-            >
-              Previous
-            </button>
-            <span>Page {page}</span>
-            <button
-              className="secondary"
-              disabled={!hasMore || busy}
-              onClick={() => {
-                setPage(page + 1);
-              }}
-            >
-              Next
-            </button>
+          <div className="feed-load-more">
+            <output>Page {page} · {jobs.length} jobs · {total.toLocaleString()} matching opportunities</output>
+            <nav className="pagination" aria-label="Job result pages">
+              <button className="secondary" disabled={busy || page === 1} onClick={()=>changePage(page-1)}>Previous</button>
+              <span>Page {page} of {Math.max(1,Math.ceil(total/24))}</span>
+              <button className="secondary" disabled={busy || !hasMore} onClick={()=>changePage(page+1)}>Next</button>
+            </nav>
+            {busy && <span>Loading jobs…</span>}
+            {loadFailed && <button className="secondary" onClick={()=>void search()}>Retry loading jobs</button>}
           </div>
           {newCount>0&&<button className="new-jobs-alert" aria-live="polite" onClick={()=>{arrivalBaseline.current=latestMeasurement.current;setNewCount(0);setSort('discovered');setPage(1);setQuery('');setCategory('');setCountry('');setMode('');setJobType('');setExperience('');setState('');setSemantic(false);setRemoved([]);setNewIds([]);document.getElementById('job-results')?.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}}><span>🔴 {newCount} new jobs detected</span><strong>View new jobs →</strong></button>}
         </section>

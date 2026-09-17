@@ -287,14 +287,17 @@ export function publicJob(
   };
 }
 export function isRecent(job: Job, days = 90, now = Date.now()) {
+  const publishedAt = Date.parse(job.sourcePostedAt || job.discoveredAt);
   return (
     job.status === 'published' &&
-    Date.parse(job.discoveredAt) >= now - days * 86400000 &&
+    Number.isFinite(publishedAt) &&
+    publishedAt >= now - days * 86400000 &&
     Date.parse(job.expiresAt) > now
   );
 }
 export function matchJob(job: Job, profile: Profile, preferences: Preferences) {
-  const skills = profile.skills.filter((s) =>
+  const candidateSkills = [...new Set([...profile.skills, ...(preferences.skills || [])])];
+  const skills = candidateSkills.filter((s) =>
     job.skills.some((t) => t.toLowerCase() === s.toLowerCase()),
   );
   const role = [...preferences.roles, ...preferences.relatedRoles].some((r) =>
@@ -304,11 +307,28 @@ export function matchJob(job: Job, profile: Profile, preferences: Preferences) {
     job.experienceDisclosed !== false &&
     profile.experience !== null && profile.experience >= job.experienceMin &&
     profile.experience <= job.experienceMax;
-  const location =
-    !preferences.countries.length ||
-    preferences.countries.includes(job.country);
+  const preferredLocations = preferences.countries.length
+    ? preferences.countries
+    : [profile.country, profile.city].filter(Boolean);
+  const jobLocations = new Set([
+    job.country,
+    job.city,
+    job.state,
+    ...(job.eligibleCountries || []),
+  ].map((value) => value.toLowerCase()));
+  const location = !preferredLocations.length || preferredLocations.some((value) =>
+    jobLocations.has(value.toLowerCase()),
+  );
   const mode =
     !preferences.modes.length || preferences.modes.includes(job.mode);
+  const employmentType =
+    !preferences.employmentTypes?.length || preferences.employmentTypes.some((value) =>
+      job.type.toLowerCase().includes(value.toLowerCase()),
+    );
+  const industry =
+    !preferences.industries?.length || preferences.industries.some((value) =>
+      job.category.toLowerCase() === value.toLowerCase(),
+    );
   const excluded = preferences.exclusions.some((s) =>
     (job.title + ' ' + job.company).toLowerCase().includes(s.toLowerCase()),
   );
@@ -319,8 +339,10 @@ export function matchJob(job: Job, profile: Profile, preferences: Preferences) {
           (skills.length / Math.max(job.skills.length, 1)) * 40 +
             Number(role) * 25 +
             Number(experience) * 15 +
-            Number(location) * 10 +
-            Number(mode) * 10,
+            Number(location) * 8 +
+            Number(mode) * 7 +
+            Number(employmentType) * 3 +
+            Number(industry) * 2,
         ),
     reasons: [
       skills.length ? `${skills.length} matching skills` : null,
@@ -328,6 +350,8 @@ export function matchJob(job: Job, profile: Profile, preferences: Preferences) {
       experience ? 'Experience fits' : null,
       location ? 'Location fits' : null,
       mode ? 'Work arrangement fits' : null,
+      employmentType && preferences.employmentTypes?.length ? 'Employment type fits' : null,
+      industry && preferences.industries?.length ? 'Industry fits' : null,
     ].filter(Boolean),
   };
 }

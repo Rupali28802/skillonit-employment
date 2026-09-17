@@ -1,0 +1,152 @@
+{
+  "measuredAt": "2026-09-17T05:00:26.677Z",
+  "sources": [
+    {
+      "id": "ashby-ema",
+      "type": "ashby",
+      "name": "Ema",
+      "enabled": true,
+      "intervalMinutes": 10,
+      "state": {
+        "id": "ashby-ema",
+        "status": "completed",
+        "failures": 0,
+        "nextRunAt": 1789620839225,
+        "lastAttemptAt": "2026-09-17T04:43:54.367Z",
+        "lastSuccessAt": "2026-09-17T04:43:59.225Z",
+        "counts": {
+          "fetched": 45,
+          "added": 1,
+          "updated": 22,
+          "duplicates": 0,
+          "rejected": 22,
+          "closed": 0,
+          "requests": 1,
+          "complete": true
+        }
+      }
+    },
+    {
+      "id": "greenhouse-razorpaysoftwareprivatelimited",
+      "type": "greenhouse",
+      "name": "Razorpay Software Private Limited",
+      "enabled": true,
+      "intervalMinutes": 10,
+      "state": {
+        "id": "greenhouse-razorpaysoftwareprivatelimited",
+        "status": "completed",
+        "failures": 0,
+        "nextRunAt": 1789620841850,
+        "lastAttemptAt": "2026-09-17T04:43:59.490Z",
+        "lastSuccessAt": "2026-09-17T04:44:01.850Z",
+        "counts": {
+          "fetched": 20,
+          "added": 2,
+          "updated": 18,
+          "duplicates": 0,
+          "rejected": 0,
+          "closed": 0,
+          "requests": 1,
+          "complete": true
+        }
+      }
+    },
+    {
+      "id": "himalayas-00-in",
+      "type": "himalayas",
+      "name": "Himalayas",
+      "enabled": true,
+      "intervalMinutes": 1440,
+      "state": {
+        "id": "himalayas-00-in",
+        "status": "partial",
+        "failures": 0,
+        "nextRunAt": 1789706644637,
+        "lastAttemptAt": "2026-09-17T04:44:02.088Z",
+        "lastSuccessAt": "2026-09-17T04:44:04.637Z",
+        "counts": {
+          "fetched": 20,
+          "added": 20,
+          "updated": 0,
+          "duplicates": 0,
+          "rejected": 0,
+          "closed": 0,
+          "requests": 1,
+          "complete": false
+        }
+      }
+    },
+    {
+      "id": "jooble-in",
+      "type": "jooble",
+      "name": "Jooble",
+      "enabled": true,
+      "intervalMinutes": 1440,
+      "state": {
+        "id": "jooble-in",
+        "status": "partial",
+        "failures": 0,
+        "nextRunAt": 1789707609187,
+        "lastAttemptAt": "2026-09-17T05:00:01.163Z",
+        "lastSuccessAt": "2026-09-17T05:00:09.187Z",
+        "counts": {
+          "fetched": 100,
+          "added": 41,
+          "updated": 59,
+          "duplicates": 0,
+          "rejected": 0,
+          "closed": 0,
+          "requests": 1,
+          "complete": false
+        }
+      }
+    },
+    {
+      "id": "lever-employ",
+      "type": "lever",
+      "name": "Employ",
+      "enabled": true,
+      "intervalMinutes": 10,
+      "state": {
+        "id": "lever-employ",
+        "status": "completed",
+        "failures": 0,
+        "nextRunAt": 1789208708914,
+        "lastAttemptAt": "2026-09-12T10:15:04.013Z",
+        "lastSuccessAt": "2026-09-12T10:15:08.914Z",
+        "counts": {
+          "fetched": 3,
+          "added": 0,
+          "updated": 3,
+          "duplicates": 0,
+          "rejected": 0,
+          "closed": 0,
+          "requests": 1,
+          "complete": true
+        }
+      }
+    }
+  ],
+  "activeExplicitIndia": 31,
+  "activeIndiaEligibility": 73,
+  "holds": [
+    {
+      "source": "Adzuna India",
+      "reason": "No ADZUNA_APP_ID/ADZUNA_APP_KEY in backend environment; approved display scope required."
+    },
+    {
+      "source": "LinkedIn / Indeed",
+      "reason": "Existing enquiries; retrieval/display approval still unconfirmed. Do not duplicate."
+    },
+    {
+      "source": "Naukri, Foundit, Shine, TimesJobs, Apna, Internshala, NCS",
+      "reason": "Official retrieval/display access unconfirmed; not connected."
+    }
+  ],
+  "notes": [
+    "Sample records excluded. India eligibility is not the same as physically India-located jobs.",
+    "Partial means bounded provider result page; not complete provider inventory.",
+    "Imported jobs are not independently employer-verified.",
+    "Employer boards use existing reviewed source configuration; no new partnership claimed."
+  ]
+}

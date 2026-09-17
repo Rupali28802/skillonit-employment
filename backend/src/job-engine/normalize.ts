@@ -104,8 +104,10 @@ export function normalize(c: Candidate, source: FeedSource, now = Date.now()): J
     description, requirements: 'See the original listing for the complete requirements.', method: 'external', url,
     status: source.publish && !suspicious ? 'published' : 'review', trust: suspicious ? 'flagged' : 'pending',
     employerId: '', source: source.name, discoveredAt: stamp,
-    // Refresh only this availability deadline; never reset the original posting/first-discovery dates.
-    expiresAt: new Date(Math.min(now + 72 * 3600000, (posted ?? now) + 90 * 86400000, closing ?? Infinity)).toISOString(),
+    // Keep a vacancy active for at most 90 days from its source posting date.
+    // If a source does not publish that date, first discovery is the fallback.
+    // An explicit employer closing date always wins when it is earlier.
+    expiresAt: new Date(Math.min((posted ?? now) + 90 * 86400000, closing ?? Infinity)).toISOString(),
     ...(posted !== undefined ? { sourcePostedAt: new Date(posted).toISOString() } : {}),
     feed: { sourceId: source.id, externalId: c.externalId, publicListing: source.publicListing,
       attributionUrl: source.type === 'himalayas' ? 'https://himalayas.app' : url, lastSeenAt: stamp },

@@ -10,8 +10,8 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
   const words = query.split(/[^\p{L}\p{N}+#.-]+/u).filter(w => w && !ignored.has(w)).slice(0, 15);
   const now = new Date();
   const filter: Record<string, unknown> = {
-    status: 'published', discoveredAt: { $gte: new Date(now.getTime() - 90 * 86400000).toISOString() },
-    expiresAt: { $gt: now.toISOString() }, ...(!demoMode() ? { sample: { $ne: true } } : {}),
+    status: 'published', expiresAt: { $gt: now.toISOString() },
+    ...(!demoMode() ? { sample: { $ne: true } } : {}),
   };
   const exact = (value: string) => new RegExp('^' + value.slice(0, 120).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i');
   const clauses: Record<string, unknown>[] = [];
