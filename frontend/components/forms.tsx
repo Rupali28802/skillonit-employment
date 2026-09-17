@@ -76,7 +76,8 @@ export function SmartForm({
           if (!r.ok)
             throw Error(j.error?.message || 'Could not save your changes.');
           setError(false);
-          if (revision !== undefined) setRevision(revision + 1);
+          if (revision !== undefined)
+            setRevision(typeof j.data?.revision === 'number' ? j.data.revision : revision + 1);
           setMessage(j.data?.message || 'Your changes have been saved.');
           onSuccess?.();
         } catch (e) {
@@ -191,7 +192,12 @@ export function Action({
               throw Error(
                 j.error?.message || 'The action could not be completed.',
               );
-            if (redirect) window.location.href = redirect;
+            if (typeof j.data?.startUrl === 'string') {
+              const destination = new URL(j.data.startUrl, window.location.origin);
+              if (destination.origin !== window.location.origin)
+                throw Error('The authorization destination is invalid.');
+              window.location.assign(destination.href);
+            } else if (redirect) window.location.href = redirect;
             else {
               setMessage(j.data?.message || 'Updated successfully.');
               window.location.reload();
@@ -348,7 +354,10 @@ export function AuthForm({
             <button type="button" className="auth-google" disabled={busy} onClick={async () => {
               setBusy(true); setMessage('');
               try {
-                window.location.assign(googleAuthUrl);
+                const response = await fetch('/api/v1/auth/google/status');
+                const result = await response.json();
+                if (!response.ok || !result.data?.available) throw Error('Google sign-in is not available yet. Please use email sign-in.');
+                window.location.assign(result.data.startUrl || googleAuthUrl);
               } catch (error) { setMessage(error instanceof Error ? error.message : 'Google sign-in is unavailable.'); setBusy(false); }
             }}><span className="auth-google-mark" aria-hidden="true">G</span>Continue with Google</button>
             <div className="auth-divider"><span>or continue with email</span></div>

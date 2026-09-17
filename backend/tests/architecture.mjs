@@ -47,11 +47,6 @@ const pages = [
     'login',
     'register',
     'jobs/sample-1',
-    'jobs',
-    'search',
-    'faq',
-    'cookies',
-    'employer-pricing',
   ],
   [
     'dashboard',
@@ -65,9 +60,6 @@ const pages = [
     'automation',
     'billing',
     'settings',
-    'saved-searches',
-    'notifications',
-    'assistant',
   ],
   [
     'employer',
@@ -114,6 +106,16 @@ for (const [group, paths] of pages.entries()) {
     );
     count++;
   }
+}
+// Discovery lives at /. These legacy paths have no page handlers in the
+// preserved frontend; Next may stream its not-found boundary with HTTP 200.
+for (const path of ['jobs', 'search', 'faq', 'cookies', 'employer-pricing', 'saved-searches', 'notifications', 'assistant']) {
+  const response = await fetch(ui + '/' + path);
+  assert.ok([200, 404].includes(response.status), path);
+  const html = await response.text();
+  assert.match(html, /This page has moved on\./, path);
+  assert.match(html, /NEXT_HTTP_ERROR_FALLBACK;404/, path);
+  assert.doesNotMatch(html, /Something went wrong|"digest":"[0-9]+"/, path);
 }
 for (const origin of [api, ui]) {
   const controller = new AbortController();

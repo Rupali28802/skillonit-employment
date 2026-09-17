@@ -80,6 +80,7 @@ export type User = {
   disabled?: boolean;
   createdAt: string;
   profile: Profile;
+  profileRevision?: number;
   preferences: Preferences;
 };
 export type Plan = {

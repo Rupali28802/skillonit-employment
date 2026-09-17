@@ -11,8 +11,6 @@ jobs:
       BACKEND_URL: http://127.0.0.1:4000
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -33,6 +31,9 @@ jobs:
       - run: npm audit --audit-level=high
         working-directory: frontend
       - run: node scripts/scan-secrets.mjs
+      - name: Verify latest frontend against isolated MongoDB and Express
+        run: npm run test:frontend
+        working-directory: backend
       - name: Verify backend independently and through frontend proxy
         run: |
           (cd backend && npm start) > /tmp/skillonit-api.log 2>&1 &
@@ -47,5 +48,4 @@ jobs:
           cd backend
           npm run test:integration
           TEST_URL=http://localhost:3000 npm run test:integration
-          TEST_URL=http://localhost:3000 npm run test:features
           npm run test:architecture

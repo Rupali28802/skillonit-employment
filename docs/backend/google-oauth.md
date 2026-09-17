@@ -7,7 +7,7 @@ Backend routes: GET /api/v1/auth/google and GET /api/v1/auth/google/callback. Th
 2. Create an OAuth client of type Web application.
 3. Add this exact authorized redirect URI:
 
-https://pants-skip-events-profession.trycloudflare.com/api/v1/auth/google/callback
+https://YOUR-FRONTEND-HOST/api/v1/auth/google/callback
 
 4. Configure GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_CALLBACK_URL in backend/.env (never in frontend variables). APP_URL must be the same trusted HTTPS origin. No JavaScript origin is required by this server-side redirect flow. Request only openid, email and profile.
 5. Restart the backend; rebuild/restart the frontend for the added button. If a temporary tunnel hostname changes, update both APP_URL and GOOGLE_CALLBACK_URL and the Cloud Console redirect URI.

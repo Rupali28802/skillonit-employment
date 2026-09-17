@@ -216,6 +216,8 @@ export async function bootstrapIndexes() {
   if (!hello.setName && hello.msg !== 'isdbgrid')
     throw new Error('MongoDB transaction-capable topology required.');
   const db = mongo().db(process.env.MONGODB_DATABASE || 'skillonit');
+  await db.collection('matchingIndexState').createIndex({ id: 1 }, { unique: true });
+  await db.collection('jobs').createIndex({ status: 1, trust: 1, id: 1 });
   for (const c of [
     'users',
     'sessions',
@@ -223,6 +225,7 @@ export async function bootstrapIndexes() {
     'applications',
     'savedJobs',
     'profiles',
+    'profileMedia',
     'employers',
     'leads',
     'auditLogs',
@@ -265,6 +268,8 @@ export async function bootstrapIndexes() {
     'searchAlerts',
     'notificationPreferences',
     'entitlementUsage',
+    'mailboxConnections',
+    'mailOauthStates',
     'leadNotes',
   ])
     await db.collection(c).createIndex({ id: 1 }, { unique: true });
@@ -295,6 +300,9 @@ export async function bootstrapIndexes() {
   await db.collection('cvDocuments').createIndex({ status: 1, leaseUntil: 1 });
   await db.collection('cvVersions').createIndex({ userId: 1, documentId: 1 });
   await db.collection('users').createIndex({ googleId: 1 }, { unique: true, partialFilterExpression: { googleId: { $type: 'string' } } });
+  await db.collection('mailboxConnections').createIndex({ userId: 1 }, { unique: true });
+  await db.collection('mailboxConnections').createIndex({ provider: 1, providerSubject: 1 }, { unique: true });
+  await db.collection('mailOauthStates').createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
   await db.collection('oauthStates').createIndex({ id: 1 }, { unique: true });
   await db.collection('oauthStates').createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
   await db.collection('users').createIndex({ role: 1, disabled: 1, id: 1 });

@@ -1,6 +1,7 @@
 import { requestContext } from './request-context.js';
 import { getPreferences } from './lib/student-preferences.js';
 import { randomBytes } from "node:crypto";
+import { profileImage, mediaKinds } from './lib/profile-media.js';
 import { z } from "zod";
 import { read, transaction, demoMode, configuredPlans, type Row } from "./lib/store.js";
 import {
@@ -33,12 +34,13 @@ import {
   publicJob,
   eligibility,
   canTransition,
-  matchJob,
   isRecent,
 } from "./lib/domain.js";
 import { searchJobs } from "./lib/search.js";
 import { engineStatus } from './job-engine/engine.js';
 import { socialSourceSchema, ingestSocial } from './job-engine/social.js';
+import { getMatches, runMatching, getRankingPolicy, configureRankingPolicy } from './lib/matching-engine.js';
+import { matchingQuerySchema } from './lib/matching-contracts.js';
 import { providerHealth, RazorpayProvider } from "./lib/providers.js";
 import { featureRoute, notify } from "./features.js";
 import { authMailConfig, sendAuthMail } from "./lib/auth-mail.js";
@@ -47,6 +49,11 @@ import { issuePasswordReset, resetPassword, revokeSessions } from "./lib/auth-li
 import { getStudentProfileStatus, updateStudentProfile } from "./lib/student-profile.js";
 import { studentModuleRoute } from "./student-module.js";
 import { savePreferences } from "./lib/student-onboarding.js";
+import {
+  disconnectMailbox,
+  mailboxConnectStartUrl,
+  mailboxStatus,
+} from './mailbox-auth.js';
 type App = {
   id: string;
   userId: string;
@@ -98,18 +105,14 @@ export async function handle(
     }
     if (p === "me/dashboard" && method === "GET") {
       const user = await requireUser("student");
+      await rateLimit('matching:' + user.id, 30);
       const data = await read(async (r) => {
         const apps = await r.find("applications", { userId: user.id });
         const saved = await r.find("savedJobs", { userId: user.id });
-        const jobs = await r.find<Job>("jobs", { status: "published" });
         const plans = await configuredPlans();
-        const matches = jobs
-          .filter((job) => isRecent(job))
-          .map((job) => ({
-            job: publicJob(job, user, plans),
-            match: matchJob(job, user.profile, user.preferences),
-          }))
-          .sort((a, b) => b.match.score - a.match.score)
+        const result = await runMatching(r, user, { limit: 4 });
+        const matches = result.items
+          .map(({ job, match }) => ({ job: publicJob(job, user, plans), match }))
           .slice(0, 4);
         return { apps, saved, matches };
       });
@@ -191,9 +194,9 @@ export async function handle(
           name: input.name,
           headline: "",
           skills: [],
-          experience: 0,
+          experience: null,
           education: "",
-          country: "India",
+          country: "",
           city: "",
           confirmed: false,
         },
@@ -426,6 +429,20 @@ export async function handle(
         }),
       );
     }
+    if (parts[0] === 'me' && parts[1] === 'profile-image') {
+      const user = await requireUser();
+      return await profileImage(request, user, z.enum(mediaKinds).parse(parts[2]));
+    }
+    if (p === 'me/profile-appearance' && method === 'PUT') {
+      const user = await requireUser();
+      const { coverTheme } = z.object({ coverTheme: z.enum(['auto', 'technology', 'design', 'healthcare', 'finance', 'education', 'business']) }).parse(await body());
+      await transaction(async r => {
+        const latest = await r.get<User>('users', user.id);
+        await r.put('users', { ...latest!, profile: { ...latest!.profile, coverTheme } });
+        await audit(r, user.id, 'profile.appearance.updated', user.id);
+      });
+      return ok({ coverTheme });
+    }
     if (p === "me/profile/status" && method === "GET") {
       const u = await requireUser("student");
       return ok(await getStudentProfileStatus(u.id));
@@ -444,20 +461,19 @@ export async function handle(
         return ok(await savePreferences(u.id, await body()));
       }
     }
-    if (p === "me/matches" && method === "GET") {
+    if ((p === "me/matches" || p === "me/matches/details") && method === "GET") {
       const u = await requireUser("student");
+      await rateLimit('matching:' + u.id, 30);
       const plans = await configuredPlans();
-      const jobs = await read((r) => r.find<Job>("jobs", { status: "published" }, 1000));
-      return ok(
-        jobs
-          .filter((job) => isRecent(job))
-          .map((j) => ({
-            ...publicJob(j, u, plans),
-            match: matchJob(j, u.profile, u.preferences),
-          }))
-          .sort((a, b) => b.match.score - a.match.score)
-          .slice(0, 30),
-      );
+      const query = matchingQuerySchema.parse(Object.fromEntries(['q', 'limit', 'offset'].filter(k => url.searchParams.has(k)).map(k => [k, url.searchParams.get(k)])));
+      const { items, ...metadata } = await getMatches(u.id, query);
+      const results = items.map(({ job, match }) => ({ ...publicJob(job, u, plans), match }));
+      return ok(p.endsWith('/details') ? { items: results, ...metadata } : results);
+    }
+    if (p === 'admin/matching-policy') {
+      const actor = await requireUser('admin');
+      if (method === 'GET') return ok(await read(getRankingPolicy));
+      if (method === 'PUT') return ok(await configureRankingPolicy(actor, await body()));
     }
     if (p === "me/templates") {
       const u = await requireUser("student");
@@ -520,20 +536,15 @@ export async function handle(
     }
     if (p.startsWith("mail/")) {
       const u = await requireUser("student");
-      if (p === "mail/status")
-        return ok({
-          connected: false,
-          provider: null,
-          status: "Not configured",
-        });
-      if (p === "mail/disconnect") {
-        await transaction((r) => audit(r, u.id, "mail.disconnected", u.id));
-        return ok({ connected: false });
-      }
+      if (p === "mail/status" && method === 'GET') return ok(await mailboxStatus(u.id));
+      if (p === "mail/connect" && method === 'POST')
+        return ok({ startUrl: mailboxConnectStartUrl(u) });
+      if (p === "mail/disconnect" && method === 'POST')
+        return ok(await disconnectMailbox(u));
       throw new ApiError(
-        503,
-        "OAUTH_UNAVAILABLE",
-        "Mailbox authorization is not configured yet. No mailbox has been accessed.",
+        404,
+        "NOT_FOUND",
+        "Mailbox endpoint not found.",
       );
     }
     if (p === "applications" && method === "GET") {

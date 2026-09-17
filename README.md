@@ -1,27 +1,30 @@
-# SkillonIT Employment — current frontend + shared backend
+# SkillOnIT Employment
 
-This branch builds on the existing frontend/shared-backend integration at `4f8253c` and adds a scheduled job hunting engine. Google authentication configuration and the existing website design are preserved. Feed cards show truthful missing-field labels and source attribution; public syndicated listings link to their original source.
+This integrated branch combines the existing frontend, Express/MongoDB Module 1 and Module 2 backend, and the scheduled worldwide job-hunting engine. Google authentication and the established website design are preserved. Feed cards show truthful missing-field labels and source attribution; public syndicated listings link to their original source.
 
 See [Job hunting engine setup, sources and limits](docs/JOB_ENGINE.md). Start with `npm run jobs:seed`, `npm run jobs:once`, then `npm run worker:jobs` from `backend/` after installing dependencies and building. Source state is available through `npm run jobs:status`.
 
 [Worldwide source audit and integration backlog](docs/GLOBAL_JOB_COVERAGE.md) distinguishes live feeds from credential-gated connectors and unconnected platforms. `npm run jobs:coverage` reports real inventory across 250 country/territory filters (ISO entries plus Kosovo); empty countries are explicitly reported. The preview is not a global public deployment.
 
 For scheduled country discovery, run `npm run jobs:seed-worldwide` after the backend build, then `npm run worker:jobs`. This enables bounded daily Himalayas country queries, a separate worldwide query and Remote OK. It does not enable restricted marketplaces or guarantee local vacancies in every country. See the audit snapshot for attempted country queries and actual inventory.
+The original specifications, backend contracts, source audits and operational notes are in `docs/`.
 
 ```text
 skillonit-employment/
-  frontend/     Next.js pages, components, assets and API presentation
-  backend/      Existing Express, MongoDB, auth and Module 2 code
-  scripts/      Integration verification
-  docs/         Backend contracts and operations
+  frontend/   Next.js pages, components, styles and public assets
+  backend/    Express APIs, authentication, MongoDB, Module 2 and workers
+  scripts/    Integration tests and credential scanning
+  docs/       Requirements, API contracts and operations
 ```
 
-## Install
+## Install and configure
 
-Use Node.js 22.17 or later and npm.
+Use Node.js 22.17 or later. Run `npm ci` in both `backend` and `frontend`.
+For a new checkout, copy `backend/.env.example` to `backend/.env` and
+`frontend/.env.example` to `frontend/.env.local`. Preserve existing private environment files when upgrading.
 
 ```sh
-git clone --branch codex/job-hunting-engine https://github.com/Rupali28802/skillonit-employment.git
+git clone --branch codex/complete-employment-platform https://github.com/Rupali28802/skillonit-employment.git
 cd skillonit-employment
 cd backend
 npm ci
@@ -35,30 +38,21 @@ Both applications install and build independently. No `.env`, credentials, uploa
 
 Copy `backend/.env.example` to `backend/.env` and `frontend/.env.example` to `frontend/.env.local`. Keep the backend owner's existing credentials private. For normal MongoDB development use `DEMO_MODE=false`.
 
-Backend settings:
+For local email/password development, both applications must use the same public origin. Backend settings:
 
 ```dotenv
-HOST=127.0.0.1
-PORT=4100
-APP_URL=http://localhost:3000
-DEMO_MODE=false
-MONGODB_URI=<set privately>
-MONGODB_DATABASE=Skillonitemployment
+APP_URL=http://127.0.0.1:3000
 ```
 
-Frontend settings:
+Backend: `HOST=127.0.0.1`, `PORT=4100`, `MONGODB_DATABASE=Skillonitemployment`.
+Configure `MONGODB_URI` privately. Keep the chosen `DEMO_MODE` value; tests never change the development environment files.
+Frontend: `BACKEND_URL=http://127.0.0.1:4100`.
 
-```dotenv
-BACKEND_URL=http://127.0.0.1:4100
-APP_URL=http://localhost:3000
-DEMO_MODE=false
-```
-
-Use the same APP_URL in both applications. BACKEND_URL must point to Express directly, not back to the public frontend. The `/api/*` Next.js rewrite preserves the backend's cookies, status codes and error envelope. Business rules and persistence remain in Express.
+The frontend `/api/*` proxy forwards to Express. Credential validation, session creation, authorization and MongoDB persistence remain in the existing backend. Never set BACKEND_URL to the frontend itself.
 
 ## Run
 
-In one terminal:
+Backend terminal:
 
 ```sh
 cd backend
@@ -66,56 +60,59 @@ npm run build
 npm start
 ```
 
-In a second terminal:
+Frontend terminal:
 
 ```sh
 cd frontend
 npm run build
-npm start
+npm run start -- --hostname=127.0.0.1 --port=3000
 ```
 
-Frontend: `http://localhost:3000`. Backend health: `http://127.0.0.1:4100/api/v1/health`.
+Frontend: `http://127.0.0.1:3000`. Backend health: `http://127.0.0.1:4100/api/v1/health`.
+For development, use `npm run dev` in each directory. Restart after environment changes;
+rebuild the frontend when APP_URL or BACKEND_URL changes. Stop a production frontend before rebuilding its `.next` directory.
 
-Use `npm run dev` in each directory for development. Restart after environment changes. Build the frontend again when changing BACKEND_URL or APP_URL. Stop a running production frontend before rebuilding its `.next` directory.
+## HTTPS and Google sign-in
 
-## Existing Google sign-in
+Google OAuth and the real auth-email adapter require a trusted HTTPS APP_URL.
+Expose only the frontend through the configured HTTPS domain/proxy. Keep Express and MongoDB private.
 
-The frontend opens the backend's original `/api/v1/auth/google` endpoint directly. It does not depend on `/google/status`, create an OAuth client, exchange tokens, or change the backend Google flow. Successful Google callbacks still return to `/`, displaying the current frontend on the same public origin.
+1. Set APP_URL in both applications to the same reachable HTTPS origin.
+2. Set backend GOOGLE_CALLBACK_URL to that origin followed by `/api/v1/auth/google/callback`.
+3. Add that exact callback to the existing Google OAuth client's Authorized redirect URIs.
+4. Configure GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET privately in the backend.
+5. Restart Express and rebuild/restart Next.js, then enter through the public origin.
 
-The existing backend requires HTTPS for Google OAuth:
+The frontend checks `/api/v1/auth/google/status` before starting the existing Express OAuth flow.
+State, PKCE, nonce, account association and session handling remain server-side. Successful login and Google callbacks redirect to `/`; `/dashboard` remains separately available.
 
-1. Serve this frontend through your existing HTTPS domain/tunnel, pointing to frontend port 3000.
-2. Set APP_URL in both local environment files to that public origin.
-3. Keep GOOGLE_CALLBACK_URL in the backend and the existing Google client's Authorized redirect URIs equal to `https://YOUR-PUBLIC-HOST/api/v1/auth/google/callback`.
-4. Restart the backend and rebuild/restart the frontend. Enter through the public URL for authentication.
+When APP_URL is HTTPS, localhost HTML requests redirect to that canonical origin so browser cookies and Origin checks use the same host. A terminated Quick Tunnel cannot serve its old callback. A reachable host and matching Google Console configuration are prerequisites for live Google testing; an authorization redirect alone does not prove successful login.
 
-When APP_URL is HTTPS, browser HTML requests to localhost redirect to that configured public origin. This keeps the backend's unchanged Origin checks, secure cookies and Google state cookie on one host. Direct server-to-server `/api` requests still use BACKEND_URL.
+## Profile and Module 2 integration
 
-A dead temporary tunnel cannot be fixed by a frontend code change. If a quick tunnel hostname changes, update the existing callback configuration; do not create duplicate OAuth clients. Live Google consent cannot pass while Google's registered callback differs from the live public host.
+Profile forms use the revision from the displayed user snapshot. Preferences follow the revision actually returned by the backend, including unchanged saves. Stale writes retain the backend's conflict protection. Profile edits preserve employment history and stored photo/theme metadata, and unknown experience remains null.
 
-## Existing profile and preferences forms
+New password and Google accounts start with unknown experience and an empty country. Email verification does not confirm profile facts; the candidate must supply or confirm them through the existing profile/CV flow.
 
-The frontend reads the latest profile/preferences revision and supplies expectedRevision when saving. Repeated saves advance the revision, stale saves show the backend conflict message, omitted extended preferences remain owned by the backend, and profile edits preserve existing employment history. Unknown experience remains null instead of silently becoming zero. Email verification redirects to the correct account workspace.
+The existing private avatar/cover/logo and profile appearance APIs remain available. Images are validated, resized and stored by Express; authorization is unchanged.
 
-## Backend capabilities and limits
+Module 2 includes profile, completion, preferences, automation preferences, CV draft/confirmation/versioning, onboarding, consent and taxonomy APIs. Provider requirements and production gates are in `docs/backend/02-production-hardening.md`.
+The current frontend does not yet expose every Module 2 operation: its CV page offers manual profile entry, and complete CV upload/review/versioning and onboarding UI coverage remain separate work. This integration preserves the supplied UI and does not claim those absent screens are complete.
 
-The published backend exposes Module 2 CV/onboarding/catalog/automation APIs. Their full contracts and required storage/scanner/parser/Redis policies are in `docs/backend/02-production-hardening.md`. This integration preserves the existing pages; it does not invent a new onboarding or CV management interface. The CV page continues to offer manual profile entry.
+Real CV services require the configured private storage, malware scanner, parser and worker/Redis infrastructure. Contact delivery, mailbox connections and commercial payments also require their existing provider configuration. Passing isolated tests is not proof of production provider readiness.
 
-This backend does **not** implement `/me/profile-image/*` or `/me/profile-appearance`, and its Google identity handler does not store Google's profile picture. The existing sidebar and navigation design are retained, with initials/profession fallback. Photo/theme actions report the unsupported capability. No upload is falsely reported as saved. Implementing those services would require a separate backend task.
-
-Before setting backend NODE_ENV=production, follow its existing Module 2 production checks and configure the required managed catalogs, completion policies and providers. Dependencies alone do not configure these services.
-
-## Verify
+## Validate
 
 ```sh
 cd backend
+npm test
+npm run test:mongo
+npm run typecheck
 npm run build
-npm run test:module2
-node --import tsx ../scripts/test-frontend-integration.mts
+npm run test:frontend
 cd ../frontend
 npm run typecheck
 npm run lint
-npm run build
 cd ..
 node scripts/scan-secrets.mjs
 ```
@@ -128,3 +125,9 @@ Setup, quota limits and verification notes are in [docs/JOOBLE_INTEGRATION.md](d
 ### Worldwide source research and latest connectors
 
 See [research report](docs/WORLDWIDE_JOB_ENGINE_RESEARCH.md) and [source audit](docs/JOB_SOURCE_MASTER_AUDIT.md) for verified connections, access requirements and remaining work. JobSearch (Sweden) is provisioned by `npm run jobs:seed` in backend after building. Reed search support is implemented but requires a private `REED_API_KEY` and approved source configuration before activation. Neither country filters nor a built adapter imply complete coverage.
+
+`test:frontend` builds Next.js into ignored `.next-integration`, starts an isolated MongoDB replica set, Express on 3101 and the production frontend on 3100. It does not connect to the configured Atlas database, send mail, or simulate successful Google consent. Ports 3100/3101 must be free. An initial run may download the MongoDB test binary. The separate build directory preserves any currently running `.next` build.
+
+Never commit `.env`, `.env.local`, credentials, tokens, CV uploads, database dumps, `.data`, logs or generated builds. Only redacted `.env.example` templates belong in Git.
+
+The latest Module 1/2 audit is in [Module 1/2 main validation](docs/MODULE12_MAIN_VALIDATION.md).

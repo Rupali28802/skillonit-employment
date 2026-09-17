@@ -48,7 +48,7 @@ export async function resolveGoogleUser(identity: Identity, linking?: User) {
       id: id(), email: identity.email, name: identity.name, googleId: identity.sub,
       authProvider: 'google', passwordHash: null, verified: true, isVerified: true,
       role: 'student', plan: 'basic', createdAt: new Date().toISOString(),
-      profile: { name: identity.name, headline: '', skills: [], experience: 0, education: '', country: '', city: '', confirmed: false },
+      profile: { name: identity.name, headline: '', skills: [], experience: null, education: '', country: '', city: '', confirmed: false },
       preferences: { roles: [], relatedRoles: [], countries: [], modes: [], exclusions: [], automation: false, dailyCap: 5 },
     };
     await r.put('users', user);
@@ -59,6 +59,11 @@ export async function resolveGoogleUser(identity: Identity, linking?: User) {
 
 export const googleAuth = Router();
 googleAuth.use((req, res, next) => requestContext.run({ request: req, response: res }, next));
+// Frontend readiness and canonical entry URL; the existing OAuth flow below is unchanged.
+googleAuth.get('/google/status', (_req, res) => {
+  try { const config = googleConfig(); res.json({ data: { available: true, startUrl: new URL('/api/v1/auth/google', config.APP_URL).href } }); }
+  catch { res.json({ data: { available: false } }); }
+});
 googleAuth.get('/google', async (req, res) => {
   try {
     const c = googleConfig();

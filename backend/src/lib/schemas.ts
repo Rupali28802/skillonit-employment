@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { candidateMatchingSchema, jobMatchingSchema, salaryPeriodSchema } from './matching-contracts.js';
 const text = z.string().trim().min(1).max(200);
 const list = z.array(text).max(50);
 export const registerSchema = z.object({
@@ -20,6 +21,7 @@ export const profileSchema = z.object({
   country: z.string().trim().max(200),
   city: z.string().trim().max(200),
   confirmed: z.boolean(),
+  matching: candidateMatchingSchema.optional(),
   employmentHistory: z.array(z.object({
     title: z.string().trim().max(200), employer: z.string().trim().max(200),
     start: z.string().regex(/^(?:|\d{4}(?:-(?:0[1-9]|1[0-2]))?)$/),
@@ -41,7 +43,7 @@ export const preferencesSchema = z.object({
   regions: list.optional(),
   indiaStates: list.optional(),
   cities: list.optional(),
-  salary: z.object({ min: z.number().min(0), max: z.number().min(0), currency: z.string().regex(/^[A-Z]{3}$/) }).refine(v => v.max >= v.min).optional(),
+  salary: z.object({ min: z.number().min(0), max: z.number().min(0), currency: z.string().regex(/^[A-Z]{3}$/), period: salaryPeriodSchema.optional() }).refine(v => v.max >= v.min).optional(),
   industries: list.optional(),
   employmentTypes: list.optional(),
   companyPreferences: z.object({ preferred: list, excluded: list }).optional(),
@@ -55,6 +57,7 @@ export const jobSchema = z
     state: z.string().max(100).default(''),
     city: text,
     skills: list,
+    matching: jobMatchingSchema.optional(),
     mode: z.enum(['Remote', 'Hybrid', 'On-site']),
     type: text,
     salaryMin: z.number().min(0),

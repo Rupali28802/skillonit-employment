@@ -17,6 +17,8 @@
     "worker:jobs": "node --env-file-if-exists=.env dist/job-engine/cli.js watch",
     "test:jobs": "node --import tsx --test tests/job-engine.test.ts",
     "dev": "node scripts/start-with-discovery.mjs --dev",
+    "matching:index": "node --env-file-if-exists=.env --import tsx src/matching-index.ts",
+    "test:matching": "node --import tsx --test tests/job-matching*.test.ts tests/matching*.test.ts",
     "build": "tsc",
     "start": "node scripts/start-with-discovery.mjs",
     "start:api": "node --env-file-if-exists=.env dist/index.js",
@@ -37,7 +39,8 @@
     "jobs:coverage": "node --env-file-if-exists=.env dist/job-engine/cli.js coverage",
     "jobs:seed-worldwide": "node --env-file-if-exists=.env dist/job-engine/cli.js seed-worldwide",
     "jobs:index-semantic": "node --env-file-if-exists=.env dist/job-engine/cli.js index-semantic",
-    "worker:semantic": "node --env-file-if-exists=.env dist/job-engine/cli.js watch-semantic"
+    "worker:semantic": "node --env-file-if-exists=.env dist/job-engine/cli.js watch-semantic",
+    "test:frontend": "node --import tsx ../scripts/test-frontend-integration.mts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",
@@ -50,6 +53,7 @@
     "ioredis": "^5.11.1",
     "mongodb": "^7.6.0",
     "nodemailer": "^10.0.0",
+    "sharp": "^0.35.4",
     "pdf-lib": "^1.17.1",
     "saxes": "^6.0.0",
     "yauzl": "^3.4.0",

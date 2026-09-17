@@ -54,6 +54,12 @@ test('auth lifecycle: reset, replay, ownership, expiry, sessions and production 
     });
     assert.equal(registration.status, 201);
     assert.equal(registration.json.data.user.passwordHash, undefined);
+    assert.equal(registration.json.data.user.profile.experience, null, 'Signup must not invent work experience');
+    assert.equal(registration.json.data.user.profile.country, '', 'Signup must not infer the candidate country');
+    assert.equal(registration.json.data.user.profile.confirmed, false);
+    const initialProfileStatus = await call('me/profile/status', undefined, registration.cookie);
+    assert.ok(initialProfileStatus.json.data.missingFields.includes('experience'));
+    assert.ok(initialProfileStatus.json.data.missingFields.includes('country'));
     const userId = registration.json.data.user.id;
     const other = await call('auth/register', {
       name: 'Other Test',

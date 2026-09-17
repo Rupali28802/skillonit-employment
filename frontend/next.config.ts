@@ -1,5 +1,7 @@
 import type { NextConfig } from 'next';
 const config: NextConfig = {
+  // Integration builds must not overwrite a running development/production build.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   poweredByHeader: false,
   async redirects() {
     // Keep browser cookies and the backend's Origin check on the configured host.
