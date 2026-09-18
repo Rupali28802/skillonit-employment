@@ -20,10 +20,10 @@ export type PortalAccess = {
 // connector has passed attribution, expiry, withdrawal and source-link tests.
 export const requestedPortalAccess: readonly PortalAccess[] = Object.freeze([
   {
-    id: 'naukri', name: 'Naukri', market: 'India', status: 'provider_approval_required', connected: false,
+    id: 'naukri', name: 'Naukri', market: 'India', status: 'approval_pending', connected: false,
     officialUrl: 'https://www.naukri.com/recruiter',
     permittedRoute: 'Commercial syndication or partner feed approved by Naukri.',
-    note: 'Recruiter job-posting access does not authorize exporting Naukri search inventory.',
+    note: 'A retrieval and redisplay enquiry was sent to the official Naukri sales channel on 18 September 2026; written approval is pending.',
   },
   {
     id: 'indeed', name: 'Indeed', market: 'Worldwide', status: 'approval_pending', connected: false,
@@ -38,16 +38,16 @@ export const requestedPortalAccess: readonly PortalAccess[] = Object.freeze([
     note: 'Job Posting and status APIs cover approved partner/customer jobs, not broad public-job harvesting.',
   },
   {
-    id: 'glassdoor', name: 'Glassdoor', market: 'Worldwide', status: 'provider_approval_required', connected: false,
+    id: 'glassdoor', name: 'Glassdoor', market: 'Worldwide', status: 'approval_pending', connected: false,
     officialUrl: 'https://www.glassdoor.com/developer/index.htm',
     permittedRoute: 'Glassdoor-approved API or distribution agreement with job-listing rights.',
-    note: 'No approved credentials or current redistribution grant is configured.',
+    note: 'A retrieval and redisplay enquiry was sent to the official Glassdoor employer channel on 18 September 2026; the former developer page currently returns not found.',
   },
   {
     id: 'monster', name: 'Monster', market: 'Worldwide', status: 'provider_approval_required', connected: false,
     officialUrl: 'https://hiring.monster.com/solutions/staffing/',
     permittedRoute: 'Monster partnership granting a job inventory feed for third-party display.',
-    note: 'Published feed integration material describes sending employer requisitions to Monster.',
+    note: 'Published material describes sending employer requisitions to Monster. Its global contact form requires a supported-region business postal code; India is not offered, so no truthful submission is possible with the current project details.',
   },
   {
     id: 'freshersworld', name: 'Freshersworld', market: 'India', status: 'approval_pending', connected: false,
@@ -56,28 +56,28 @@ export const requestedPortalAccess: readonly PortalAccess[] = Object.freeze([
     note: 'An affiliate/feed access enquiry was submitted through the official contact form on 18 September 2026; approval and an issued feed are pending.',
   },
   {
-    id: 'shine', name: 'Shine', market: 'India', status: 'provider_approval_required', connected: false,
+    id: 'shine', name: 'Shine', market: 'India', status: 'approval_pending', connected: false,
     officialUrl: 'https://recruiter.shine.com/',
     permittedRoute: 'Shine partnership that expressly permits retrieval and redisplay.',
-    note: 'The documented ATS integration pushes employer jobs to Shine and is not a search-export feed.',
+    note: 'A retrieval and redisplay enquiry was sent to the official Shine recruiter-services channel on 18 September 2026; approval is pending.',
   },
   {
-    id: 'timesjobs', name: 'TimesJobs', market: 'India', status: 'official_access_unconfirmed', connected: false,
+    id: 'timesjobs', name: 'TimesJobs', market: 'India', status: 'approval_pending', connected: false,
     officialUrl: 'https://www.timesjobs.com/',
     permittedRoute: 'A written TimesJobs feed/API agreement covering retrieval, display and application links.',
-    note: 'No current official public job-retrieval API was verified.',
+    note: 'A feed and API access enquiry was sent to the official TimesJobs recruitment-solutions channel on 18 September 2026; a supported route is pending confirmation.',
   },
   {
-    id: 'internshala', name: 'Internshala', market: 'India', status: 'provider_approval_required', connected: false,
+    id: 'internshala', name: 'Internshala', market: 'India', status: 'approval_pending', connected: false,
     officialUrl: 'https://internshala.com/hire-talent/',
     permittedRoute: 'Internshala partnership expressly permitting third-party listing display.',
-    note: 'Internshala documents its own application workflow and says employer applications cannot be integrated into an external ATS.',
+    note: 'A retrieval and redisplay enquiry was sent through Internshala\'s official general contact channel on 18 September 2026; permission is pending.',
   },
   {
-    id: 'foundit', name: 'Foundit', market: 'India and international', status: 'provider_approval_required', connected: false,
+    id: 'foundit', name: 'Foundit', market: 'India and international', status: 'approval_pending', connected: false,
     officialUrl: 'https://recruiter.foundit.in/',
     permittedRoute: 'Foundit commercial partnership granting a retrieval/display feed.',
-    note: 'Employer products are available, but no approved public inventory export is configured.',
+    note: 'A retrieval and redisplay enquiry was sent to the official Foundit sales channel on 18 September 2026; approval is pending.',
   },
 ]);
 
