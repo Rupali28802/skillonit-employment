@@ -50,10 +50,10 @@ export const requestedPortalAccess: readonly PortalAccess[] = Object.freeze([
     note: 'Published feed integration material describes sending employer requisitions to Monster.',
   },
   {
-    id: 'freshersworld', name: 'Freshersworld', market: 'India', status: 'affiliate_approval_required', connected: false,
+    id: 'freshersworld', name: 'Freshersworld', market: 'India', status: 'approval_pending', connected: false,
     officialUrl: 'https://www.freshersworld.com/contactus',
     permittedRoute: 'Approved affiliate/partner participation using data or widgets supplied by Freshersworld.',
-    note: 'The affiliate terms contemplate approved job advertising, but no issued feed is configured.',
+    note: 'An affiliate/feed access enquiry was submitted through the official contact form on 18 September 2026; approval and an issued feed are pending.',
   },
   {
     id: 'shine', name: 'Shine', market: 'India', status: 'provider_approval_required', connected: false,

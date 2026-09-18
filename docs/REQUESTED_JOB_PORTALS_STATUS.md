@@ -9,7 +9,7 @@ Checked 18 September 2026. This list records access truthfully; it is not a clai
 | LinkedIn Jobs | Existing approval request pending | LinkedIn Talent Solutions Partner approval and signed API agreement. Posting/status APIs cover approved partner and customer jobs, not broad public-job retrieval. |
 | Glassdoor | Provider approval required | Glassdoor-approved API or distribution agreement with job-listing rights and attribution requirements. |
 | Monster | Provider approval required | A Monster agreement granting a third-party job inventory feed. Public integration material describes publishing employer requisitions to Monster. |
-| Freshersworld | Affiliate approval required | Approved affiliate/partner participation and the data, widgets or links issued under that agreement. |
+| Freshersworld | Official access request submitted 18 September 2026; approval pending | Approved affiliate/partner participation and the data, widgets or links issued under that agreement. The official form confirmed receipt. |
 | Shine | Provider approval required | Written permission for retrieval and redisplay. Shine's advertised ATS integration sends employer jobs to Shine; it is not a search-export feed. |
 | TimesJobs | Official access unconfirmed | Written API/feed agreement covering retrieval, display, refresh, removal and application links. |
 | Internshala | Provider approval required | Written permission for third-party listing display. Its documented job/internship application flow remains on Internshala. |
