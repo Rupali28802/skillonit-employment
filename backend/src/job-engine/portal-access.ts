@@ -39,7 +39,7 @@ export const requestedPortalAccess: readonly PortalAccess[] = Object.freeze([
   },
   {
     id: 'glassdoor', name: 'Glassdoor', market: 'Worldwide', status: 'approval_pending', connected: false,
-    officialUrl: 'https://www.glassdoor.com/developer/index.htm',
+    officialUrl: 'https://www.glassdoor.com/employers/',
     permittedRoute: 'Glassdoor-approved API or distribution agreement with job-listing rights.',
     note: 'A retrieval and redisplay enquiry was sent to the official Glassdoor employer channel on 18 September 2026; the former developer page currently returns not found.',
   },
