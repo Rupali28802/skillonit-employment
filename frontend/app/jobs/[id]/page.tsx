@@ -3,6 +3,16 @@ import Link from 'next/link';
 import { getJob } from '@/lib/api';
 import { JobActions } from '@/components/job-actions';
 export const dynamic = 'force-dynamic';
+
+function authorizedExternalUrl(value?: string) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
 export async function generateMetadata({
   params,
 }: {
@@ -24,6 +34,11 @@ export default async function JobPage({
   const job = await getJob(id);
   if (!job || job.status !== 'published') notFound();
   const j = job;
+  const applicationUrl = authorizedExternalUrl(j.publicApplicationLink)
+    || authorizedExternalUrl(j.sourceLink);
+  const location = [j.city, j.state, j.country]
+    .filter((value, index, values) => value && values.indexOf(value) === index)
+    .join(', ') || 'Location not specified';
   return (
     <div className="page-wrap">
       <Link href="/">← Back to opportunities</Link>
@@ -34,9 +49,7 @@ export default async function JobPage({
             <h1 style={{ marginTop: 20 }}>{j.title}</h1>
             <p>{j.company}</p>
             <div className="job-facts">
-              <span>
-                {j.city}, {j.country}
-              </span>
+              <span>{location}</span>
               <span>{j.mode}</span>
               <span>{j.type}</span>
               <span>
@@ -50,36 +63,32 @@ export default async function JobPage({
             )}
           </div>
           <div className="panel">
-            <h2>About the role</h2>
-            <p>{j.description}</p>
-            <h2>What you’ll bring</h2>
-            <p>{j.requirements}</p>
-            <div className="skills">
-              {j.skills.map((s) => (
-                <span key={s}>{s}</span>
-              ))}
+            <h2>Company information</h2>
+            <p><strong>{j.company}</strong></p>
+            <p className="small">
+              This opportunity was discovered through {j.source}. Company details shown here come from the original listing; SkillonIT does not invent missing employer information.
+            </p>
+            <div className="job-facts">
+              <span>{location}</span>
+              <span>{j.trust === 'verified' ? 'Verified listing' : j.trust === 'flagged' ? 'Needs review' : 'Verification pending'}</span>
             </div>
+          </div>
+          <div className="panel">
+            <h2>About the role</h2>
+            <p>{j.description || 'The original source did not provide a job description.'}</p>
+            <h2>Requirements</h2>
+            <p>{j.requirements || 'The original source did not provide separate requirements.'}</p>
+            {j.skills.length > 0 ? <div className="skills">
+              {j.skills.map((s) => <span key={s}>{s}</span>)}
+            </div> : <p className="small">Skills were not specified separately in the original listing.</p>}
           </div>
         </div>
         <aside>
           <div className="panel">
             <h2>Your next step</h2>
             <p>
-              {j.method === 'direct'
-                ? 'Apply through SkillonIT'
-                : j.method === 'external'
-                  ? 'Continue on the employer website'
-                  : 'Apply by authorized email'}
+              Review the information on this page, then continue to the real employer or authorized application source. SkillonIT will not claim that an external application was submitted.
             </p>
-            {job.acceptingApplications && j.sourceLink ? (
-              <a className="primary full" href={j.publicApplicationLink || j.sourceLink} target="_blank" rel="noopener noreferrer">View original job from {j.source} ↗</a>
-            ) : job.acceptingApplications ? (
-              <JobActions jobId={j.id} sample={j.sample} />
-            ) : (
-              <p className="notice">
-                This vacancy is no longer accepting applications.
-              </p>
-            )}
             <hr
               style={{
                 border: 0,
@@ -89,7 +98,13 @@ export default async function JobPage({
             />
             <h3>Opportunity details</h3>
             <p className="small">
-              {j.salaryDisclosed === false ? (j.salaryText || 'Salary not specified') : <>Annual salary:{' '}
+              Job type: {j.type || 'Not specified'}
+              <br />
+              Work mode: {j.mode || 'Not specified'}
+              <br />
+              Experience: {j.experienceDisclosed === false ? 'Not specified' : `${j.experienceMin}–${j.experienceMax} years`}
+              <br />
+              Compensation: {j.salaryDisclosed === false ? (j.salaryText || 'Not specified') : <>
               {new Intl.NumberFormat('en', {
                 style: 'currency',
                 currency: j.currency,
@@ -101,7 +116,7 @@ export default async function JobPage({
               }).format(j.salaryMax)}</>}
             </p>
             <p className="small">
-              Source: {j.sourceLink ? <a href={j.sourceLink} target="_blank" rel="noopener noreferrer">{j.source} ↗</a> : j.source}
+              Original source: {authorizedExternalUrl(j.sourceLink) ? <a href={authorizedExternalUrl(j.sourceLink)!} target="_blank" rel="noopener noreferrer">{j.source} ↗</a> : j.source}
               <br />
               Verification: {j.trust}
               <br />
@@ -111,6 +126,26 @@ export default async function JobPage({
             </p>
             {!j.identityVisible && (
               <Link href="/pricing">Compare identity access by plan →</Link>
+            )}
+            <hr
+              style={{
+                border: 0,
+                borderTop: '1px solid #dfe7e1',
+                margin: '24px 0',
+              }}
+            />
+            {j.sample ? (
+              <p className="notice">
+                Applications are disabled because this is a demonstration vacancy.
+              </p>
+            ) : job.acceptingApplications && applicationUrl ? (
+              <a className="primary full" href={applicationUrl} target="_blank" rel="noopener noreferrer" aria-label={`Proceed to apply for ${j.title} on ${j.source}`}>Proceed to Apply ↗</a>
+            ) : job.acceptingApplications ? (
+              <JobActions jobId={j.id} buttonLabel="Proceed to Apply" />
+            ) : (
+              <p className="notice">
+                This vacancy is no longer accepting applications.
+              </p>
             )}
           </div>
         </aside>

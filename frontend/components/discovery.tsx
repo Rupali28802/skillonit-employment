@@ -444,7 +444,7 @@ export function Discovery({
                     >
                       View Job <ArrowUpRight size={17} />
                     </Link>
-                    {job.publicApplicationLink && /^https?:\/\//i.test(job.publicApplicationLink) ? <a className="primary job-apply" href={job.publicApplicationLink} target="_blank" rel="noopener noreferrer" aria-label={`Apply for ${job.title} on original source`}>Apply <ArrowUpRight size={17}/></a> : <Link className="primary job-apply" href={`/jobs/${job.id}`} aria-label={`Application details for ${job.title}`}>Apply <ArrowRight size={17}/></Link>}
+                    <Link className="primary job-apply" href={`/jobs/${job.id}`} aria-label={`Review ${job.title} before applying`}>Apply <ArrowRight size={17}/></Link>
                     </div>
                   </div>
                 </article>;

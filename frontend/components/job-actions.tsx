@@ -10,9 +10,11 @@ import { SmartForm } from './forms';
 export function JobActions({
   jobId,
   sample,
+  buttonLabel = 'Apply now',
 }: {
   jobId: string;
   sample?: boolean;
+  buttonLabel?: string;
 }) {
   const [message, setMessage] = useState(''),
     [open, setOpen] = useState(false),
@@ -48,7 +50,7 @@ export function JobActions({
   return (
     <>
       <button className="primary full" onClick={() => setOpen(true)}>
-        Apply now
+        {buttonLabel}
       </button>
       <button
         className="secondary full"
