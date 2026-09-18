@@ -19,6 +19,7 @@ import {
   sameOrigin,
   audit,
 } from "./lib/security.js";
+import { publicPortalAccess } from './job-engine/portal-access.js';
 import {
   registerSchema,
   loginSchema,
@@ -386,6 +387,8 @@ export async function handle(
           countries:audit?.countries.filter(c=>c.indexedListings>0).length ?? null, measuredAt:now.toISOString(), countryAuditAt:audit?.generatedAt ?? null};
       }));
     }
+    if (p === 'jobs/source-access' && method === 'GET')
+      return ok(publicPortalAccess());
     if (p === "jobs" && method === "GET")
       return ok(await searchJobs(url.searchParams, await currentUser()));
     if (p === "plans" && method === "GET")
