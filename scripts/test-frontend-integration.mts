@@ -82,10 +82,33 @@ try {
   }
   assert.ok(ready, 'Test frontend started');
   const homepage = await (await request('/')).text();
-  assert.ok(homepage.includes('Find the Right Job.') && homepage.includes('job-hero-art'), 'Existing homepage preserved');
+  assert.ok(homepage.includes('Find the Right Job.') && homepage.includes('live-discovery-heading'), 'Job-hunting homepage preserved');
   const styles = [...homepage.matchAll(/href="([^"\s]+\.css(?:\?[^"\s]*)?)"/g)].map(match => match[1]);
   const css = (await Promise.all(styles.map(async path => (await request(path.replaceAll('&amp;', '&'))).text()))).join('\n');
-  for (const selector of ['.auth-card', '.profile-sidebar', '.job-hero']) assert.ok(css.includes(selector), `Production CSS includes ${selector}`);
+  for (const selector of ['.auth-card', '.profile-sidebar', '.live-discovery', '.vertical-job-feed']) assert.ok(css.includes(selector), `Production CSS includes ${selector}`);
+  const { upsertSource, runEngine } = await import('../backend/src/job-engine/engine.js');
+  await upsertSource({ id: 'integration-feed', type: 'ashby', name: 'Fixture careers', board: 'fixture', company: 'Fixture Company',
+    enabled: true, approved: true, publicListing: true, publish: true, intervalMinutes: 30, maxPages: 1,
+    policyEvidence: 'Isolated integration fixture; no external provider requests.' });
+  const fakeFeed = async () => ({ complete: true, snapshot: true, requests: 0, jobs: [{ externalId: 'nurse-1', title: 'Integration clinical nurse',
+    company: 'Fixture Company', url: 'https://careers.example.com/nurse-1', description: 'A clinical role supporting patients and the nursing team.',
+    location: 'Worldwide', postedAt: new Date().toISOString() }] });
+  await runEngine(fakeFeed);
+  const feedPage = await (await request('/')).text();
+  assert.ok(feedPage.includes('Integration clinical nurse') && feedPage.includes('Salary not specified') && feedPage.includes('Experience not specified'));
+  const feedJob = (await read(r => r.find<any>('jobs', { title: 'Integration clinical nurse' })))[0];
+  const detail = await (await request('/jobs/' + feedJob.id)).text();
+  assert.ok(detail.includes('View original job from') && detail.includes('https://careers.example.com/nurse-1'));
+  await request('/api/v1/admin/job-engine', 401);
+  const live = await fetch(origin + '/api/v1/jobs/stream', { signal: AbortSignal.timeout(20000) });
+  const reader = live.body!.getReader();
+  await reader.read();
+  await delay(200);
+  await transaction(async r => { const s = await r.get<any>('jobFeedStates', 'integration-feed'); await r.put('jobFeedStates', { ...s, nextRunAt: 0 }); });
+  await runEngine(fakeFeed);
+  let events = '';
+  while (!events.includes('event: jobs')) { const chunk = await reader.read(); if (chunk.done) break; events += new TextDecoder().decode(chunk.value); }
+  await reader.cancel(); assert.ok(events.includes('event: jobs'), 'Worker changes reach the frontend SSE proxy');
   for (const path of ['/login', '/register', '/verify-email', '/forgot-password', '/reset-password']) await request(path);
   await expectLoginRedirect();
   await request('/api/v1/auth/google/callback', 400);
@@ -137,7 +160,7 @@ try {
   assert.equal((await payload('/api/v1/session', cookie)).user, null);
   await expectLoginRedirect(cookie);
   await command(['tests/architecture.mjs'], fileURLToPath(new URL('../backend/', import.meta.url)), { ...process.env, TEST_FRONTEND: origin, TEST_URL: 'http://127.0.0.1:3101', TEST_ORIGIN: origin }, 'all existing public/student/employer/admin route, proxy and authorization checks');
-  console.log(`PASS: ${requestCount} frontend/Express requests plus architecture suite; real isolated MongoDB, password auth, session refresh/logout, profile/media preservation, revisions, preferences and compiled CSS. Live Google consent was not simulated.`);
+  console.log(`PASS: ${requestCount} frontend/Express requests plus architecture suite; live feed ingestion/SSE, truthful job details, password auth, session refresh/logout, profile/media preservation, revisions, preferences and compiled CSS. Live Google consent was not simulated.`);
   if (process.argv.includes('--keep-open')) {
     console.log(`Isolated integration preview: ${origin}. Temporary test data only; not the real Atlas database.`);
     await new Promise<void>(resolve => { process.once('SIGINT', resolve); process.once('SIGTERM', resolve); });

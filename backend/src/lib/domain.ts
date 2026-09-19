@@ -7,11 +7,12 @@ export type Job = {
   company: string;
   domain: string;
   country: string;
+  eligibleCountries?: string[];
   state: string;
   city: string;
   category: string;
   skills: string[];
-  mode: 'Remote' | 'Hybrid' | 'On-site';
+  mode: 'Remote' | 'Hybrid' | 'On-site' | 'Not specified';
   type: string;
   salaryMin: number;
   salaryMax: number;
@@ -31,12 +32,31 @@ export type Job = {
   expiresAt: string;
   sample?: boolean;
   mnc?: boolean;
+  salaryDisclosed?: boolean;
+  experienceDisclosed?: boolean;
+  salaryText?: string;
+  sourcePostedAt?: string;
+  sourceUpdatedAt?: string;
+  sourceExpiresAt?: string;
+  risk?: { reasons: string[]; assessedAt: string; method: 'rules-v1' };
+  normalizedFacts?: {
+    city: string | null; state: string | null; locationText: string;
+    skills: string[]; experience: { min: number | null; max: number | null; text: string | null };
+    salary: { min: number | null; max: number | null; currency: string | null; period: string | null; text: string | null };
+    postedAt: string | null; updatedAt: string | null; expiresAt: string | null;
+    sourceCategory: string | null; sourceTags: string[];
+    normalizedAt: string; method: 'source-fields';
+  };
+  feed?: { sourceId: string; externalId: string; publicListing: boolean; attributionUrl: string; lastSeenAt: string; closedByEngine?: boolean };
   matching?: JobMatching;
   lifecycle?: { schemaVersion: 1; state: 'publishing' | 'active' | 'expired' | 'closed' | 'removed' | 'reposted'; revision: number; changedAt: string; reasonCode: string; declaredExpiresAt?: string; effectiveExpiresAt?: string };
 };
-export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company'> & {
+export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company' | 'feed'> & {
   company: string;
   identityVisible: boolean;
+  sourceLink?: string;
+  publicApplicationLink?: string;
+  sourceJobId?: string;
 };
 export type Profile = {
   avatarVersion?: string;
@@ -166,16 +186,6 @@ export const categories = [
   'Legal',
   'Logistics',
 ];
-export const countries = [
-  'India',
-  'United States',
-  'United Kingdom',
-  'Canada',
-  'Germany',
-  'Australia',
-  'Singapore',
-  'United Arab Emirates',
-];
 export const states = [
   'Andhra Pradesh',
   'Arunachal Pradesh',
@@ -263,10 +273,11 @@ export function publicJob(
   configuredPlans = plans,
 ): PublicJob {
   const identityVisible =
+    job.feed?.publicListing === true ||
     user?.role === 'admin' ||
     user?.id === job.employerId ||
     !!configuredPlans.find((p) => p.code === user?.plan)?.identity;
-  const { email: _email, domain: _domain, url: _url, company, ...safe } = job;
+  const { email: _email, domain: _domain, url: _url, company, feed, ...safe } = job;
   const scrub = (text: string) => {
     if (identityVisible) return text;
     let result = text;
@@ -289,14 +300,17 @@ export function publicJob(
     source: scrub(safe.source),
     company: identityVisible ? company : 'Company identity protected',
     identityVisible,
+    ...(feed?.publicListing ? { sourceLink: feed.attributionUrl, publicApplicationLink: job.url, sourceJobId: feed.externalId } : {}),
   };
 }
 export function isRecent(job: Job, days = 90, now = Date.now()) {
   const state = job.lifecycle?.state;
+  const publishedAt = Date.parse(job.sourcePostedAt || job.discoveredAt);
   return (
     job.status === 'published' &&
     (!state || state === 'active') &&
-    Date.parse(job.discoveredAt) >= now - days * 86400000 &&
+    Number.isFinite(publishedAt) &&
+    publishedAt >= now - days * 86400000 &&
     Date.parse(job.expiresAt) > now
   );
 }
@@ -332,3 +346,5 @@ export function eligibility(
     );
   return reasons;
 }
+import { countries } from './countries.js';
+export { countries };

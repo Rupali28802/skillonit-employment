@@ -74,7 +74,41 @@ await test('90-day lifecycle excludes stale and closed vacancies', () => {
     }),
     false,
   );
+  assert.equal(
+    isRecent({
+      ...job,
+      discoveredAt: new Date().toISOString(),
+      sourcePostedAt: new Date(Date.now() - 91 * 86400000).toISOString(),
+      expiresAt: new Date(Date.now() + 86400000).toISOString(),
+    }),
+    false,
+  );
   assert.equal(isRecent({ ...job, status: 'closed' }), false);
+});
+await test('matching uses profile fallback location and detailed preferences', () => {
+  const tailored = matchJob(
+    {
+      ...job,
+      country: 'United States',
+      eligibleCountries: ['India', 'United States'],
+      category: 'Technology',
+      type: 'Full-time',
+      skills: ['React', 'TypeScript'],
+    },
+    user.profile,
+    {
+      ...user.preferences,
+      countries: [],
+      modes: [],
+      skills: ['TypeScript'],
+      employmentTypes: ['Full-time'],
+      industries: ['Technology'],
+    },
+  );
+  assert.ok(tailored.score > 0);
+  assert.ok(tailored.reasons.includes('Location fits'));
+  assert.ok(tailored.reasons.includes('Employment type fits'));
+  assert.ok(tailored.reasons.includes('Industry fits'));
 });
 await test('opening an external application never counts as submitted', () => {
   assert.equal(canTransition('EXTERNAL_STARTED', 'EXTERNAL_SUBMITTED'), true);

@@ -1,6 +1,13 @@
 # SkillOnIT Employment
 
-One repository, maintained on `main`: the existing frontend design and the Express/MongoDB Module 1 and Module 2 backend. The original specifications and backend contracts are in `docs/`.
+This integrated branch combines the existing frontend, Express/MongoDB Module 1 and Module 2 backend, and the scheduled worldwide job-hunting engine. Google authentication and the established website design are preserved. Feed cards show truthful missing-field labels and source attribution; public syndicated listings link to their original source.
+
+See [Job hunting engine setup, sources and limits](docs/JOB_ENGINE.md). Start with `npm run jobs:seed`, `npm run jobs:once`, then `npm run worker:jobs` from `backend/` after installing dependencies and building. Source state is available through `npm run jobs:status`.
+
+[Worldwide source audit and integration backlog](docs/GLOBAL_JOB_COVERAGE.md) distinguishes live feeds from credential-gated connectors and unconnected platforms. `npm run jobs:coverage` reports real inventory across 250 country/territory filters (ISO entries plus Kosovo); empty countries are explicitly reported. The preview is not a global public deployment.
+
+For scheduled country discovery, run `npm run jobs:seed-worldwide` after the backend build, then `npm run worker:jobs`. This enables bounded daily Himalayas country queries, a separate worldwide query and Remote OK. It does not enable restricted marketplaces or guarantee local vacancies in every country. See the audit snapshot for attempted country queries and actual inventory.
+The original specifications, backend contracts, source audits and operational notes are in `docs/`.
 
 ```text
 skillonit-employment/
@@ -16,7 +23,22 @@ Use Node.js 22.17 or later. Run `npm ci` in both `backend` and `frontend`.
 For a new checkout, copy `backend/.env.example` to `backend/.env` and
 `frontend/.env.example` to `frontend/.env.local`. Preserve existing private environment files when upgrading.
 
-For local email/password development, both applications must use the same public origin:
+```sh
+git clone --branch codex/complete-employment-platform https://github.com/Rupali28802/skillonit-employment.git
+cd skillonit-employment
+cd backend
+npm ci
+cd ../frontend
+npm ci
+```
+
+Both applications install and build independently. No `.env`, credentials, uploads, database data or `node_modules` are committed.
+
+## Configure locally
+
+Copy `backend/.env.example` to `backend/.env` and `frontend/.env.example` to `frontend/.env.local`. Keep the backend owner's existing credentials private. For normal MongoDB development use `DEMO_MODE=false`.
+
+For local email/password development, both applications must use the same public origin. Backend settings:
 
 ```dotenv
 APP_URL=http://127.0.0.1:3000
@@ -95,8 +117,17 @@ cd ..
 node scripts/scan-secrets.mjs
 ```
 
-`test:frontend` builds Next.js into ignored `.next-integration`, starts an isolated MongoDB replica set using `architecture_test`, Express on 3101 and the production frontend on 3100. It does not connect to the configured Atlas database, send mail, or simulate successful Google consent. Ports 3100/3101 must be free. An initial run may download the MongoDB test binary. The separate build directory preserves any currently running `.next` build.
+The frontend integration check starts an isolated MongoDB replica set, Express on 3101 and Next.js on 3100. It does not load private environment files or use the real database. It verifies current hero rendering, auth/session routing, authenticated pages, profile revision conflicts, preference persistence, CV metadata, unsupported photo routes and the original Google PKCE redirect. It does not perform live Google consent or send real mail.
+# Jooble regional feeds
+
+Setup, quota limits and verification notes are in [docs/JOOBLE_INTEGRATION.md](docs/JOOBLE_INTEGRATION.md). Feed credentials belong only in ignored `backend/.env`; the existing frontend displays imported jobs through its normal API.
+
+### Worldwide source research and latest connectors
+
+See [research report](docs/WORLDWIDE_JOB_ENGINE_RESEARCH.md) and [source audit](docs/JOB_SOURCE_MASTER_AUDIT.md) for verified connections, access requirements and remaining work. JobSearch (Sweden) is provisioned by `npm run jobs:seed` in backend after building. Reed search support is implemented but requires a private `REED_API_KEY` and approved source configuration before activation. Neither country filters nor a built adapter imply complete coverage.
+
+`test:frontend` builds Next.js into ignored `.next-integration`, starts an isolated MongoDB replica set, Express on 3101 and the production frontend on 3100. It does not connect to the configured Atlas database, send mail, or simulate successful Google consent. Ports 3100/3101 must be free. An initial run may download the MongoDB test binary. The separate build directory preserves any currently running `.next` build.
 
 Never commit `.env`, `.env.local`, credentials, tokens, CV uploads, database dumps, `.data`, logs or generated builds. Only redacted `.env.example` templates belong in Git.
 
-The latest branch audit and validation results are in [Module 1/2 main validation](docs/MODULE12_MAIN_VALIDATION.md).
+The latest Module 1/2 audit is in [Module 1/2 main validation](docs/MODULE12_MAIN_VALIDATION.md).

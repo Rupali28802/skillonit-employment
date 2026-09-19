@@ -1,3 +1,4 @@
+export { countries } from './countries';
 export type Role = 'student' | 'employer' | 'admin';
 export type PlanCode = 'basic' | 'pro' | 'premium';
 export type Job = {
@@ -6,11 +7,12 @@ export type Job = {
   company: string;
   domain: string;
   country: string;
+  eligibleCountries?: string[];
   state: string;
   city: string;
   category: string;
   skills: string[];
-  mode: 'Remote' | 'Hybrid' | 'On-site';
+  mode: 'Remote' | 'Hybrid' | 'On-site' | 'Not specified';
   type: string;
   salaryMin: number;
   salaryMax: number;
@@ -30,10 +32,18 @@ export type Job = {
   expiresAt: string;
   sample?: boolean;
   mnc?: boolean;
+  salaryDisclosed?: boolean;
+  experienceDisclosed?: boolean;
+  salaryText?: string;
+  sourcePostedAt?: string;
+  sourceUpdatedAt?: string;
+  normalizedFacts?: {salary:{period:string|null}};
 };
 export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company'> & {
   company: string;
   identityVisible: boolean;
+  sourceLink?: string;
+  publicApplicationLink?: string;
 };
 export type Profile = {
   avatarVersion?: string;
@@ -97,16 +107,6 @@ export const categories = [
   'Hospitality',
   'Legal',
   'Logistics',
-];
-export const countries = [
-  'India',
-  'United States',
-  'United Kingdom',
-  'Canada',
-  'Germany',
-  'Australia',
-  'Singapore',
-  'United Arab Emirates',
 ];
 export const states = [
   'Andhra Pradesh',

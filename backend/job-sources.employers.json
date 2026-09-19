@@ -1,0 +1,44 @@
+[
+  {
+    "id": "greenhouse-razorpaysoftwareprivatelimited",
+    "type": "greenhouse",
+    "board": "razorpaysoftwareprivatelimited",
+    "company": "Razorpay Software Private Limited",
+    "name": "Razorpay Software Private Limited",
+    "enabled": true,
+    "approved": true,
+    "publicListing": true,
+    "publish": true,
+    "intervalMinutes": 10,
+    "maxPages": 4,
+    "policyEvidence": "Public published job-board endpoint reviewed for owner-requested discovery; no private or application data. Board: https://razorpay.com/careers/ API: https://docs.greenhouse.io/job-board.html. Not an employer partnership claim."
+  },
+  {
+    "id": "lever-employ",
+    "type": "lever",
+    "board": "employ",
+    "company": "Employ",
+    "name": "Employ",
+    "enabled": true,
+    "approved": true,
+    "publicListing": true,
+    "publish": true,
+    "intervalMinutes": 10,
+    "maxPages": 4,
+    "policyEvidence": "Public published job-board endpoint reviewed for owner-requested discovery; no private or application data. Board: https://jobs.lever.co/employ API: https://github.com/lever/postings-api. Not an employer partnership claim."
+  },
+  {
+    "id": "ashby-ema",
+    "type": "ashby",
+    "board": "ema",
+    "company": "Ema",
+    "name": "Ema",
+    "enabled": true,
+    "approved": true,
+    "publicListing": true,
+    "publish": true,
+    "intervalMinutes": 10,
+    "maxPages": 4,
+    "policyEvidence": "Public published job-board endpoint reviewed for owner-requested discovery; no private or application data. Board: https://jobs.ashbyhq.com/ema API: https://developers.ashbyhq.com/docs/public-job-posting-api. Not an employer partnership claim."
+  }
+]

@@ -117,7 +117,7 @@ function automationReasons(job: Job, preferences: AutomationPreferences, now: Da
   if (preferences.allowedRoleFamilies.length && (!job.matching?.occupationId || !preferences.allowedRoleFamilies.includes(job.matching.occupationId))) reasons.push('ROLE_NOT_ALLOWED');
   if (preferences.allowedLocations.length && (!job.matching?.locationId || !preferences.allowedLocations.includes(job.matching.locationId))) reasons.push('LOCATION_NOT_ALLOWED');
   if (job.matching?.locationId && preferences.excludedLocations.includes(job.matching.locationId)) reasons.push('LOCATION_EXCLUDED');
-  if (preferences.workModes.length && !preferences.workModes.includes(job.mode)) reasons.push('WORK_MODE_NOT_ALLOWED');
+  if (preferences.workModes.length && !preferences.workModes.includes(job.mode as typeof preferences.workModes[number])) reasons.push('WORK_MODE_NOT_ALLOWED');
   if (preferences.employmentTypes.length && !preferences.employmentTypes.some(type => norm(type) === norm(job.type))) reasons.push('EMPLOYMENT_TYPE_NOT_ALLOWED');
   if (preferences.minimumSalary && (job.currency !== preferences.minimumSalary.currency || job.salaryMax < preferences.minimumSalary.amount)) reasons.push('SALARY_NOT_ALLOWED');
   return reasons;

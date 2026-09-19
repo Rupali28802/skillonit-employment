@@ -1,0 +1,607 @@
+{
+  "generatedAt": "2026-09-11T06:30:44.779Z",
+  "regions": 39,
+  "successful": 39,
+  "counts": {
+    "fetched": 3800,
+    "added": 3452,
+    "updated": 0,
+    "duplicates": 0,
+    "rejected": 348,
+    "requests": 39
+  },
+  "published": 3452,
+  "review": 0,
+  "byRegion": [
+    {
+      "id": "jooble-ae",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 97,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 3,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:26:31.411Z"
+    },
+    {
+      "id": "jooble-ar",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 100,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:26:37.071Z"
+    },
+    {
+      "id": "jooble-au",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 100,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:26:43.411Z"
+    },
+    {
+      "id": "jooble-bh",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 76,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 24,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:26:47.796Z"
+    },
+    {
+      "id": "jooble-ca",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 100,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:26:53.810Z"
+    },
+    {
+      "id": "jooble-ch",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 55,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 45,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:26:59.123Z"
+    },
+    {
+      "id": "jooble-cl",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 100,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:27:05.088Z"
+    },
+    {
+      "id": "jooble-co",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 94,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 6,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:27:11.104Z"
+    },
+    {
+      "id": "jooble-cr",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 95,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 5,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:27:16.215Z"
+    },
+    {
+      "id": "jooble-de",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 33,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 67,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:27:20.684Z"
+    },
+    {
+      "id": "jooble-dk",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 94,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 6,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:27:26.960Z"
+    },
+    {
+      "id": "jooble-do",
+      "status": "completed",
+      "counts": {
+        "fetched": 0,
+        "added": 0,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 1,
+        "complete": true
+      },
+      "lastSuccessAt": "2026-09-11T06:27:29.330Z"
+    },
+    {
+      "id": "jooble-ec",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 94,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 6,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:27:35.324Z"
+    },
+    {
+      "id": "jooble-eg",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 93,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 7,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:27:41.513Z"
+    },
+    {
+      "id": "jooble-fi",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 37,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 63,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:27:44.791Z"
+    },
+    {
+      "id": "jooble-fr",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 100,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:27:50.142Z"
+    },
+    {
+      "id": "jooble-gb",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 87,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 13,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:27:55.562Z"
+    },
+    {
+      "id": "jooble-in",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 100,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:28:02.768Z"
+    },
+    {
+      "id": "jooble-it",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 100,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:28:08.504Z"
+    },
+    {
+      "id": "jooble-ma",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 100,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:28:13.467Z"
+    },
+    {
+      "id": "jooble-mx",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 100,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:28:19.165Z"
+    },
+    {
+      "id": "jooble-my",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 100,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:28:24.478Z"
+    },
+    {
+      "id": "jooble-ng",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 95,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 5,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:28:30.699Z"
+    },
+    {
+      "id": "jooble-nl",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 100,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:28:36.731Z"
+    },
+    {
+      "id": "jooble-nz",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 73,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 27,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:28:40.926Z"
+    },
+    {
+      "id": "jooble-pe",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 99,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 1,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:28:49.064Z"
+    },
+    {
+      "id": "jooble-ph",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 92,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 8,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:28:54.877Z"
+    },
+    {
+      "id": "jooble-pk",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 98,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 2,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:29:00.431Z"
+    },
+    {
+      "id": "jooble-pr",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 98,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 2,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:29:10.088Z"
+    },
+    {
+      "id": "jooble-qa",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 97,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 3,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:29:15.855Z"
+    },
+    {
+      "id": "jooble-rs",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 99,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 1,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:29:22.159Z"
+    },
+    {
+      "id": "jooble-sa",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 89,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 11,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:29:26.667Z"
+    },
+    {
+      "id": "jooble-sg",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 100,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:29:31.850Z"
+    },
+    {
+      "id": "jooble-sk",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 100,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:29:38.662Z"
+    },
+    {
+      "id": "jooble-sv",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 96,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 4,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:29:44.354Z"
+    },
+    {
+      "id": "jooble-tw",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 94,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 6,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:29:49.410Z"
+    },
+    {
+      "id": "jooble-us",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 100,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:29:56.465Z"
+    },
+    {
+      "id": "jooble-uy",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 67,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 33,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:30:00.521Z"
+    },
+    {
+      "id": "jooble-za",
+      "status": "partial",
+      "counts": {
+        "fetched": 100,
+        "added": 100,
+        "updated": 0,
+        "duplicates": 0,
+        "rejected": 0,
+        "closed": 0,
+        "requests": 1,
+        "complete": false
+      },
+      "lastSuccessAt": "2026-09-11T06:30:07.031Z"
+    }
+  ],
+  "notes": [
+    "Bounded regional queries, not exhaustive inventory. Updated dates are not publication dates.",
+    "Free key quota is lifetime 500; worker reserves a maximum 490 requests per region with no automatic reset.",
+    "No LinkedIn/Indeed/social-post access is established."
+  ]
+}

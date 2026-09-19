@@ -1,0 +1,116 @@
+import { createHash } from 'node:crypto';
+import { isIP } from 'node:net';
+import he from 'he';
+import type { Job } from '../lib/domain.js';
+import type { Candidate } from './adapters.js';
+import type { FeedSource } from './sources.js';
+import { countriesInLocation, normalizeCountry } from '../lib/countries.js';
+import { assessRisk } from './risk.js';
+
+export const hash = (s: string) => createHash('sha256').update(s).digest('hex');
+export function payPeriod(value: string) {
+  const key=value.trim().toLowerCase();
+  const periods:Record<string,string>={pa:'annual',year:'annual',yearly:'annual',annually:'annual',annual:'annual','per annum':'annual',ph:'hourly',hour:'hourly',hourly:'hourly','per hour':'hourly',month:'monthly',monthly:'monthly',week:'weekly',weekly:'weekly',day:'daily',daily:'daily'};
+  return periods[key] || plain(value,80) || null;
+}
+export function plain(input: string, limit = 30000) {
+  return he.decode(input.slice(0, 200000)).replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/\s+/g, ' ').trim().slice(0, limit);
+}
+export function canonicalUrl(raw: string) {
+  const u = new URL(raw);
+  if (u.protocol !== 'https:' || u.username || u.password || u.port || isIP(u.hostname.replace(/^\[|\]$/g, '')) || !u.hostname.includes('.') || /(^|\.)(localhost|local|internal|invalid|test)$/.test(u.hostname)) throw Error('INVALID_JOB_URL');
+  u.hash = '';
+  for (const k of [...u.searchParams.keys()]) if (/^(utm_|ref$|referrer$|source$|gh_src$|lever-source$)/i.test(k)) u.searchParams.delete(k);
+  u.searchParams.sort();
+  return u.href;
+}
+const categories: [string, RegExp][] = [
+  ['Healthcare', /sjukskötersk|underskötersk|läkare|infirmi[eè]r|enfermer|enfermagem|ممرض|تمريض|चिकित्सक|नर्स/iu],
+  ['Education', /lärare|förskollär|enseignant|professeur|maestro|docente|معلم|مدرس|शिक्षक/iu],
+  ['Engineering', /ingenjör|ingénieur|ingeniero|مهندس|अभियंता/iu],
+  ['Hospitality', /kock|servitör|cuisinier|camarero|مطعم|طباخ/iu],
+  ['Logistics', /lagerarbet|lastbilsförare|chauffeur|almac[eé]n|سائق|चालक/iu],
+  ['Finance', /redovisning|comptable|contable|محاسب|लेखाकार/iu],
+  ['Technology', /utvecklare|développeur|desarrollador|برمج|डेवलपर/iu],
+  ['Agriculture', /agricultur|farm worker|agronom|lantbruk|jordbruk|زارع|कृषि/iu],
+  ['Manufacturing', /manufactur|production operator|montör|fabriksarbet|fabrication|operario/iu],
+  ['Skilled trades', /electrician|plumber|carpenter|welder|elektriker|snickare|soudeur|électricien|سباك|बढ़ई/iu],
+  ['Healthcare', /\b(nurs|health|medical|physician|doctor|clinical|pflege|arzt|therap)/i],
+  ['Education', /\b(teach|education|professor|teacher|lehrer|trainer)/i],
+  ['Legal', /\b(legal|lawyer|counsel|compliance|rechts)/i],
+  ['Finance', /\b(financ|accountant|accounting|bank|steuer|buchhalt|audit)/i],
+  ['Design', /\b(design|ux|ui |graphic|creative)/i],
+  ['Marketing', /\b(marketing|seo|content|social media|communications)/i],
+  ['Sales', /\b(sales|business development|account executive|vertrieb|verkauf)/i],
+  ['Hospitality', /\b(hotel|hospitality|restaurant|chef|tourism|cook|gastronom)/i],
+  ['Logistics', /\b(logistic|warehouse|supply chain|driver|delivery|lager|fahrer)/i],
+  ['Technology', /\b(software|developer|devops|data|security|cloud|it\b|informat|entwickl|service desk|full.?stack)/i],
+  ['Engineering', /\b(engineer|engineering|mechanic|electrical|bau|ingenieur|technician)/i],
+  ['Operations', /\b(operation|support|human resources|recruit|administrat|customer|personal|office)/i],
+];
+export function categoryFor(c: Candidate) {
+  const input = [c.category, c.title, ...(c.tags || [])].join(' ');
+  return categories.find(([, pattern]) => pattern.test(input))?.[0] || 'Other';
+}
+export function normalize(c: Candidate, source: FeedSource, now = Date.now()): Job {
+  const title = plain(c.title, 240), company = plain(c.company, 150), description = plain(c.description);
+  if (!c.externalId || c.externalId.length > 2000 || !title || !company || description.length < 30) throw Error('MISSING_JOB_FACTS');
+  const canonical = canonicalUrl(c.url);
+  const url = ['adzuna', 'jooble'].includes(source.type) ? new URL(c.url).href : canonical;
+  if (source.type === 'remoteok' && new URL(url).hostname !== 'remoteok.com') throw Error('INVALID_ATTRIBUTION');
+  if (source.type === 'jobicy' && new URL(url).hostname !== 'jobicy.com') throw Error('INVALID_ATTRIBUTION');
+  if (source.type === 'usajobs' && !['www.usajobs.gov', 'usajobs.gov'].includes(new URL(url).hostname)) throw Error('INVALID_ATTRIBUTION');
+  if (source.type === 'remotive' && new URL(url).hostname !== 'remotive.com') throw Error('INVALID_ATTRIBUTION');
+  if (source.type.startsWith('arbeitnow') && new URL(url).hostname !== (source.type === 'arbeitnow' ? 'www.arbeitnow.com' : 'www.arbeitnow.co.uk')) throw Error('INVALID_ATTRIBUTION');
+  const posted = c.postedAt ? Date.parse(c.postedAt) : undefined;
+  const closing = c.closesAt ? Date.parse(c.closesAt) : undefined;
+  if (closing !== undefined && (!Number.isFinite(closing) || closing <= now)) throw Error('CLOSED_OR_INVALID_DATE');
+  if (posted !== undefined && (!Number.isFinite(posted) || posted > now + 300000 || posted < now - 90 * 86400000)) throw Error('STALE_OR_INVALID_DATE');
+  const risk = assessRisk(description, url);
+  const suspicious = risk.reasons.length > 0;
+  const stamp = new Date(now).toISOString();
+  const amount = (v: unknown): number | null => typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
+  const salaryMin = amount(c.salary?.min), salaryMax = amount(c.salary?.max);
+  const experienceMin = amount(c.experience?.min), experienceMax = amount(c.experience?.max);
+  const salaryValid = salaryMin !== null && salaryMax !== null && salaryMin <= salaryMax && /^[A-Z]{3}$/.test(c.salary?.currency || '');
+  const experienceValid = experienceMin !== null && experienceMax !== null && experienceMin <= experienceMax;
+  const updated = c.updatedAt ? Date.parse(c.updatedAt) : NaN;
+  const updatedAt = Number.isFinite(updated) && updated <= now + 300000 && (posted === undefined || updated >= posted) ? new Date(updated).toISOString() : null;
+  const skills = [...new Set((c.skills || []).map(t => plain(t, 80)).filter(Boolean))].slice(0, 100);
+  const facts = {
+    city: plain(c.city || '', 240) || null, state: plain(c.state || '', 240) || null, locationText: plain(c.location, 500), skills,
+    salary: { min: salaryValid ? salaryMin : null, max: salaryValid ? salaryMax : null, currency: salaryValid ? c.salary!.currency! : null,
+      period: payPeriod(c.salary?.period || ''), text: plain(c.salaryText || '', 300) || null },
+    experience: { min: experienceValid ? experienceMin : null, max: experienceValid ? experienceMax : null, text: plain(c.experience?.text || '', 1000) || null },
+    postedAt: posted !== undefined ? new Date(posted).toISOString() : null, updatedAt,
+    expiresAt: closing !== undefined ? new Date(closing).toISOString() : null,
+    sourceCategory: plain(c.category || '', 240) || null, sourceTags: (c.tags || []).map(t => plain(t, 80)).filter(Boolean).slice(0, 100),
+    normalizedAt: stamp, method: 'source-fields' as const,
+  };
+  const eligibleCountries = c.countryCodes?.length ? [...new Set(c.countryCodes.map(normalizeCountry).filter((c): c is string => !!c))]
+    : countriesInLocation(plain(c.country || c.location, 500));
+  const country = eligibleCountries.length === 1 ? eligibleCountries[0] : eligibleCountries.length > 1 ? 'Multiple countries'
+    : /^(worldwide|anywhere|global)$/i.test(c.location.trim()) ? 'Worldwide' : 'Not specified';
+  return {
+    id: 'feed-' + hash(canonical), title, company, domain: '', country, eligibleCountries, state: facts.state || '',
+    city: facts.city || plain(c.location, 240) || 'Not specified', category: categoryFor(c), skills,
+    mode: c.mode || 'Not specified', type: plain(c.employmentType || '', 120) || 'Not specified',
+    salaryMin: facts.salary.min ?? 0, salaryMax: facts.salary.max ?? 0, currency: facts.salary.currency || '', salaryDisclosed: salaryValid, salaryText: plain(c.salaryText || '', 300),
+    experienceMin: facts.experience.min ?? 0, experienceMax: facts.experience.max ?? 0, experienceDisclosed: experienceValid,
+    normalizedFacts: facts, risk,
+    ...(updatedAt ? { sourceUpdatedAt: updatedAt } : {}),
+    ...(facts.expiresAt ? { sourceExpiresAt: facts.expiresAt } : {}),
+    description, requirements: 'See the original listing for the complete requirements.', method: 'external', url,
+    status: source.publish && !suspicious ? 'published' : 'review', trust: suspicious ? 'flagged' : 'pending',
+    employerId: '', source: source.name, discoveredAt: stamp,
+    // Keep a vacancy active for at most 90 days from its source posting date.
+    // If a source does not publish that date, first discovery is the fallback.
+    // An explicit employer closing date always wins when it is earlier.
+    expiresAt: new Date(Math.min((posted ?? now) + 90 * 86400000, closing ?? Infinity)).toISOString(),
+    ...(posted !== undefined ? { sourcePostedAt: new Date(posted).toISOString() } : {}),
+    feed: { sourceId: source.id, externalId: c.externalId, publicListing: source.publicListing,
+      attributionUrl: source.type === 'himalayas' ? 'https://himalayas.app' : url, lastSeenAt: stamp },
+  };
+}
+export const duplicateKey = (j: Job) => hash([j.title, j.company, j.city, j.country, j.description].join('|').toLowerCase().replace(/\s+/g, ' ').trim());

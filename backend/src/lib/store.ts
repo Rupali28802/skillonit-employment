@@ -13,6 +13,8 @@ export type Row = { id: string; [key: string]: unknown };
 export const demoMode = () => demoEnabled();
 type Query = Record<string, unknown>;
 export interface Repository {
+  putMany<T extends { id: string }>(collection: string, rows: T[]): Promise<void>;
+  page<T>(collection: string, query: Query, sort: Record<string, 1 | -1>, skip: number, limit: number): Promise<T[]>;
   count(collection: string, query?: Query): Promise<number>;
   scan<T>(
     collection: string,
@@ -42,6 +44,13 @@ function mongo() {
 function mongoRepo(session?: ClientSession): Repository {
   const db = mongo().db(process.env.MONGODB_DATABASE || 'skillonit');
   return {
+    async putMany(c, rows) {
+      if (rows.length) await db.collection(c).bulkWrite(rows.map(row => ({ replaceOne: { filter: { id: row.id }, replacement: row, upsert: true } })), { session });
+    },
+    async page<T>(c: string, q: Query, sort: Record<string, 1 | -1>, skip: number, limit: number) {
+      return (await db.collection(c).find(q as Filter<Document>, { session, projection: { _id: 0 } })
+        .sort(sort).skip(skip).limit(limit).toArray()) as T[];
+    },
     async count(c, q = {}) {
       return db
         .collection(c)
@@ -87,19 +96,41 @@ function mongoRepo(session?: ClientSession): Repository {
   };
 }
 function localRepo(data: LocalData): Repository {
-  const matches = (row: Row, query: Query) =>
+  const matches = (row: Row, query: Query): boolean =>
     Object.entries(query).every(([key, value]) => {
+      if (key === '$and') return (value as Query[]).every(q => matches(row, q));
+      if (key === '$or') return (value as Query[]).some(q => matches(row, q));
+      if (value instanceof RegExp) return value.test(Array.isArray(row[key]) ? (row[key] as unknown[]).join(' ') : String(row[key] ?? ''));
+      if (value && typeof value === 'object' && '$in' in value) return (value.$in as unknown[]).includes(row[key]);
       if (value && typeof value === 'object') {
-        const range = value as Record<string, string>;
-        const actual = String(row[key] ?? '');
+        const range = value as Record<string, unknown>;
+        const actual = row[key];
+        const compare = (bound: unknown) => typeof actual === 'number' && typeof bound === 'number'
+          ? actual - bound : String(actual ?? '').localeCompare(String(bound));
         return (
-          (!('$gte' in range) || actual >= range.$gte) &&
-          (!('$lt' in range) || actual < range.$lt)
+          (!('$gte' in range) || compare(range.$gte) >= 0) &&
+          (!('$gt' in range) || compare(range.$gt) > 0) &&
+          (!('$lte' in range) || compare(range.$lte) <= 0) &&
+          (!('$ne' in range) || row[key] !== range.$ne) &&
+          (!('$lt' in range) || compare(range.$lt) < 0)
         );
       }
       return row[key] === value;
     });
   return {
+    async putMany(c, rows) {
+      data[c] ??= {};
+      for (const row of rows) data[c][row.id] = row as Row;
+    },
+    async page<T>(c: string, q: Query, sort: Record<string, 1 | -1>, skip: number, limit: number) {
+      return Object.values(data[c] || {}).filter(row => matches(row, q)).sort((a, b) => {
+        for (const [key, direction] of Object.entries(sort)) {
+          const av = a[key] ?? '', bv = b[key] ?? '';
+          if (av !== bv) return (av < bv ? -1 : 1) * direction;
+        }
+        return 0;
+      }).slice(skip, skip + limit) as T[];
+    },
     async count(c, q = {}) {
       return Object.values(data[c] || {}).filter((row) => matches(row, q))
         .length;
@@ -225,6 +256,15 @@ export async function bootstrapIndexes() {
     'jobDeduplicationDecisions',
     'jobLifecycleEvents',
     'jobDiscoveryRuns',
+    'jobFeedSources',
+    'jobVectors',
+    'socialSources',
+    'socialPosts',
+    'jobFeedStates',
+    'jobFeedVariants',
+    'jobFeedFingerprints',
+    'jobFeedRuns',
+    'jobEngineState',
     'paymentEvents',
     'payments',
     'paymentCheckoutRequests',

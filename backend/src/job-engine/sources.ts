@@ -1,0 +1,76 @@
+import { z } from 'zod';
+import { countryEntries } from '../lib/countries.js';
+import { joobleDomains, joobleKey } from './jooble-regions.js';
+
+export const sourceSchema = z.object({
+  id: z.string().regex(/^[a-z0-9_-]{1,80}$/),
+  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'himalayas', 'remoteok', 'jooble', 'jobtech', 'reed', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever', 'smartrecruiters']),
+  countryCode: z.string().regex(/^[a-z]{2}$/).optional(),
+  keywords: z.string().trim().max(100).optional(),
+  name: z.string().trim().min(1).max(100),
+  board: z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).optional(),
+  company: z.string().trim().min(1).max(150).optional(),
+  enabled: z.boolean(), approved: z.boolean(),
+  policyEvidence: z.string().min(20).max(2000),
+  publicListing: z.boolean().default(false),
+  publish: z.boolean().default(false),
+  intervalMinutes: z.number().int().min(5).max(10080).default(60),
+  maxPages: z.number().int().min(1).max(20).default(4),
+}).superRefine((s, ctx) => {
+  if (s.intervalMinutes < 30 && (!['ashby', 'greenhouse', 'lever'].includes(s.type) || !s.publicListing))
+    ctx.addIssue({ code: 'custom', message: 'Sub-30-minute refresh is limited to reviewed public employer boards.' });
+  if (s.type === 'jooble' && (!s.countryCode || !joobleDomains[s.countryCode] || s.intervalMinutes < 1440 || !s.publicListing || s.maxPages !== 1))
+    ctx.addIssue({ code: 'custom', message: 'Jooble requires a supported region, public attribution and one page per daily refresh.' });
+  if (['himalayas', 'remoteok'].includes(s.type) && (s.intervalMinutes < 1440 || !s.publicListing))
+    ctx.addIssue({ code: 'custom', message: 'Daily refresh and public source attribution required.' });
+  if (s.type === 'himalayas' && s.countryCode && !countryEntries.some(c => c.code.toLowerCase() === s.countryCode))
+    ctx.addIssue({ code: 'custom', message: 'Unknown country code.' });
+  if (s.type === 'adzuna' && (!s.countryCode || !['au','at','be','br','ca','ch','de','es','fr','gb','in','it','mx','nl','nz','pl','sg','us','za'].includes(s.countryCode)))
+    ctx.addIssue({ code: 'custom', message: 'Select a supported Adzuna country; account access still must be confirmed.' });
+  if (['jobicy', 'adzuna', 'usajobs', 'jobtech', 'reed'].includes(s.type) && (s.intervalMinutes < 60 || !s.publicListing))
+    ctx.addIssue({ code: 'custom', message: 'Public source attribution and at least an hourly interval required.' });
+  if (s.type === 'smartrecruiters' && (s.maxPages > 4 || s.intervalMinutes < 360 || !s.publicListing)) ctx.addIssue({ code: 'custom', message: 'SmartRecruiters requires attribution, six-hour refresh and at most four pages.' });
+  if (s.enabled && !s.approved) ctx.addIssue({ code: 'custom', message: 'Source must be approved before enabling.' });
+  if (['ashby', 'greenhouse', 'lever', 'smartrecruiters'].includes(s.type) && (!s.board || !s.company))
+    ctx.addIssue({ code: 'custom', message: 'Employer boards require a board identifier and confirmed company name.' });
+  if (s.type === 'remotive' && (s.intervalMinutes < 360 || !s.publicListing))
+    ctx.addIssue({ code: 'custom', message: 'Remotive requires public attribution, ungated listings and a minimum six-hour interval.' });
+});
+export type FeedSource = z.infer<typeof sourceSchema>;
+
+export function configuredJoobleSources(): FeedSource[] {
+  return Object.keys(joobleDomains).filter(code => joobleKey(code)).map(code => sourceSchema.parse({
+    id: `jooble-${code}`, type: 'jooble', name: 'Jooble', countryCode: code, keywords: '',
+    enabled: true, approved: true, publicListing: true, publish: true, intervalMinutes: 1440, maxPages: 1,
+    policyEvidence: 'Owner-requested regional API key; attributed search-result display: https://help.jooble.org/en/support/solutions/articles/60001448238',
+  }));
+}
+
+export const publicSources: FeedSource[] = [
+  { id: 'jobtech-sweden', type: 'jobtech', name: 'Arbetsförmedlingen / JobSearch', enabled: true, approved: true,
+    policyEvidence: 'Official public CC0 job search API, no key or registration: https://data.arbetsformedlingen.se/dataservice/jobsearch/',
+    publicListing: true, publish: true, intervalMinutes: 360, maxPages: 4 },
+  { id: 'arbeitnow-europe', type: 'arbeitnow', name: 'Arbeitnow', enabled: true, approved: true,
+    policyEvidence: 'Public job aggregation API: https://www.arbeitnow.com/blog/job-board-api', publicListing: true, publish: true, intervalMinutes: 60, maxPages: 4 },
+  { id: 'arbeitnow-uk', type: 'arbeitnow-uk', name: 'Arbeitnow UK', enabled: true, approved: true,
+    policyEvidence: 'Public UK job aggregation API: https://www.arbeitnow.com/blog/job-board-api', publicListing: true, publish: true, intervalMinutes: 60, maxPages: 4 },
+  { id: 'remotive-global', type: 'remotive', name: 'Remotive', enabled: true, approved: true,
+    policyEvidence: 'Public syndication with original-link attribution, ungated listings, no Google Jobs distribution: https://github.com/remotive-com/remote-jobs-api', publicListing: true, publish: true, intervalMinutes: 360, maxPages: 1 },
+  { id: 'jobicy-global', type: 'jobicy', name: 'Jobicy', enabled: true, approved: true,
+    policyEvidence: 'Public API permits job discovery with canonical source attribution: https://jobicy.com/jobs-rss-feed', publicListing: true, publish: true, intervalMinutes: 360, maxPages: 1 },
+];
+
+// One bounded, once-daily query per country; an empty result is recorded, not filled with worldwide jobs.
+// Priority IDs bring India/UAE forward in the worker's stable source order.
+export const worldwideSources: FeedSource[] = [
+  ...countryEntries.map(c => ({ id: `himalayas-${c.code === 'IN' ? '00-' : c.code === 'AE' ? '01-' : ''}${c.code.toLowerCase()}`,
+    type: 'himalayas' as const, name: 'Himalayas', countryCode: c.code.toLowerCase(), enabled: true, approved: true,
+    policyEvidence: 'Public API permits job-board reuse with visible Himalayas attribution: https://himalayas.app/docs/remote-jobs-api',
+    publicListing: true, publish: true, intervalMinutes: 1440, maxPages: 1 })),
+  { id: 'himalayas-worldwide', type: 'himalayas', name: 'Himalayas', enabled: true, approved: true,
+    policyEvidence: 'Public API permits attributed reuse; worldwide inventory kept separate: https://himalayas.app/docs/remote-jobs-api',
+    publicListing: true, publish: true, intervalMinutes: 1440, maxPages: 1 },
+  { id: 'remoteok-global', type: 'remoteok', name: 'Remote OK', enabled: true, approved: true,
+    policyEvidence: 'Public aggregator feed with source credit and original job backlinks: https://remoteok.com/faq',
+    publicListing: true, publish: true, intervalMinutes: 1440, maxPages: 1 },
+];

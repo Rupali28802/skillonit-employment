@@ -1,0 +1,6 @@
+{
+  "id": "usajobs-federal", "type": "usajobs", "name": "USAJOBS",
+  "enabled": false, "approved": false, "publish": false, "publicListing": true,
+  "intervalMinutes": 360, "maxPages": 2,
+  "policyEvidence": "PENDING: provision API access and confirm usage at https://developer.usajobs.gov/guides/terms-of-use before enabling."
+}

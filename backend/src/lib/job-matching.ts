@@ -38,12 +38,22 @@ export function matchJob(job: Job, profile: Profile, preferences: Preferences) {
     else if (profile.experience >= job.experienceMin && profile.experience <= job.experienceMax) {
       breakdown.experience = 15; reasons.push('Experience fits');
     } else missingRequirements.push('Experience is outside the listed range');
-    const locationChecks = [
+    const explicitLocationChecks = [
       [preferences.countries, job.country], [preferences.cities, job.city],
       [preferences.regions, job.state], [preferences.indiaStates, job.state],
     ] as const;
-    const selected = locationChecks.filter(([values]) => values?.length);
-    if (!selected.length) unknowns.push('Location preference is not specified');
+    const selected = explicitLocationChecks.filter(([values]) => values?.length);
+    let usedProfileLocation = false;
+    if (!selected.length && (profile.country || profile.city)) {
+      usedProfileLocation = true;
+      const eligible = unique([job.country, job.city, job.state, ...(job.eligibleCountries ?? [])]);
+      const candidateLocations = unique([profile.country, profile.city].filter(Boolean));
+      if (candidateLocations.some(value => eligible.includes(value))) {
+        breakdown.location = 10;
+        reasons.push('Location fits');
+      } else exclusions.push('Outside confirmed profile location');
+    }
+    if (!selected.length && !usedProfileLocation) unknowns.push('Location preference is not specified');
     else if (selected.every(([values, value]) => includes(values, value))) {
       breakdown.location = 10; reasons.push('Location fits');
     } else exclusions.push('Outside selected locations');
@@ -53,8 +63,14 @@ export function matchJob(job: Job, profile: Profile, preferences: Preferences) {
   }
   if (preferences.exclusions.some(value => phrase(job.title, value) || phrase(job.company, value))) exclusions.push('Matches an excluded keyword');
   if (includes(preferences.companyPreferences?.excluded, job.company)) exclusions.push('Company is excluded');
-  if (preferences.employmentTypes?.length && !includes(preferences.employmentTypes, job.type)) exclusions.push('Outside selected employment types');
-  if (preferences.industries?.length && !includes(preferences.industries, job.category)) exclusions.push('Outside selected industries');
+  if (preferences.employmentTypes?.length) {
+    if (includes(preferences.employmentTypes, job.type)) reasons.push('Employment type fits');
+    else exclusions.push('Outside selected employment types');
+  }
+  if (preferences.industries?.length) {
+    if (includes(preferences.industries, job.category)) reasons.push('Industry fits');
+    else exclusions.push('Outside selected industries');
+  }
   if (preferences.salary) {
     if (normalize(job.currency) !== normalize(preferences.salary.currency) || job.salaryMax <= 0) unknowns.push('Salary cannot be compared with your preference');
     else if (job.salaryMax < preferences.salary.min || job.salaryMin > preferences.salary.max) exclusions.push('Outside selected salary range');

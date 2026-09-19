@@ -48,6 +48,13 @@ export function effectiveExpiry(job: Pick<Job, 'discoveredAt' | 'expiresAt'>, ac
   return new Date(Math.min(Date.parse(job.expiresAt), Date.parse(job.discoveredAt) + activeDays * 86400000));
 }
 
+export function expectedJobExpiry(job: Job) {
+  const publishedAt = Date.parse(job.sourcePostedAt || job.discoveredAt);
+  if (!Number.isFinite(publishedAt)) return job.expiresAt;
+  const sourceClose = Date.parse(job.sourceExpiresAt || '');
+  return new Date(Math.min(publishedAt + 90 * 86400000, Number.isFinite(sourceClose) ? sourceClose : Infinity)).toISOString();
+}
+
 export function jobFreshness(job: LifecycleJob, config: LifecyclePolicy = defaultLifecyclePolicy(), now = new Date()): JobFreshness {
   if (lifecycleState(job, now) !== 'active' || effectiveExpiry(job, config.activeDays).getTime() <= now.getTime()) return 'stale';
   return now.getTime() - Date.parse(job.discoveredAt) >= config.agingAfterDays * 86400000 ? 'aging' : 'fresh';
@@ -90,9 +97,19 @@ export async function expireJobs(now = new Date()) {
     expired += await transaction(async r => {
       let changed = 0;
       for (const item of batch) {
-        const latest = await r.get<LifecycleJob>('jobs', item.id);
-        if (latest?.status === 'published' && effectiveExpiry(latest, config.activeDays).getTime() <= now.getTime()) {
-          await transitionJobLifecycle(r, latest.id, 'expired', 'job-lifecycle-worker', 'EXPIRY_REACHED', { now }); changed++;
+        let latest = await r.get<LifecycleJob>('jobs', item.id);
+        if (!latest || latest.status !== 'published') continue;
+        if (latest.feed) {
+          const expected = expectedJobExpiry(latest);
+          if (latest.expiresAt !== expected) {
+            latest = { ...latest, expiresAt: expected };
+            await r.put('jobs', latest);
+          }
+        }
+        if (effectiveExpiry(latest, config.activeDays).getTime() <= now.getTime()) {
+          const transitioned = await transitionJobLifecycle(r, latest.id, 'expired', 'job-lifecycle-worker', 'EXPIRY_REACHED', { now });
+          if (transitioned.feed) await r.put('jobs', { ...transitioned, feed: { ...transitioned.feed, closedByEngine: true } });
+          changed++;
         }
       }
       return changed;

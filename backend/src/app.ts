@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { timingSafeEqual } from 'node:crypto';
 import { prometheusMetrics, recordHttpObservation, recordIncidentSignal, routeGroup } from './lib/observability.js';
 import { safeLog } from './lib/safe-logger.js';
+import { subscribeJobs } from './job-engine/events.js';
 
 export const app = express();
 app.disable('x-powered-by');

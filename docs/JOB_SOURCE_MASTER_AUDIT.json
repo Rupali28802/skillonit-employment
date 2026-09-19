@@ -1,0 +1,1671 @@
+{
+  "checkedAt": "2026-09-11T07:31:53.144Z",
+  "scope": "Working inventory of named portals/ATS/social channels. Not a complete census of every world website. Regional Jooble requests are tracked separately and are not added as platform counts.",
+  "counts": {
+    "Connected": 11,
+    "Connector built - access/config needed": 3,
+    "Documented API - implementation pending": 2,
+    "Enquiry submitted - approval pending": 2,
+    "Access required - implementation pending": 7,
+    "Research/access route needed": 149
+  },
+  "total": 174,
+  "live": [
+    {
+      "type": "arbeitnow",
+      "configured": 1,
+      "enabled": 1,
+      "successful": 1,
+      "failed": 0,
+      "publishedLive": 647
+    },
+    {
+      "type": "arbeitnow-uk",
+      "configured": 1,
+      "enabled": 1,
+      "successful": 1,
+      "failed": 0,
+      "publishedLive": 499
+    },
+    {
+      "type": "remotive",
+      "configured": 1,
+      "enabled": 1,
+      "successful": 1,
+      "failed": 0,
+      "publishedLive": 18
+    },
+    {
+      "type": "jobicy",
+      "configured": 1,
+      "enabled": 1,
+      "successful": 1,
+      "failed": 0,
+      "publishedLive": 230
+    },
+    {
+      "type": "himalayas",
+      "configured": 251,
+      "enabled": 251,
+      "successful": 251,
+      "failed": 0,
+      "publishedLive": 1582
+    },
+    {
+      "type": "remoteok",
+      "configured": 1,
+      "enabled": 1,
+      "successful": 1,
+      "failed": 0,
+      "publishedLive": 98
+    },
+    {
+      "type": "jooble",
+      "configured": 39,
+      "enabled": 39,
+      "successful": 39,
+      "failed": 0,
+      "publishedLive": 3452
+    },
+    {
+      "type": "greenhouse",
+      "configured": 1,
+      "enabled": 1,
+      "successful": 1,
+      "failed": 0,
+      "publishedLive": 22
+    },
+    {
+      "type": "lever",
+      "configured": 1,
+      "enabled": 1,
+      "successful": 1,
+      "failed": 0,
+      "publishedLive": 3
+    },
+    {
+      "type": "ashby",
+      "configured": 1,
+      "enabled": 1,
+      "successful": 1,
+      "failed": 0,
+      "publishedLive": 22
+    },
+    {
+      "type": "jobtech",
+      "configured": 1,
+      "enabled": 1,
+      "successful": 1,
+      "failed": 0,
+      "publishedLive": 399
+    }
+  ],
+  "sources": [
+    {
+      "name": "Arbeitnow",
+      "region": "Europe; general occupations",
+      "status": "Connected",
+      "code": "arbeitnow",
+      "reference": "https://www.arbeitnow.com/blog/job-board-api",
+      "evidence": "Code + MongoDB successful runs",
+      "next": "Maintain refresh, source attribution and quotas; bounded inventory, not all listings."
+    },
+    {
+      "name": "Arbeitnow UK",
+      "region": "UK; general occupations",
+      "status": "Connected",
+      "code": "arbeitnow-uk",
+      "reference": "https://www.arbeitnow.com/blog/job-board-api",
+      "evidence": "Code + MongoDB successful runs",
+      "next": "Maintain refresh, source attribution and quotas; bounded inventory, not all listings."
+    },
+    {
+      "name": "Remotive",
+      "region": "Remote with country restrictions",
+      "status": "Connected",
+      "code": "remotive",
+      "reference": "https://github.com/remotive-com/remote-jobs-api",
+      "evidence": "Code + MongoDB successful runs",
+      "next": "Maintain refresh, source attribution and quotas; bounded inventory, not all listings."
+    },
+    {
+      "name": "Jobicy",
+      "region": "Remote with country/region restrictions",
+      "status": "Connected",
+      "code": "jobicy",
+      "reference": "https://jobicy.com/jobs-rss-feed",
+      "evidence": "Code + MongoDB successful runs",
+      "next": "Maintain refresh, source attribution and quotas; bounded inventory, not all listings."
+    },
+    {
+      "name": "Himalayas",
+      "region": "Country-filtered remote jobs",
+      "status": "Connected",
+      "code": "himalayas",
+      "reference": "https://himalayas.app/docs/remote-jobs-api",
+      "evidence": "Code + MongoDB successful runs",
+      "next": "Maintain refresh, source attribution and quotas; bounded inventory, not all listings."
+    },
+    {
+      "name": "Remote OK",
+      "region": "Remote jobs with original source attribution",
+      "status": "Connected",
+      "code": "remoteok",
+      "reference": "https://remoteok.com/faq",
+      "evidence": "Code + MongoDB successful runs",
+      "next": "Maintain refresh, source attribution and quotas; bounded inventory, not all listings."
+    },
+    {
+      "name": "Adzuna",
+      "region": "Country-specific general job aggregation",
+      "status": "Connector built - access/config needed",
+      "code": "",
+      "reference": "https://developer.adzuna.com/overview",
+      "evidence": "Code; not live configured",
+      "next": "Connector implemented and fixture-tested, not live activated; app ID/key and publication/caching agreement required. No credentials provisioned in this task."
+    },
+    {
+      "name": "Jooble",
+      "region": "International job aggregation",
+      "status": "Connected",
+      "code": "jooble",
+      "reference": "https://jooble.org/api/about",
+      "evidence": "Code + MongoDB successful runs",
+      "next": "39 regional keys connected; 27 requests unconfirmed. 500 lifetime requests/key; worker cap 490. No direct access to underlying platforms implied."
+    },
+    {
+      "name": "Careerjet",
+      "region": "International/localized search",
+      "status": "Documented API - implementation pending",
+      "code": "",
+      "reference": "https://www.careerjet.com/partners/api",
+      "evidence": "Publisher v4 search requires key plus actual triggering visitor IP and user agent.",
+      "next": "Implement user-triggered federation after publisher approval; do not fabricate visitors for batch crawling."
+    },
+    {
+      "name": "USAJOBS",
+      "region": "US federal jobs, including overseas duty stations",
+      "status": "Connector built - access/config needed",
+      "code": "",
+      "reference": "https://developer.usajobs.gov/api-reference/get-api-search",
+      "evidence": "Code; not live configured",
+      "next": "Connector implemented and fixture-tested, not live activated; API key/registered email required. Eligibility is announcement-specific."
+    },
+    {
+      "name": "Reed",
+      "region": "UK general jobs",
+      "status": "Connector built - access/config needed",
+      "code": "",
+      "reference": "https://www.reed.co.uk/developers/jobseeker",
+      "evidence": "Search connector implemented and fixture-tested. Previous key request remains unconfirmed; not live.",
+      "next": "Obtain private REED_API_KEY and confirm display/caching access before enabling."
+    },
+    {
+      "name": "Indeed",
+      "region": "International general jobs",
+      "status": "Enquiry submitted - approval pending",
+      "code": "",
+      "reference": "https://docs.indeed.com/",
+      "evidence": "Saved application record",
+      "next": "Publisher enquiry submitted; await approval and feed/plugin provisioning. No direct Indeed feed connected."
+    },
+    {
+      "name": "LinkedIn",
+      "region": "International professional jobs/posts",
+      "status": "Enquiry submitted - approval pending",
+      "code": "",
+      "reference": "https://learn.microsoft.com/en-us/linkedin/talent/job-postings/api/overview",
+      "evidence": "Human support case 260911-002232 (URL ID 82741810) reopened after closure with only an automated acknowledgement. Status Open verified; no API approval or token.",
+      "next": "Human-support enquiry successfully submitted. Await response about job/hiring-post retrieval and redistribution. Creating an app or a posting API does not grant broad reading access."
+    },
+    {
+      "name": "SEEK",
+      "region": "Australia/NZ and Asia-Pacific ecosystem",
+      "status": "Access required - implementation pending",
+      "code": "",
+      "reference": "https://developer.seek.com/",
+      "evidence": "Official API requires approval; documented job posting/apply products are not a global export feed.",
+      "next": "Request explicit retrieval and redisplay scope."
+    },
+    {
+      "name": "Bayt",
+      "region": "UAE/GCC/MENA, other listed markets",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "https://www.bayt.com/en/jobs/locations/",
+      "evidence": "Official documentation identified; access not established",
+      "next": "Job inventory verified; redistribution/feed access not established. Priority UAE partnership."
+    },
+    {
+      "name": "NCS",
+      "region": "India and listed international vacancies",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "https://www.ncs.gov.in/job-seeker/pages/search.aspx",
+      "evidence": "Official documentation identified; access not established",
+      "next": "Public search verified; syndication access not established. Priority India source."
+    },
+    {
+      "name": "Ashby",
+      "region": "Employer-specific global boards",
+      "status": "Connected",
+      "code": "",
+      "reference": "https://developers.ashbyhq.com/docs/public-job-posting-api",
+      "evidence": "One public employer board connected: Ema; 22 unexpired published listings verified. Does not mean every employer using this ATS is connected.",
+      "next": "Add verified public employer boards individually; preserve existing source settings."
+    },
+    {
+      "name": "Greenhouse",
+      "region": "Employer-specific global boards",
+      "status": "Connected",
+      "code": "",
+      "reference": "https://developers.greenhouse.io/job-board.html",
+      "evidence": "One public employer board connected: Razorpay Software Private Limited; 22 unexpired published listings verified. Does not mean every employer using this ATS is connected.",
+      "next": "Add verified public employer boards individually; preserve existing source settings."
+    },
+    {
+      "name": "Lever",
+      "region": "Employer-specific global boards",
+      "status": "Connected",
+      "code": "",
+      "reference": "https://github.com/lever/postings-api",
+      "evidence": "One public employer board connected: Employ; 3 unexpired published listings verified. Does not mean every employer using this ATS is connected.",
+      "next": "Add verified public employer boards individually; preserve existing source settings."
+    },
+    {
+      "name": "SmartRecruiters",
+      "region": "Employer-specific global boards",
+      "status": "Documented API - implementation pending",
+      "code": "",
+      "reference": "https://developers.smartrecruiters.com/docs/get-job-postings",
+      "evidence": "Company-scoped public postings and a separate token-protected job-board publication feed documented. Neither gives automatic access to all employers.",
+      "next": "Confirm employer/partner scope and implement bounded listing/detail fetching."
+    },
+    {
+      "name": "Glassdoor",
+      "region": "Global/general",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "ZipRecruiter",
+      "region": "Global/general",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Monster",
+      "region": "Global/general",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Talent.com",
+      "region": "Global/general",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Jobrapido",
+      "region": "Global/general",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "JobisJob",
+      "region": "Global/general",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Google Jobs",
+      "region": "Global/general",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Discovery surface; do not assume an export API. Review official access options; not connected."
+    },
+    {
+      "name": "Wellfound",
+      "region": "Global/general",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Welcome to the Jungle",
+      "region": "Global/general",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Naukri",
+      "region": "India",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Foundit",
+      "region": "India",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Shine",
+      "region": "India",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "TimesJobs",
+      "region": "India",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Apna",
+      "region": "India",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "WorkIndia",
+      "region": "India",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Internshala",
+      "region": "India",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Cutshort",
+      "region": "India",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Hirist",
+      "region": "India",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "iimjobs",
+      "region": "India",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Freshersworld",
+      "region": "India",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Unstop",
+      "region": "India",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "GulfTalent",
+      "region": "UAE/GCC/MENA",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Naukrigulf",
+      "region": "UAE/GCC/MENA",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Dubizzle Jobs",
+      "region": "UAE/GCC/MENA",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Dubai Careers",
+      "region": "UAE/GCC/MENA",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "FAHR",
+      "region": "UAE/GCC/MENA",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "MOHRE",
+      "region": "UAE/GCC/MENA",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Qatar Living Jobs",
+      "region": "UAE/GCC/MENA",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Saudi Jadarat",
+      "region": "UAE/GCC/MENA",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Akhtaboot",
+      "region": "UAE/GCC/MENA",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Wuzzuf",
+      "region": "UAE/GCC/MENA",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Forasna",
+      "region": "UAE/GCC/MENA",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Tanqeeb",
+      "region": "UAE/GCC/MENA",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Totaljobs",
+      "region": "UK/Ireland",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "CV-Library",
+      "region": "UK/Ireland",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Find a job",
+      "region": "UK/Ireland",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "NHS Jobs",
+      "region": "UK/Ireland",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Civil Service Jobs",
+      "region": "UK/Ireland",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "jobs.ac.uk",
+      "region": "UK/Ireland",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "IrishJobs",
+      "region": "UK/Ireland",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Jobs.ie",
+      "region": "UK/Ireland",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "CareerBuilder",
+      "region": "US/Canada",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Dice",
+      "region": "US/Canada",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Built In",
+      "region": "US/Canada",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Handshake",
+      "region": "US/Canada",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "HigherEdJobs",
+      "region": "US/Canada",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "GovernmentJobs",
+      "region": "US/Canada",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Canada Job Bank",
+      "region": "US/Canada",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Workopolis",
+      "region": "US/Canada",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Eluta",
+      "region": "US/Canada",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Jora",
+      "region": "Australia/NZ",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Workforce Australia",
+      "region": "Australia/NZ",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "APS Jobs",
+      "region": "Australia/NZ",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "EthicalJobs",
+      "region": "Australia/NZ",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Trade Me Jobs",
+      "region": "Australia/NZ",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "jobs.govt.nz",
+      "region": "Australia/NZ",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "EURES",
+      "region": "Continental Europe",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Europass",
+      "region": "Continental Europe",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "France Travail",
+      "region": "Continental Europe",
+      "status": "Access required - implementation pending",
+      "code": "",
+      "reference": "https://www.data.gouv.fr/dataservices/api-offres-demploi",
+      "evidence": "Official job API covers active offers including consenting partners; reuse registration required.",
+      "next": "Register an application and confirm permitted redistribution."
+    },
+    {
+      "name": "APEC",
+      "region": "Continental Europe",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Bundesagentur für Arbeit",
+      "region": "Continental Europe",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "StepStone",
+      "region": "Continental Europe",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "XING",
+      "region": "Continental Europe",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "InfoJobs",
+      "region": "Continental Europe",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Infoempleo",
+      "region": "Continental Europe",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Pracuj",
+      "region": "Continental Europe",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Jobs.cz",
+      "region": "Continental Europe",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Profession.hu",
+      "region": "Continental Europe",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "OLX employment sections",
+      "region": "Continental Europe",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "JobStreet",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "JobsDB",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "MyCareersFuture",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Glints",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Kalibrr",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "VietnamWorks",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "TopCV",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "104 Job Bank",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "1111",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Wantedly",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Daijob",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "GaijinPot",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Rikunabi",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Mynavi",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "JobKorea",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Saramin",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "BOSS Zhipin",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Zhaopin",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "51job",
+      "region": "East/Southeast Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Bdjobs",
+      "region": "South/Central Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Rozee",
+      "region": "South/Central Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Mustakbil",
+      "region": "South/Central Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "topjobs.lk",
+      "region": "South/Central Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Merojob",
+      "region": "South/Central Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "JobsNepal",
+      "region": "South/Central Asia",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Jobberman",
+      "region": "Africa",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "BrighterMonday",
+      "region": "Africa",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "MyJobMag",
+      "region": "Africa",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Fuzu",
+      "region": "Africa",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "PNet",
+      "region": "Africa",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Careers24",
+      "region": "Africa",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "CareerJunction",
+      "region": "Africa",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Computrabajo",
+      "region": "Latin America/Caribbean",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Bumeran",
+      "region": "Latin America/Caribbean",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "ZonaJobs",
+      "region": "Latin America/Caribbean",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "OCC",
+      "region": "Latin America/Caribbean",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Get on Board",
+      "region": "Latin America/Caribbean",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Catho",
+      "region": "Latin America/Caribbean",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "InfoJobs Brazil",
+      "region": "Latin America/Caribbean",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "elempleo",
+      "region": "Latin America/Caribbean",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Konzerta",
+      "region": "Latin America/Caribbean",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "CaribbeanJobs",
+      "region": "Latin America/Caribbean",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "We Work Remotely",
+      "region": "Remote/freelance/gig",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Working Nomads",
+      "region": "Remote/freelance/gig",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Remote.co",
+      "region": "Remote/freelance/gig",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "FlexJobs",
+      "region": "Remote/freelance/gig",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Remotely",
+      "region": "Remote/freelance/gig",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Upwork",
+      "region": "Remote/freelance/gig",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Freelancer",
+      "region": "Remote/freelance/gig",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Fiverr",
+      "region": "Remote/freelance/gig",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "PeoplePerHour",
+      "region": "Remote/freelance/gig",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Toptal",
+      "region": "Remote/freelance/gig",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "ReliefWeb",
+      "region": "NGOs/research/specialists",
+      "status": "Access required - implementation pending",
+      "code": "",
+      "reference": "https://apidoc.reliefweb.int/parameters",
+      "evidence": "Official jobs API requires a pre-approved appname since November 2025.",
+      "next": "Apply for appname, then implement humanitarian jobs adapter."
+    },
+    {
+      "name": "UN Careers",
+      "region": "NGOs/research/specialists",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "UNjobs",
+      "region": "NGOs/research/specialists",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Impactpool",
+      "region": "NGOs/research/specialists",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Idealist",
+      "region": "NGOs/research/specialists",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "EURAXESS",
+      "region": "NGOs/research/specialists",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Nature Careers",
+      "region": "NGOs/research/specialists",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Science Careers",
+      "region": "NGOs/research/specialists",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Hcareers",
+      "region": "NGOs/research/specialists",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "CatererGlobal",
+      "region": "NGOs/research/specialists",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Rigzone",
+      "region": "NGOs/research/specialists",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Energy Jobline",
+      "region": "NGOs/research/specialists",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Aviation Job Search",
+      "region": "NGOs/research/specialists",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Workday",
+      "region": "Employer ATS/careers",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Oracle Recruiting",
+      "region": "Employer ATS/careers",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "SAP SuccessFactors",
+      "region": "Employer ATS/careers",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "iCIMS",
+      "region": "Employer ATS/careers",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Workable",
+      "region": "Employer ATS/careers",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "BambooHR",
+      "region": "Employer ATS/careers",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Teamtailor",
+      "region": "Employer ATS/careers",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Recruitee",
+      "region": "Employer ATS/careers",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Personio",
+      "region": "Employer ATS/careers",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Pinpoint",
+      "region": "Employer ATS/careers",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Zoho Recruit",
+      "region": "Employer ATS/careers",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Find official search/feed access, confirm redistribution terms and countries, obtain required approval/credentials, implement and live-test."
+    },
+    {
+      "name": "Facebook pages/groups",
+      "region": "Social/community",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Identify owner-authorized channels and approved read scopes; verify vacancies and publication rights. Not a connected job feed."
+    },
+    {
+      "name": "X",
+      "region": "Social/community",
+      "status": "Access required - implementation pending",
+      "code": "",
+      "reference": "https://docs.x.com/x-api/fundamentals/post-cap",
+      "evidence": "Post search is metered; no credentials or spending authorization configured.",
+      "next": "Obtain approved account and agreed budget; validate hiring posts before indexing."
+    },
+    {
+      "name": "Reddit",
+      "region": "Social/community",
+      "status": "Access required - implementation pending",
+      "code": "",
+      "reference": "https://redditinc.com/policies/data-api-terms",
+      "evidence": "Commercial API use requires a separate agreement.",
+      "next": "Request commercial access and select authorized hiring communities."
+    },
+    {
+      "name": "Telegram channels",
+      "region": "Social/community",
+      "status": "Access required - implementation pending",
+      "code": "",
+      "reference": "https://core.telegram.org/bots/api",
+      "evidence": "Bot API supports updates from channels accessible to the bot, not every channel.",
+      "next": "Obtain participating channel access and bot token; use only authorized sources."
+    },
+    {
+      "name": "Discord servers",
+      "region": "Social/community",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Identify owner-authorized channels and approved read scopes; verify vacancies and publication rights. Not a connected job feed."
+    },
+    {
+      "name": "WhatsApp communities",
+      "region": "Social/community",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Identify owner-authorized channels and approved read scopes; verify vacancies and publication rights. Not a connected job feed."
+    },
+    {
+      "name": "Slack communities",
+      "region": "Social/community",
+      "status": "Research/access route needed",
+      "code": "",
+      "reference": "",
+      "evidence": "Discovery backlog only; current API and redistribution rights unverified",
+      "next": "Identify owner-authorized channels and approved read scopes; verify vacancies and publication rights. Not a connected job feed."
+    },
+    {
+      "name": "Arbetsförmedlingen JobSearch",
+      "region": "Sweden; source-reported overseas locations",
+      "status": "Connected",
+      "code": "jobtech",
+      "reference": "https://data.arbetsformedlingen.se/dataservice/jobsearch/",
+      "evidence": "Official public CC0 API. Live sweep: 400 records, 399 added, one within-sweep update; 399 published listings. Frontend API verified HTTP 200.",
+      "next": "Six-hour bounded refresh; expand measured local/sector coverage without claiming complete inventory."
+    },
+    {
+      "name": "NAV Arbeidsplassen",
+      "region": "Norway",
+      "status": "Access required - implementation pending",
+      "code": "not implemented",
+      "reference": "https://navikt.github.io/pam-stilling-feed/",
+      "evidence": "Official vacancy feed offers an experimental public token; production token request includes written terms confirmation.",
+      "next": "Obtain production access and implement withdrawal/update stream."
+    }
+  ]
+}
