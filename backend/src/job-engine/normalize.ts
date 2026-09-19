@@ -53,6 +53,24 @@ export function categoryFor(c: Candidate) {
   const input = [c.category, c.title, ...(c.tags || [])].join(' ');
   return categories.find(([, pattern]) => pattern.test(input))?.[0] || 'Other';
 }
+export function explicitEmploymentType(title: string, supplied?: string) {
+  const rawSourceValue = plain(supplied || '', 120);
+  const sourceValue = /^not specified$/i.test(rawSourceValue) ? '' : rawSourceValue;
+  // ATS feeds often label internships as generic "Full-time" roles. An explicit
+  // early-career term in the vacancy title is stronger evidence for discovery.
+  if (/\bintern(?:ship)?\b/i.test(title)) return 'Internship';
+  if (/\bapprentice(?:ship)?\b/i.test(title)) return 'Apprenticeship';
+  if (/\btrainee\b/i.test(title)) return 'Trainee';
+  if (/\bgraduate\b/i.test(title)) return 'Graduate';
+  if (sourceValue) {
+    if (/\bintern(?:ship)?\b/i.test(sourceValue)) return 'Internship';
+    if (/\bapprentice(?:ship)?\b/i.test(sourceValue)) return 'Apprenticeship';
+    if (/\btrainee\b/i.test(sourceValue)) return 'Trainee';
+    if (/\bgraduate\b/i.test(sourceValue)) return 'Graduate';
+    return sourceValue;
+  }
+  return 'Not specified';
+}
 export function normalize(c: Candidate, source: FeedSource, now = Date.now()): Job {
   const title = plain(c.title, 240), company = plain(c.company, 150), description = plain(c.description);
   if (!c.externalId || c.externalId.length > 2000 || !title || !company || description.length < 30) throw Error('MISSING_JOB_FACTS');
@@ -95,7 +113,7 @@ export function normalize(c: Candidate, source: FeedSource, now = Date.now()): J
   return {
     id: 'feed-' + hash(canonical), title, company, domain: '', country, eligibleCountries, state: facts.state || '',
     city: facts.city || plain(c.location, 240) || 'Not specified', category: categoryFor(c), skills,
-    mode: c.mode || 'Not specified', type: plain(c.employmentType || '', 120) || 'Not specified',
+    mode: c.mode || 'Not specified', type: explicitEmploymentType(title, c.employmentType),
     salaryMin: facts.salary.min ?? 0, salaryMax: facts.salary.max ?? 0, currency: facts.salary.currency || '', salaryDisclosed: salaryValid, salaryText: plain(c.salaryText || '', 300),
     experienceMin: facts.experience.min ?? 0, experienceMax: facts.experience.max ?? 0, experienceDisclosed: experienceValid,
     normalizedFacts: facts, risk,

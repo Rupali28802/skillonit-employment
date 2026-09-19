@@ -10,7 +10,7 @@ import { bootstrapIndexes, closeStore, read, transaction } from '../src/lib/stor
 import { sampleJobs } from '../src/lib/fixtures.ts';
 import { publicJob, type Job } from '../src/lib/domain.ts';
 import { sourceSchema, publicSources, type FeedSource } from '../src/job-engine/sources.ts';
-import { canonicalUrl, normalize, categoryFor } from '../src/job-engine/normalize.ts';
+import { canonicalUrl, normalize, categoryFor, explicitEmploymentType } from '../src/job-engine/normalize.ts';
 import { fetchFeed, FeedError, type Candidate, type FeedBatch } from '../src/job-engine/adapters.ts';
 import { runEngine, upsertSource, setEmployerRefresh } from '../src/job-engine/engine.ts';
 import { searchJobs } from '../src/lib/search.ts';
@@ -125,6 +125,19 @@ test('normalizes real source facts without inventing salary, experience or verif
   assert.equal(publicJob({ ...j, feed: { ...j.feed!, publicListing: false } }).sourceLink, undefined);
   assert.equal(publicJob({ ...j, feed: undefined }).identityVisible, false);
 });
+test('uses only explicit source wording to classify early-career employment types', () => {
+  assert.equal(explicitEmploymentType('Research Intern - AI Evaluations'), 'Internship');
+  assert.equal(explicitEmploymentType('YouTube & Content - Internship'), 'Internship');
+  assert.equal(explicitEmploymentType('Industrial Apprentice'), 'Apprenticeship');
+  assert.equal(explicitEmploymentType('Graduate Engineer Trainee'), 'Trainee');
+  assert.equal(explicitEmploymentType('Senior Engineer'), 'Not specified');
+  assert.equal(explicitEmploymentType('Research Intern', 'Fixed term'), 'Internship');
+  assert.equal(explicitEmploymentType('Software Engineer Intern', 'Full-time'), 'Internship');
+  assert.equal(explicitEmploymentType('Talent Acquisition Apprentice', 'Full-time'), 'Apprenticeship');
+  assert.equal(explicitEmploymentType('Design role', 'Intern: Full Time'), 'Internship');
+  assert.equal(explicitEmploymentType('Technology role', 'Apprentice'), 'Apprenticeship');
+  assert.equal(explicitEmploymentType('Research Intern', 'Not specified'), 'Internship');
+});
 test('rejects unsafe URLs, stale/future dates and quarantines suspicious job content', () => {
   for (const url of ['http://careers.example.com/job', 'https://user:secret@example.com/a', 'https://127.0.0.1/job', 'https://[::1]/job', 'https://a.local/job'])
     assert.throws(() => canonicalUrl(url));
@@ -223,6 +236,7 @@ test('search reaches jobs beyond 1000 records and does not match unknown experie
   const unknown = normalize(candidate({ title: 'Entry level nurse' }), source);
   await transaction(r => r.put('jobs', unknown));
   assert.equal((await searchJobs(new URLSearchParams('q=nurse&experience=0'))).total, 0);
+  assert.equal((await searchJobs(new URLSearchParams('q=fresher'))).total, 1);
   assert.equal((await searchJobs(new URLSearchParams('q=nurse'))).total, 1);
   assert.equal((await searchJobs(new URLSearchParams('page=NaN'))).page, 1);
 });

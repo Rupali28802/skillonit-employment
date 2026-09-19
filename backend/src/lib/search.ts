@@ -6,7 +6,8 @@ import { semanticMatches } from '../job-engine/semantic.js';
 
 export async function searchJobs(params: URLSearchParams, user: User | null = null) {
   const query = (params.get('q') || '').slice(0, 200).toLowerCase();
-  const ignored = new Set(['jobs', 'job', 'in', 'for', 'a', 'an', 'and', 'or', 'the', 'as', 'with', 'fresher']);
+  const fresherRequested = /\bfreshers?\b|\bentry[ -]level\b/i.test(query);
+  const ignored = new Set(['jobs', 'job', 'in', 'for', 'a', 'an', 'and', 'or', 'the', 'as', 'with', 'fresher', 'freshers', 'entry-level']);
   const words = query.split(/[^\p{L}\p{N}+#.-]+/u).filter(w => w && !ignored.has(w)).slice(0, 15);
   const now = new Date();
   const filter: Record<string, unknown> = {
@@ -51,7 +52,13 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
       filter.experienceMin = {$lte:max}; filter.experienceMax = {$gte:min}; filter.experienceDisclosed = {$ne:false};
     } else filter.id='__invalid_experience_filter__';
   }
-  if (query.includes('fresher')) { filter.experienceMin = 0; filter.experienceDisclosed = { $ne: false }; }
+  if (fresherRequested) {
+    const explicitEarlyCareer = /\bfreshers?\b|\bentry[ -]?level\b|\brecent graduates?\b|\bcampus hires?\b|\bgraduate recruitment\b/i;
+    clauses.push({ $or: [
+      { title: explicitEarlyCareer }, { type: /internship|apprenticeship|trainee|graduate/i }, { description: explicitEarlyCareer },
+      { $and: [{ experienceDisclosed: { $ne: false } }, { experienceMin: { $lte: 0 } }, { experienceMax: { $lte: 2 } }] },
+    ] });
+  }
   if (experience && Number.isFinite(Number(experience)) && Number(experience) >= 0) {
     filter.experienceMin = { $lte: Number(experience) }; filter.experienceMax = { $gte: Number(experience) };
     filter.experienceDisclosed = { $ne: false };
