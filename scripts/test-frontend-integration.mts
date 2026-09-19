@@ -129,7 +129,17 @@ try {
   const cookie = cookieOf(login);
   const session = await payload('/api/v1/session', cookie);
   assert.equal(session.user.id, registeredUser.id);
-  for (const path of ['/', '/dashboard', '/dashboard', '/profile', '/preferences', '/cvs', '/saved', '/applications']) await request(path, 200, cookie);
+  for (const path of ['/', '/dashboard', '/dashboard', '/onboarding', '/profile', '/preferences', '/automation', '/cvs', '/saved', '/applications', '/billing', '/settings']) await request(path, 200, cookie);
+  const onboarding = await payload('/api/v1/me/onboarding', cookie);
+  assert.equal(onboarding.profileCreationPath, null);
+  await request('/api/v1/me/onboarding', 200, cookie, 'PUT', { mode: 'manual', expectedRevision: onboarding.revision });
+  const consents = await payload('/api/v1/me/consents', cookie);
+  assert.deepEqual(consents, []);
+  await request('/api/v1/me/consents', 200, cookie, 'PUT', { purpose: 'profile', granted: true, policyVersion: 'privacy-v1', source: 'settings', context: 'privacy_settings' });
+  const automation = await payload('/api/v1/me/automation-preferences', cookie);
+  await request('/api/v1/me/automation-preferences', 200, cookie, 'PUT', { paused: true, dailyCap: 3, expectedRevision: automation.revision });
+  assert.equal((await payload('/api/v1/me/subscription', cookie)).subscriptionStatus, 'basic_fallback');
+  assert.deepEqual(await payload('/api/v1/billing/history', cookie), []);
   const profile = await payload('/api/v1/me/profile', cookie);
   const status = await payload('/api/v1/me/profile/status', cookie);
   await request('/api/v1/me/profile', 200, cookie, 'PUT', { ...profile, experience: null, confirmed: false, expectedRevision: status.revision });

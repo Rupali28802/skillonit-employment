@@ -34,6 +34,7 @@ export default async function Page({
   if (
     [
       'dashboard',
+      'onboarding',
       'profile',
       'preferences',
       'saved',

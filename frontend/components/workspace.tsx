@@ -7,9 +7,11 @@ import { api, configuredPlans, demoMode } from '@/lib/api';
 import { type PublicJob, type User, countries, categories } from '@/lib/domain';
 import { SmartForm, Action } from './forms';
 import { PlanEditor } from './admin-config';
+import { ConsentManager, CvManager, OnboardingActions } from './candidate-tools';
 type RecordRow = { id: string; [key: string]: unknown };
 const candidateLinks = [
   ['dashboard', 'Overview'],
+  ['onboarding', 'Getting started'],
   ['profile', 'My profile'],
   ['preferences', 'Job preferences'],
   ['saved', 'Saved jobs'],
@@ -125,6 +127,10 @@ export async function Workspace({ section }: { section: string }) {
   );
 }
 async function Candidate({ section, user }: { section: string; user: User }) {
+  if (section === 'onboarding') {
+    const state = await api<{ revision: number; mode: string | null; completeness: number; ready: boolean; completed: boolean; steps: { number: number; name: string; complete: boolean; optional: boolean }[] }>('me/onboarding');
+    return <div className="stack"><div className="panel"><span className="pill">{state.completeness}% complete</span><h2 style={{marginTop: 15}}>Set up your candidate workspace</h2><p>Choose a CV-first or manual path. Extracted CV facts stay as a draft until you review and confirm them.</p><OnboardingActions revision={state.revision} mode={state.mode} ready={state.ready} completed={state.completed} /></div><div className="panel"><h2>Setup checklist</h2><ol>{state.steps.map(step => <li key={step.name}>{step.complete ? '✓' : '○'} {step.name.replaceAll('-', ' ')}{step.optional ? ' (optional)' : ''}</li>)}</ol></div></div>;
+  }
   if (section === 'profile') {
     // Use the revision from the same authenticated user snapshot as the form.
     // A separate status read could accept stale profile data after a concurrent edit.
@@ -174,14 +180,12 @@ async function Candidate({ section, user }: { section: string; user: User }) {
       </div>
     );
   }
-  if (section === 'preferences' || section === 'automation') {
+  if (section === 'preferences') {
     const preferences = await api<User['preferences'] & { revision: number }>('me/preferences');
     return (
       <div className="panel">
         <h2>
-          {section === 'automation'
-            ? 'You control your applications'
-            : 'What does your next role look like?'}
+          What does your next role look like?
         </h2>
         <p>
           Keep your preferences current to improve your matches. Automation
@@ -356,20 +360,14 @@ async function Candidate({ section, user }: { section: string; user: User }) {
       </div>
     );
   }
-  if (section === 'cvs')
-    return (
-      <div className="panel">
-        <h2>Your CV collection</h2>
-        <p>
-          CV upload will be available after private storage, malware scanning
-          and document parsing are configured. No files are accepted into
-          unscanned storage.
-        </p>
-        <Link className="primary" href="/profile">
-          Complete your profile manually
-        </Link>
-      </div>
-    );
+  if (section === 'automation') {
+    const automation = await api<RecordRow & { revision: number; executionAvailable: boolean }>('me/automation-preferences');
+    return <div className="panel"><span className="pill">{automation.executionAvailable ? 'Execution available' : 'Execution paused by platform'}</span><h2 style={{marginTop: 15}}>Application automation controls</h2><p>Automation uses only confirmed facts, eligible jobs, your consent, and the daily cap you choose.</p><SmartForm endpoint="me/automation-preferences" method="PUT" initial={automation} expectedRevision={automation.revision} fields={[{name:'enabled',label:'Enable automation',type:'checkbox'},{name:'paused',label:'Pause all automated applications',type:'checkbox'},{name:'dailyCap',label:'Maximum applications per day',type:'number'},{name:'allowedRoleFamilies',label:'Allowed occupation IDs',type:'list',required:false},{name:'excludedRoles',label:'Excluded role names',type:'list',required:false},{name:'allowedLocations',label:'Allowed location IDs',type:'list',required:false},{name:'excludedLocations',label:'Excluded location IDs',type:'list',required:false},{name:'workModes',label:'Work arrangements',type:'list',required:false},{name:'employmentTypes',label:'Employment types',type:'list',required:false}]} /></div>;
+  }
+  if (section === 'cvs') {
+    const documents = await api<RecordRow[]>('me/cv');
+    return <CvManager documents={documents as never[]} profileRevision={user.profileRevision ?? 0} />;
+  }
   if (section === 'mail') {
     const mailbox = await api<{
       available: boolean;
@@ -400,25 +398,30 @@ async function Candidate({ section, user }: { section: string; user: User }) {
     );
   }
   if (section === 'billing') {
-    const plan = (await configuredPlans()).find((p) => p.code === user.plan)!;
+    const subscription = await api<{ plan: { name: string; dailyCap: number; cvs: number; delayMinutes: number }; subscriptionStatus: string; subscription: { currentPeriodEnd: string; cancelAtPeriodEnd: boolean } | null; limits: { applicationsPerDay: number; autoApplyPerDay: number; cvVersions: number } }>('me/subscription');
+    const history = await api<RecordRow[]>('billing/history');
+    const plan = subscription.plan;
     return (
       <div className="panel">
-        <span className="pill">{plan.name}</span>
+        <span className="pill">{plan.name} · {subscription.subscriptionStatus.replaceAll('_', ' ')}</span>
         <h2 style={{ marginTop: 20 }}>Your plan and usage</h2>
         <p>
-          {plan.dailyCap} applications per UTC day · {plan.cvs} CV versions ·{' '}
+          {subscription.limits.applicationsPerDay} applications per UTC day · {subscription.limits.cvVersions} CV versions ·{' '}
           {plan.delayMinutes} minute scheduling delay for eligible automation.
         </p>
         <Link href="/pricing" className="primary">
           Compare plans
         </Link>
-        <h3 style={{ marginTop: 25 }}>Payments</h3>
-        <p>No payment has been taken in this demo.</p>
+        {subscription.subscription && <><p>Current period ends {new Date(subscription.subscription.currentPeriodEnd).toLocaleDateString('en-IN')}.</p>{!subscription.subscription.cancelAtPeriodEnd && <Action endpoint="me/subscription/cancel" label="Cancel at period end" confirm />}</>}
+        <h3 style={{ marginTop: 25 }}>Billing history</h3>
+        {history.length ? <ul>{history.map(row => <li key={row.id}>{display(row.type)} · {display(row.currency)} {(Number(row.amount || 0) / 100).toFixed(2)} · {new Date(display(row.createdAt)).toLocaleString('en-IN')}</li>)}</ul> : <p>No billing activity yet.</p>}
       </div>
     );
   }
-  if (section === 'settings')
+  if (section === 'settings') {
+    const consents = await api<{ purpose: string; granted: boolean; policyVersion: string; updatedAt: string }[]>('me/consents');
     return (
+      <div className="stack">
       <div className="panel">
         <h2>Your data belongs to you</h2>
         <p>
@@ -440,7 +443,10 @@ async function Candidate({ section, user }: { section: string; user: User }) {
           />
         </div>
       </div>
+      <ConsentManager consents={consents} />
+      </div>
     );
+  }
   const { apps, saved, matches } = await api<{
     apps: RecordRow[];
     saved: RecordRow[];
