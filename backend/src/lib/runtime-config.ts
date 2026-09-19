@@ -31,6 +31,17 @@ export function validateRuntime(env = process.env) {
   const port = Number(env.PORT || 4000);
   if (!Number.isInteger(port) || port < 1 || port > 65535)
     throw new Error('PORT must be an integer from 1 to 65535.');
+  const proxyHops = Number(env.TRUST_PROXY_HOPS || 0);
+  if (!Number.isInteger(proxyHops) || proxyHops < 0 || proxyHops > 3)
+    throw new Error('TRUST_PROXY_HOPS must be an integer from 0 to 3.');
+  for (const [name, fallback, min, max] of [['ABUSE_REQUESTS_PER_MINUTE', 300, 30, 5000], ['ABUSE_READS_PER_MINUTE', 240, 20, 5000], ['ABUSE_WEBHOOKS_PER_MINUTE', 600, 30, 10000]] as const) {
+    const value = Number(env[name] || fallback); if (!Number.isInteger(value) || value < min || value > max) throw new Error(`${name} must be an integer from ${min} to ${max}.`);
+  }
+  if (env.OBSERVABILITY_METRICS_TOKEN && env.OBSERVABILITY_METRICS_TOKEN.length < 32) throw new Error('OBSERVABILITY_METRICS_TOKEN must contain at least 32 characters.');
+  for (const [name, fallback, min, max] of [['BACKUP_RPO_MINUTES', 60, 1, 1440], ['BACKUP_RTO_MINUTES', 240, 1, 10080], ['BACKUP_RETENTION_DAYS', 35, 7, 3650], ['RESTORE_DRILL_MAX_AGE_DAYS', 90, 1, 366], ['AUDIT_RETENTION_DAYS', 365, 90, 3650], ['OPERATIONAL_RETENTION_DAYS', 90, 7, 730], ['WEBHOOK_EVENT_RETENTION_DAYS', 90, 7, 730], ['RETENTION_BATCH_SIZE', 250, 10, 1000], ['SHUTDOWN_TIMEOUT_MS', 15000, 1000, 60000]] as const) {
+    const value = Number(env[name] || fallback); if (!Number.isInteger(value) || value < min || value > max) throw new Error(`${name} must be an integer from ${min} to ${max}.`);
+  }
+  if (env.BACKUP_ENABLED && !['true', 'false'].includes(env.BACKUP_ENABLED)) throw new Error('BACKUP_ENABLED must be true or false.');
 }
 
 // Optional loopback preview alongside the configured HTTPS application.

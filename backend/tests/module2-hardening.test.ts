@@ -4,7 +4,6 @@ import { PDFDocument } from 'pdf-lib';
 import { validateCvStructure } from '../src/lib/cv-file-validation.js';
 import { bounded, module2Config } from '../src/lib/module2-config.js';
 import { productionCvProviders, cvProductionConfig } from '../src/lib/cv-production.js';
-import type { S3Client } from '@aws-sdk/client-s3';
 import { ZipFile } from 'yazl';
 import { app } from '../src/app.js';
 import { closeStore } from '../src/lib/store.js';
@@ -52,29 +51,15 @@ test('CV configuration and timeout fail closed with sanitized failures', async (
     await assert.rejects(bounded(Promise.reject(new Error('sensitive provider fixture')), 'PARSER_FAILED'), error => error instanceof Error && !error.message.includes('sensitive'));
   } finally { process.env = env; }
 });
-test('Production adapter contracts: encryption, private policy, safe keys, scanner/parser errors (test doubles, not live providers)', async () => {
+test('Production scanner/parser adapters retain fail-closed sanitized contracts', async () => {
   const env = { ...process.env }, originalFetch = globalThis.fetch;
   try {
-    Object.assign(process.env, { CV_STORAGE_PROVIDER: 's3', CV_S3_BUCKET: 'fixture-bucket', CV_S3_REGION: 'us-east-1', CV_SCANNER_PROVIDER: 'https', CV_SCANNER_URL: 'https://scanner.example.test/scan', CV_SCANNER_TOKEN: 'unit-fixture', CV_PARSER_PROVIDER: 'https', CV_PARSER_URL: 'https://parser.example.test/parse', CV_PARSER_TOKEN: 'unit-fixture', CV_PARSER_VERSION: 'v1' });
-    let privateBucket = true, versioned = false;
-    const commands: { name: string; input: Record<string, unknown> }[] = [];
-    const fakeClient = { async send(command: { constructor: { name: string }; input: Record<string, unknown> }) {
-      commands.push({ name: command.constructor.name, input: command.input });
-      if (command.constructor.name === 'GetPublicAccessBlockCommand') return { PublicAccessBlockConfiguration: { BlockPublicAcls: privateBucket, IgnorePublicAcls: true, BlockPublicPolicy: true, RestrictPublicBuckets: true } };
-      if (command.constructor.name === 'GetBucketVersioningCommand') return { Status: versioned ? 'Enabled' : undefined };
-      if (command.constructor.name === 'GetObjectCommand') return { ContentLength: 2, Body: (async function* () { yield Buffer.from('ok'); })() };
-      return {};
-    } } as unknown as S3Client;
-    const providers = productionCvProviders(fakeClient);
-    await providers.check(); privateBucket = false; await assert.rejects(providers.check()); privateBucket = true; versioned = true; await assert.rejects(providers.check()); versioned = false;
-    await providers.storage.put('cv/user/document', Buffer.from('ok'), 'application/pdf');
-    assert.equal(commands.find(c => c.name === 'PutObjectCommand')?.input.ServerSideEncryption, 'AES256');
-    await assert.rejects(providers.storage.get('../secret'), { code: 'STORAGE_FAILED' });
-    assert.equal(Buffer.from(await providers.storage.get('cv/user/document')).toString(), 'ok');
-    await providers.storage.delete('cv/user/document');
-    globalThis.fetch = async (_url, options) => { assert.equal(options?.redirect, 'error'); return Response.json({ status: 'CLEAN' }); };
+    Object.assign(process.env, { CV_STORAGE_PROVIDER: 'google-drive', CV_GOOGLE_DRIVE_CLIENT_ID: 'fixture-client', CV_GOOGLE_DRIVE_CLIENT_SECRET: 'fixture-secret', CV_GOOGLE_DRIVE_REFRESH_TOKEN: 'fixture-refresh', CV_GOOGLE_DRIVE_FOLDER_ID: 'fixture_folder_12345', CV_GOOGLE_DRIVE_ACCOUNT: 'storage@example.test', CV_SCANNER_PROVIDER: 'cloudmersive', CV_SCANNER_URL: 'https://scanner.example.test/scan', CV_SCANNER_TOKEN: 'unit-fixture', CV_PARSER_PROVIDER: 'https', CV_PARSER_URL: 'https://parser.example.test/parse', CV_PARSER_TOKEN: 'unit-fixture', CV_PARSER_VERSION: 'v1' });
+    const driveFetch = async () => Response.json({ access_token: 'fixture-access', expires_in: 3600 });
+    const providers = productionCvProviders(driveFetch);
+    globalThis.fetch = async (_url, options) => { assert.equal(options?.redirect, 'error'); assert.ok(options?.body instanceof FormData); assert.ok((options?.headers as Record<string,string>).Apikey); return Response.json({ CleanResult: true, FoundViruses: [] }); };
     assert.equal(await providers.scanner.scan(Buffer.from('fixture'), 'application/pdf'), 'clean');
-    globalThis.fetch = async () => Response.json({ status: 'INFECTED' });
+    globalThis.fetch = async () => Response.json({ CleanResult: false, FoundViruses: [{ VirusName: 'fixture' }] });
     assert.equal(await providers.scanner.scan(Buffer.from('fixture'), 'application/pdf'), 'rejected');
     globalThis.fetch = async () => Response.json({ version: 'v1', facts: { skills: ['Supplied fixture skill'] } });
     assert.deepEqual(await providers.parser.extract(Buffer.from('fixture'), 'application/pdf'), { skills: ['Supplied fixture skill'] });

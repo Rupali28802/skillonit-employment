@@ -1,0 +1,24 @@
+groups:
+  - name: skillonit-backend
+    rules:
+      - alert: SkillOnITBackendUnavailable
+        expr: up{job="skillonit-backend"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: SkillOnIT backend metrics target is unavailable
+          runbook: config/OBSERVABILITY-INCIDENT-RUNBOOK.md
+      - alert: SkillOnITApiErrorsHigh
+        expr: sum(rate(skillonit_http_request_errors_total[5m])) > 1
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: SkillOnIT API error rate is elevated
+          runbook: config/OBSERVABILITY-INCIDENT-RUNBOOK.md
+      - alert: SkillOnITMemoryHigh
+        expr: skillonit_process_memory_rss_bytes > 1073741824
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: SkillOnIT backend memory exceeds 1 GiB
+          runbook: config/OBSERVABILITY-INCIDENT-RUNBOOK.md

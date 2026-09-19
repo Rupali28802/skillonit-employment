@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { safeLog } from './lib/safe-logger.js';
 import { OAuth2Client } from 'google-auth-library';
 import {
   createCipheriv,
@@ -56,6 +57,11 @@ const outboundMessageSchema = z
     to: z.email(),
     subject: z.string().trim().min(1).max(180),
     text: z.string().min(1).max(100_000),
+    attachment: z.object({
+      filename: z.string().min(1).max(180).refine(value => !/[\r\n"\\]/.test(value)),
+      contentType: z.enum(['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']),
+      base64: z.string().min(1).max(8_000_000),
+    }).strict().optional(),
   })
   .strict();
 
@@ -70,11 +76,25 @@ function gmailRawMessage(input: z.infer<typeof outboundMessageSchema>) {
     .toString('base64')
     .match(/.{1,76}/g)
     ?.join('\r\n');
-  return Buffer.from(
-    [
+  const headers = [
       `To: ${input.to}`,
       `Subject: ${encodedHeader(input.subject)}`,
       'MIME-Version: 1.0',
+  ];
+  if (input.attachment) {
+    const boundary = `skillonit-${randomBytes(18).toString('hex')}`;
+    return Buffer.from([
+      ...headers,
+      `Content-Type: multipart/mixed; boundary="${boundary}"`, '',
+      `--${boundary}`, 'Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: base64', '', body || '',
+      `--${boundary}`, `Content-Type: ${input.attachment.contentType}; name="${input.attachment.filename}"`,
+      'Content-Transfer-Encoding: base64', `Content-Disposition: attachment; filename="${input.attachment.filename}"`, '',
+      input.attachment.base64.match(/.{1,76}/g)?.join('\r\n') || '', `--${boundary}--`, '',
+    ].join('\r\n'), 'utf8').toString('base64url');
+  }
+  return Buffer.from(
+    [
+      ...headers,
       'Content-Type: text/plain; charset=UTF-8',
       'Content-Transfer-Encoding: base64',
       '',
@@ -452,7 +472,7 @@ mailboxAuth.get('/google/callback', async (request, response) => {
     });
     response.redirect(303, new URL('/mail?mail=connected', appUrl).href);
   } catch {
-    console.warn('Mailbox OAuth callback rejected; provider details withheld.');
+    safeLog('warn', 'mailbox_oauth.callback_rejected');
     response.redirect(303, new URL('/mail?mail=error', appUrl).href);
   }
 });

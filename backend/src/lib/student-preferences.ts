@@ -41,6 +41,7 @@ export const fullPreferencesSchema = preferencesSchema.extend({
 });
 type PreferenceRecord = { id: string; userId: string; revision: number; preferences: z.infer<typeof fullPreferencesSchema>; createdAt: string; updatedAt: string };
 type AutomationRecord = { id: string; userId: string; revision: number; preferences: AutomationPreferences; createdAt: string; updatedAt: string };
+const applicationExecutionAvailable = () => process.env.ENABLE_APPLICATION_ENGINE === 'true';
 export async function preferenceUser(r: Repository, userId: string) {
   const u = await r.get<User>('users', userId);
   if (!u || u.disabled) throw new ApiError(401, 'AUTH_REQUIRED', 'Please sign in again.');
@@ -76,14 +77,14 @@ export async function savePreferences(userId: string, input: unknown) {
   });
 }
 export async function getAutomation(userId: string) {
-  return read(async r => { await preferenceUser(r, userId); const row = await r.get<AutomationRecord>('automationPreferences', userId); return { ...automationSchema.parse(row?.preferences ?? {}), revision: row?.revision ?? 0, executionAvailable: false as const }; });
+  return read(async r => { await preferenceUser(r, userId); const row = await r.get<AutomationRecord>('automationPreferences', userId); return { ...automationSchema.parse(row?.preferences ?? {}), revision: row?.revision ?? 0, executionAvailable: applicationExecutionAvailable() }; });
 }
 export async function saveAutomation(userId: string, input: unknown) {
   const { expectedRevision, ...patch } = provided(input, automationSchema.partial().extend({ expectedRevision: z.number().int().min(0).optional() }).strict().parse(input));
   return transaction(async r => {
     const u = await preferenceUser(r, userId), row = await r.get<AutomationRecord>('automationPreferences', userId);
     const preferences = automationSchema.parse({ ...row?.preferences, ...patch });
-    if (row && JSON.stringify(preferences) === JSON.stringify(row.preferences)) return { ...preferences, revision: row.revision, executionAvailable: false as const };
+    if (row && JSON.stringify(preferences) === JSON.stringify(row.preferences)) return { ...preferences, revision: row.revision, executionAvailable: applicationExecutionAvailable() };
     if (expectedRevision !== undefined && expectedRevision !== (row?.revision ?? 0)) throw new ApiError(409, 'PREFERENCES_CONFLICT', 'Reload automation preferences before saving.');
     if (preferences.dailyCap > module2Config().AUTOMATION_MAX_DAILY_CAP) throw new ApiError(400, 'DAILY_CAP', 'Daily cap exceeds configured policy.');
     for (const [collection, keys] of [['occupationFamilies', preferences.allowedRoleFamilies], ['locations', [...preferences.allowedLocations, ...preferences.excludedLocations]]] as const) {
@@ -95,7 +96,7 @@ export async function saveAutomation(userId: string, input: unknown) {
     // Synchronizes with consent revocation and preference writes even on concurrent requests.
     await r.put('users', { ...u, preferences: { ...u.preferences, automation: false } });
     await r.put('automationPreferences', next); await audit(r, userId, 'automation.updated', userId);
-    return { ...preferences, revision: next.revision, executionAvailable: false as const };
+    return { ...preferences, revision: next.revision, executionAvailable: applicationExecutionAvailable() };
   });
 }
 export async function revokeAutomation(r: Repository, u: User) {

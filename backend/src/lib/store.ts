@@ -187,6 +187,9 @@ export async function bootstrapIndexes() {
   const db = mongo().db(process.env.MONGODB_DATABASE || 'skillonit');
   await db.collection('matchingIndexState').createIndex({ id: 1 }, { unique: true });
   await db.collection('jobs').createIndex({ status: 1, trust: 1, id: 1 });
+  await db.collection('employers').createIndex({ status: 1, id: 1 });
+  await db.collection('fraudReports').createIndex({ status: 1, id: 1 });
+  await db.collection('payments').createIndex({ status: 1, id: 1 });
   for (const c of [
     'users',
     'sessions',
@@ -196,6 +199,8 @@ export async function bootstrapIndexes() {
     'profiles',
     'profileMedia',
     'employers',
+    'employerVerifications',
+    'employerApplicantNotes',
     'leads',
     'auditLogs',
     'systemConfig',
@@ -204,11 +209,36 @@ export async function bootstrapIndexes() {
     'passwordResets',
     'applicationTemplates',
     'notifications',
+    'notificationDeliveries',
+    'notificationTemplates',
+    'notificationCampaigns',
     'fraudReports',
+    'jobRiskAssessments',
+    'entityRiskAssessments',
     'jobSources',
+    'jobSourceVariants',
+    'jobIngestionEvents',
+    'jobIngestionRuns',
+    'jobFingerprints',
+    'canonicalJobIdentities',
+    'jobSourceReferences',
+    'jobDeduplicationDecisions',
+    'jobLifecycleEvents',
+    'jobDiscoveryRuns',
     'paymentEvents',
     'payments',
+    'paymentCheckoutRequests',
+    'billingRecords',
+    'refundRequests',
+    'refundEvents',
     'workerRuns',
+    'queueExecutions',
+    'deadLetterJobs',
+    'assistantInteractions',
+    'analyticsRollups',
+    'analyticsSnapshots',
+    'incidentSignals',
+    'recoveryDrills',
     'queue',
     'cvs',
     'cvDocuments',
@@ -217,6 +247,8 @@ export async function bootstrapIndexes() {
     'studentPreferences',
     'automationPreferences',
     'occupationFamilies',
+    'taxonomyMappings',
+    'taxonomyTerms',
     'locations',
     'skills',
     'studentOnboarding',
@@ -228,6 +260,7 @@ export async function bootstrapIndexes() {
     'searchAlerts',
     'notificationPreferences',
     'entitlementUsage',
+    'studentSubscriptions',
     'mailboxConnections',
     'mailOauthStates',
     'leadNotes',
@@ -235,16 +268,38 @@ export async function bootstrapIndexes() {
     await db.collection(c).createIndex({ id: 1 }, { unique: true });
   await db.collection('users').createIndex({ email: 1 }, { unique: true });
   await db.collection('studentOnboarding').createIndex({ userId: 1 }, { unique: true });
+  await db.collection('employers').createIndex({ ownerId: 1 }, { unique: true });
+  await db.collection('employers').createIndex({ domain: 1 }, { unique: true });
+  await db.collection('employerVerifications').createIndex({ employerId: 1 }, { unique: true });
+  await db.collection('employerVerifications').createIndex({ status: 1, updatedAt: -1 });
+  await db.collection('employerApplicantNotes').createIndex({ employerId: 1, applicationId: 1, createdAt: -1 });
   await db.collection('studentPreferences').createIndex({ userId: 1 }, { unique: true });
   await db.collection('automationPreferences').createIndex({ userId: 1 }, { unique: true });
   await db.collection('occupationFamilies').createIndex({ slug: 1 }, { unique: true });
   await db.collection('skills').createIndex({ slug: 1 }, { unique: true });
   await db.collection('occupationFamilies').createIndex({ parentId: 1, active: 1 });
+  await db.collection('occupationFamilies').createIndex({ 'mappings.scheme': 1, 'mappings.code': 1 });
+  await db.collection('taxonomyMappings').createIndex({ kind: 1, scheme: 1, code: 1 }, { unique: true });
+  await db.collection('taxonomyTerms').createIndex({ kind: 1, normalized: 1, ownerId: 1 }, { unique: true });
+  await db.collection('taxonomyTerms').createIndex({ kind: 1, ownerId: 1 });
   await db.collection('locations').createIndex({ slug: 1 }, { unique: true });
   await db.collection('locations').createIndex({ countryCode: 1, code: 1 }, { unique: true });
   await db.collection('locations').createIndex({ parentId: 1, active: 1 });
   await db.collection('locations').createIndex({ countryCode: 1, type: 1, active: 1 });
+  await db.collection('locations').createIndex({ 'mappings.scheme': 1, 'mappings.code': 1 });
+  await db.collection('locations').createIndex({ geo: '2dsphere' }, { partialFilterExpression: { geo: { $exists: true } } });
   await db.collection('candidateConsents').createIndex({ userId: 1, purpose: 1 }, { unique: true });
+  await db.collection('studentSubscriptions').createIndex({ userId: 1 }, { unique: true });
+  await db.collection('studentSubscriptions').createIndex({ status: 1, currentPeriodEnd: 1 });
+  await db.collection('studentSubscriptions').createIndex({ providerPaymentId: 1 }, { unique: true, partialFilterExpression: { providerPaymentId: { $type: 'string' } } });
+  await db.collection('entitlementUsage').createIndex({ userId: 1, period: 1, metric: 1 }, { unique: true, partialFilterExpression: { metric: { $type: 'string' } } });
+  await db.collection('payments').createIndex({ userId: 1, createdAt: -1 });
+  await db.collection('payments').createIndex({ providerPaymentId: 1 }, { unique: true, partialFilterExpression: { providerPaymentId: { $type: 'string' } } });
+  await db.collection('paymentCheckoutRequests').createIndex({ userId: 1, createdAt: -1 });
+  await db.collection('billingRecords').createIndex({ userId: 1, createdAt: -1 });
+  await db.collection('billingRecords').createIndex({ orderId: 1, createdAt: 1 });
+  await db.collection('refundRequests').createIndex({ orderId: 1, createdAt: -1 });
+  await db.collection('paymentEvents').createIndex({ createdAt: -1 });
   await db.collection('candidateConsentEvents').createIndex({ userId: 1, updatedAt: -1 });
   await db.collection('cvDocuments').createIndex({ userId: 1, createdAt: -1 });
   await db.collection('cvDocuments').createIndex({ userId: 1, sha256: 1 });
@@ -270,6 +325,34 @@ export async function bootstrapIndexes() {
       .collection(c)
       .createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
   await db.collection('auditLogs').createIndex({ actorId: 1, createdAt: -1 });
+  await db.collection('auditLogs').createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
+  await db.collection('jobRiskAssessments').createIndex({ riskLevel: 1, assessedAt: -1 });
+  await db.collection('entityRiskAssessments').createIndex({ entityType: 1, entityId: 1 }, { unique: true });
+  await db.collection('entityRiskAssessments').createIndex({ riskLevel: 1, assessedAt: -1 });
+  await db.collection('fraudReports').createIndex({ entityType: 1, entityId: 1, status: 1, createdAt: -1 });
+  await db.collection('jobSources').createIndex({ enabled: 1, nextRunAt: 1 });
+  await db.collection('jobSources').createIndex(
+    { provider: 1, 'configuration.board': 1 },
+    { unique: true, partialFilterExpression: { provider: { $type: 'string' }, 'configuration.board': { $type: 'string' } } },
+  );
+  await db.collection('jobSourceVariants').createIndex({ sourceId: 1, sourceJobId: 1 }, { unique: true });
+  await db.collection('jobSourceVariants').createIndex({ status: 1, fetchedAt: 1 });
+  await db.collection('jobIngestionEvents').createIndex({ sourceId: 1, createdAt: -1 });
+  await db.collection('jobIngestionEvents').createIndex({ correlationId: 1, createdAt: 1 });
+  await db.collection('jobIngestionEvents').createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
+  await db.collection('jobIngestionRuns').createIndex({ status: 1, startedAt: -1 });
+  await db.collection('jobFingerprints').createIndex({ jobId: 1 });
+  await db.collection('canonicalJobIdentities').createIndex({ activeJobId: 1 }, { unique: true });
+  await db.collection('jobSourceReferences').createIndex({ sourceId: 1, sourceJobId: 1 }, { unique: true });
+  await db.collection('jobSourceReferences').createIndex({ canonicalIdentityId: 1, lastSeenAt: -1 });
+  await db.collection('jobDeduplicationDecisions').createIndex({ canonicalJobId: 1, createdAt: -1 });
+  await db.collection('jobDeduplicationDecisions').createIndex({ kind: 1, createdAt: -1 });
+  await db.collection('jobLifecycleEvents').createIndex({ jobId: 1, revision: 1 }, { unique: true });
+  await db.collection('jobLifecycleEvents').createIndex({ to: 1, changedAt: -1 });
+  await db.collection('jobs').createIndex({ 'lifecycle.state': 1, expiresAt: 1, id: 1 });
+  await db.collection('jobSourceVariants').createIndex({ status: 1, retryAt: 1, leaseUntil: 1 });
+  await db.collection('jobDiscoveryRuns').createIndex({ status: 1, startedAt: -1 });
+  await db.collection('jobDiscoveryRuns').createIndex({ trigger: 1, startedAt: -1 });
   for (const collection of [
     'cvVersions',
     'templateVersions',
@@ -288,6 +371,27 @@ export async function bootstrapIndexes() {
     .collection('applications')
     .createIndex({ employerId: 1, createdAt: -1 });
   await db.collection('applications').createIndex({ userId: 1, createdAt: -1 });
+  await db.collection('applications').createIndex({ status: 1, method: 1, scheduledAt: 1, priority: -1 });
+  await db.collection('notificationDeliveries').createIndex({ status: 1, channel: 1, nextAttemptAt: 1 });
+  await db.collection('notificationDeliveries').createIndex({ notificationId: 1, channel: 1 }, { unique: true });
+  await db.collection('notificationCampaigns').createIndex({ status: 1, scheduledAt: 1 });
+  await db.collection('queueExecutions').createIndex({ status: 1, updatedAt: -1 });
+  await db.collection('queueExecutions').createIndex({ leaseUntil: 1 }, { partialFilterExpression: { status: 'processing' } });
+  await db.collection('deadLetterJobs').createIndex({ status: 1, failedAt: -1 });
+  await db.collection('workerRuns').createIndex({ worker: 1, createdAt: -1 });
+  await db.collection('workerRuns').createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
+  await db.collection('assistantInteractions').createIndex({ userId: 1, createdAt: -1 });
+  await db.collection('assistantInteractions').createIndex({ intent: 1, createdAt: -1 });
+  await db.collection('recoveryDrills').createIndex({ restoreCompletedAt: -1 });
+  await db.collection('notificationDeliveries').createIndex({ providerMessageId: 1 }, { partialFilterExpression: { providerMessageId: { $type: 'string' } } });
+  await db.collection('analyticsRollups').createIndex({ day: 1, metric: 1 }, { unique: true });
+  await db.collection('analyticsRollups').createIndex({ category: 1, day: 1 });
+  await db.collection('analyticsRollups').createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
+  await db.collection('analyticsSnapshots').createIndex({ createdAt: -1 });
+  await db.collection('incidentSignals').createIndex({ createdAt: -1, statusClass: 1 });
+  await db.collection('incidentSignals').createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
+  await db.collection('notifications').createIndex({ userId: 1, dedupeKey: 1 }, { unique: true, partialFilterExpression: { dedupeKey: { $type: 'string' } } });
+  await db.collection('applications').createIndex({ leaseUntil: 1 }, { partialFilterExpression: { status: 'SENDING' } });
   await db
     .collection('sessions')
     .createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });

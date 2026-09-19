@@ -14,8 +14,8 @@ export async function student(r: Repository, userId: string) {
 }
 const labels = ['account', 'basic-profile', 'cv-or-manual', 'extraction-review', 'skills', 'target-roles', 'locations', 'experience', 'salary-work-mode', 'automation-preferences', 'consent', 'mailbox', 'plan'] as const;
 export type Onboarding = { id: string; userId: string; revision: number; mode?: 'manual' | 'cv'; currentStep?: typeof labels[number]; mailboxSkipped?: boolean; planReviewed?: boolean; completedAt?: string; updatedAt: string };
-type Consent = { id: string; userId: string; purpose: 'profile' | 'automation' | 'mailbox'; granted: boolean; policyVersion: string; updatedAt: string; consentType?: string; version?: string; status?: 'granted' | 'revoked'; grantedAt?: string | null; revokedAt?: string | null; source?: string; context?: string; createdAt?: string };
-const purpose = z.enum(['profile', 'automation', 'mailbox']);
+type Consent = { id: string; userId: string; purpose: 'profile' | 'automation' | 'mailbox' | 'assistant' | 'analytics'; granted: boolean; policyVersion: string; updatedAt: string; consentType?: string; version?: string; status?: 'granted' | 'revoked'; grantedAt?: string | null; revokedAt?: string | null; source?: string; context?: string; createdAt?: string };
+const purpose = z.enum(['profile', 'automation', 'mailbox', 'assistant', 'analytics']);
 const consentContext = { source: z.enum(['onboarding', 'settings', 'api']).default('api'), context: z.enum(['profile_setup', 'automation_preferences', 'mailbox_preferences', 'privacy_settings']).optional() };
 const consentRequestSchema = z.union([
   z.object({ purpose, granted: z.boolean(), policyVersion: z.string().trim().min(1).max(100), ...consentContext }).strict(),
@@ -24,7 +24,7 @@ const consentRequestSchema = z.union([
 export async function getConsents(userId: string) {
   return read(async r => {
     await student(r, userId);
-    return (await r.find<Consent>('candidateConsents', { userId }, 3)).map(row => ({ ...row, consentType: row.purpose, version: row.policyVersion, status: row.granted ? 'granted' : 'revoked', grantedAt: row.grantedAt ?? null, revokedAt: row.revokedAt ?? null, createdAt: row.createdAt ?? null, source: row.source ?? 'legacy', context: row.context ?? null }));
+    return (await r.find<Consent>('candidateConsents', { userId }, 5)).map(row => ({ ...row, consentType: row.purpose, version: row.policyVersion, status: row.granted ? 'granted' : 'revoked', grantedAt: row.grantedAt ?? null, revokedAt: row.revokedAt ?? null, createdAt: row.createdAt ?? null, source: row.source ?? 'legacy', context: row.context ?? null }));
   });
 }
 async function consent(r: Repository, userId: string, name: string) {

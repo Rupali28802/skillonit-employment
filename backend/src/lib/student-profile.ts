@@ -3,6 +3,7 @@ import type { Profile, User } from './domain.js';
 import { profileSchema } from './schemas.js';
 import { ApiError, audit } from './security.js';
 import { read, transaction } from './store.js';
+import { validateTaxonomyReferences } from './student-catalog.js';
 
 const updateSchema = profileSchema.extend({
   expectedRevision: z.number().int().min(0).optional(),
@@ -53,6 +54,7 @@ export async function updateStudentProfile(userId: string, input: unknown): Prom
     const revision = latest.profileRevision ?? 0;
     if (expectedRevision !== undefined && expectedRevision !== revision)
       throw new ApiError(409, 'PROFILE_CONFLICT', 'Your profile changed. Reload it before saving again.');
+    await validateTaxonomyReferences(r, { occupationIds: profile.matching?.occupationIds, locationId: profile.matching?.locationId });
     const now = new Date().toISOString();
     const updated: User = {
       ...latest, profile: preserveProfileMedia(latest.profile, profile), name: profile.name || latest.name, profileRevision: revision + 1,

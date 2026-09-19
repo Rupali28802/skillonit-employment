@@ -10,6 +10,28 @@ import { requireUser, ApiError, audit, id } from './lib/security.js';
 import { profileSchema } from './lib/schemas.js';
 import { searchJobs } from './lib/search.js';
 import { publicJob, isRecent, type Job, type User } from './lib/domain.js';
+import {
+  createJobSource,
+  fetchJobSource,
+  listJobSources,
+  sourceEvents,
+  updateJobSource,
+} from './lib/job-source-strategy.js';
+import {
+  configureDiscoveryPolicy,
+  discoveryOverview,
+  runDiscovery,
+} from './lib/job-discovery.js';
+import { configureIngestionPolicy, ingestionOverview, runIngestion } from './lib/job-ingestion.js';
+import { configureFraudPolicy, fraudOverview, recheckFraud } from './lib/fraud-detection.js';
+import { configureDeduplicationPolicy, deduplicationOverview } from './lib/job-deduplication.js';
+import { configureLifecyclePolicy, expireJobs, lifecycleOverview } from './lib/lifecycle.js';
+import { getStudentSubscription, resolveStudentEntitlements } from './lib/student-entitlements.js';
+import { configureNotificationTemplate, createNotificationRecord, getNotificationPreferences, listNotifications, listNotificationTemplates, notificationDeliveryStatus, notificationTypes, processNotificationCampaigns, readNotification, scheduleNotificationCampaign, updateNotificationPreferences } from './lib/notification-platform.js';
+import { queueOverview } from './lib/queue-infrastructure.js';
+import { runAssistant } from './lib/ai-assistant.js';
+import { analyticsOverview, recordAnalyticsSnapshot } from './lib/analytics-platform.js';
+import { observabilityOverview } from './lib/observability.js';
 
 const searchSchema = z.object({
   name: z.string().trim().min(1).max(100),
@@ -18,7 +40,6 @@ const searchSchema = z.object({
   mode: z.enum(['', 'Remote', 'Hybrid', 'On-site']).default(''),
   enabled: z.boolean().default(true),
 });
-const notificationDefaults = { inApp: true, email: false, whatsapp: false };
 const flagDefaults = { assistant: true, savedSearchAlerts: true };
 async function requireFeature(key: keyof typeof flagDefaults) {
   const config = await read((r) =>
@@ -37,21 +58,9 @@ export async function notify(
   title: string,
   message: string,
   href: string,
+  type: 'job_match' | 'application_status' | 'billing' | 'security' | 'profile' | 'system' = 'system',
 ) {
-  const preferences = await r.get<typeof notificationDefaults>(
-    'notificationPreferences',
-    userId,
-  );
-  if (preferences?.inApp === false) return;
-  await r.put('notifications', {
-    id: id(),
-    userId,
-    title,
-    message,
-    href,
-    read: false,
-    createdAt: new Date().toISOString(),
-  });
+  return createNotificationRecord(r, { userId, type, title, message, href });
 }
 
 async function owned(
@@ -71,8 +80,110 @@ export async function featureRoute(
   p: string,
   method: string,
   body: () => Promise<unknown>,
+  params = new URLSearchParams(),
 ): Promise<{ data: unknown; status?: number } | undefined> {
   const parts = p.split('/');
+  if (p === 'admin/queue/status' && method === 'GET') {
+    const user = await requireUser('admin'); return { data: await queueOverview(user) };
+  }
+  if (p === 'admin/observability' && method === 'GET') {
+    const user = await requireUser('admin'); return { data: await observabilityOverview(user) };
+  }
+  if (p === 'admin/analytics' && method === 'GET') {
+    const user = await requireUser('admin'); return { data: await analyticsOverview(user, params) };
+  }
+  if (p === 'admin/analytics/rollup' && method === 'POST') {
+    const user = await requireUser('admin'); return { data: await recordAnalyticsSnapshot(user.id) };
+  }
+  if (p === 'admin/notification-templates' && method === 'GET') {
+    const user = await requireUser('admin'); return { data: await listNotificationTemplates(user) };
+  }
+  if (parts[0] === 'admin' && parts[1] === 'notification-templates' && parts.length === 3 && method === 'PUT') {
+    const user = await requireUser('admin');
+    const type = z.enum(notificationTypes).parse(parts[2]);
+    return { data: await configureNotificationTemplate(user, type, await body()) };
+  }
+  if (p === 'admin/notifications' && method === 'POST') {
+    const user = await requireUser('admin'); return { data: await scheduleNotificationCampaign(user, await body()), status: 201 };
+  }
+  if (p === 'admin/notifications/dispatch' && method === 'POST') {
+    await requireUser('admin');
+    const campaigns = await processNotificationCampaigns();
+    return { data: { campaigns } };
+  }
+  if (p === 'admin/job-lifecycle/status' && method === 'GET') {
+    await requireUser('admin');
+    return { data: await lifecycleOverview() };
+  }
+  if (p === 'admin/job-lifecycle/config' && method === 'PUT') {
+    const user = await requireUser('admin');
+    return { data: await configureLifecyclePolicy(user, await body()) };
+  }
+  if (p === 'admin/job-lifecycle/run' && method === 'POST') {
+    await requireUser('admin');
+    return { data: { expired: await expireJobs() } };
+  }
+  if (p === 'admin/deduplication/status' && method === 'GET') {
+    await requireUser('admin');
+    return { data: await deduplicationOverview() };
+  }
+  if (p === 'admin/deduplication/config' && method === 'PUT') {
+    const user = await requireUser('admin');
+    return { data: await configureDeduplicationPolicy(user, await body()) };
+  }
+  if (p === 'admin/fraud/status' && method === 'GET') {
+    await requireUser('admin');
+    return { data: await fraudOverview() };
+  }
+  if (p === 'admin/fraud/config' && method === 'PUT') {
+    const user = await requireUser('admin');
+    return { data: await configureFraudPolicy(user, await body()) };
+  }
+  if (p === 'admin/fraud/recheck' && method === 'POST') {
+    const user = await requireUser('admin');
+    return { data: await recheckFraud(user.id, await body()) };
+  }
+  if (p === 'admin/ingestion/status' && method === 'GET') {
+    await requireUser('admin');
+    return { data: await ingestionOverview() };
+  }
+  if (p === 'admin/ingestion/config' && method === 'PUT') {
+    const user = await requireUser('admin');
+    return { data: await configureIngestionPolicy(user.id, await body()) };
+  }
+  if (p === 'admin/ingestion/run' && method === 'POST') {
+    const user = await requireUser('admin');
+    return { data: await runIngestion(user.id) };
+  }
+  if (p === 'admin/discovery/status' && method === 'GET') {
+    await requireUser('admin');
+    return { data: await discoveryOverview() };
+  }
+  if (p === 'admin/discovery/config' && method === 'PUT') {
+    const user = await requireUser('admin');
+    return { data: await configureDiscoveryPolicy(user.id, await body()) };
+  }
+  if (p === 'admin/discovery/run' && method === 'POST') {
+    const user = await requireUser('admin');
+    return { data: await runDiscovery('manual', user.id, await body()) };
+  }
+  if (p === 'admin/sources') {
+    const user = await requireUser('admin');
+    if (method === 'GET') return { data: await listJobSources() };
+    if (method === 'POST') return { data: await createJobSource(user.id, await body()), status: 201 };
+  }
+  if (parts[0] === 'admin' && parts[1] === 'sources' && parts.length === 3 && method === 'PATCH') {
+    const user = await requireUser('admin');
+    return { data: await updateJobSource(user.id, parts[2], await body()) };
+  }
+  if (parts[0] === 'admin' && parts[1] === 'sources' && parts[3] === 'events' && parts.length === 4 && method === 'GET') {
+    await requireUser('admin');
+    return { data: await sourceEvents(parts[2]) };
+  }
+  if (parts[0] === 'admin' && parts[1] === 'sources' && parts[3] === 'run' && parts.length === 4 && method === 'POST') {
+    const user = await requireUser('admin');
+    return { data: await fetchJobSource(parts[2], id(), user.id) };
+  }
   if (parts[0] === 'applications' && parts.length === 2 && method === 'GET') {
     const user = await requireUser('student');
     return {
@@ -137,59 +248,22 @@ export async function featureRoute(
   }
   if (p === 'me/notifications') {
     const user = await requireUser();
-    if (method === 'GET')
-      return {
-        data: (
-          await read((r) =>
-            r.find<Row>('notifications', { userId: user.id }, 200),
-          )
-        ).sort((a, b) =>
-          String(b.createdAt).localeCompare(String(a.createdAt)),
-        ),
-      };
+    if (method === 'GET') return { data: await listNotifications(user, 200) };
     if (method === 'PATCH') {
       const input = z
         .object({ id: z.string().min(1).max(100) })
         .parse(await body());
-      await transaction(async (r) => {
-        const item = await owned(r, 'notifications', input.id, user.id);
-        await r.put('notifications', { ...item, read: true });
-      });
-      return { data: { updated: true } };
+      return { data: await readNotification(user, input.id) };
     }
+  }
+  if (parts[0] === 'me' && parts[1] === 'notifications' && parts[3] === 'delivery' && parts.length === 4 && method === 'GET') {
+    const user = await requireUser(); return { data: await notificationDeliveryStatus(user, parts[2]) };
   }
   if (p === 'me/notification-preferences') {
     const user = await requireUser();
-    if (method === 'GET')
-      return {
-        data:
-          (await read((r) => r.get('notificationPreferences', user.id))) ||
-          notificationDefaults,
-      };
+    if (method === 'GET') return { data: await getNotificationPreferences(user) };
     if (method === 'PUT') {
-      const input = z
-        .object({
-          inApp: z.boolean(),
-          email: z.boolean(),
-          whatsapp: z.boolean(),
-        })
-        .parse(await body());
-      if (input.email || input.whatsapp)
-        throw new ApiError(
-          409,
-          'CHANNEL_UNAVAILABLE',
-          'Email and WhatsApp delivery are not connected. In-app notifications are available.',
-        );
-      await transaction(async (r) => {
-        await r.put('notificationPreferences', {
-          id: user.id,
-          userId: user.id,
-          ...input,
-          updatedAt: new Date().toISOString(),
-        });
-        await audit(r, user.id, 'notification_preferences.updated', user.id);
-      });
-      return { data: input };
+      return { data: await updateNotificationPreferences(user, await body()) };
     }
   }
   if (p === 'me/cv-versions') {
@@ -214,9 +288,7 @@ export async function featureRoute(
           'CONFIRMATION_REQUIRED',
           'Confirm your profile before creating a CV version.',
         );
-      const plan = (await configuredPlans()).find(
-        (plan) => plan.code === user.plan,
-      )!;
+      const plans = await configuredPlans();
       const version = {
         id: id(),
         userId: user.id,
@@ -225,17 +297,18 @@ export async function featureRoute(
         createdAt: new Date().toISOString(),
       };
       await transaction(async (r) => {
+        const latest = await r.get<User>('users', user.id);
+        if (!latest || latest.disabled || latest.role !== 'student') throw new ApiError(403, 'FORBIDDEN', 'A student account is required.');
+        const limit = (await resolveStudentEntitlements(r, latest, plans)).limits.cvVersions;
         if (
           (await r.find('cvVersions', { userId: user.id }, 30)).length >=
-          plan.cvs
+          limit
         )
           throw new ApiError(
             409,
             'ENTITLEMENT_REQUIRED',
-            `Your plan allows ${plan.cvs} CV versions.`,
+            `Your active entitlement allows ${limit} CV versions.`,
           );
-        const latest = await r.get<User>('users', user.id);
-        if (!latest || latest.disabled || latest.role !== 'student') throw new ApiError(403, 'FORBIDDEN', 'A student account is required.');
         await r.put('users', { ...latest, cvQuotaRevision: (latest.cvQuotaRevision ?? 0) + 1 });
         await r.put('cvVersions', version);
         await notify(
@@ -244,6 +317,7 @@ export async function featureRoute(
           'CV version saved',
           'Your confirmed CV version is ready to review and download.',
           '/cvs',
+          'profile',
         );
         await audit(r, user.id, 'cv.version_created', version.id);
       });
@@ -280,17 +354,7 @@ export async function featureRoute(
   }
   if (p === 'me/usage' && method === 'GET') {
     const user = await requireUser('student');
-    const period = new Date().toISOString().slice(0, 10);
-    return {
-      data: {
-        period,
-        timezone: 'UTC',
-        usage: await read((r) =>
-          r.get('entitlementUsage', `${user.id}:${period}`),
-        ),
-        plan: (await configuredPlans()).find((plan) => plan.code === user.plan),
-      },
-    };
+    return { data: await getStudentSubscription(user.id) };
   }
   if (
     parts[0] === 'jobs' &&
@@ -305,32 +369,7 @@ export async function featureRoute(
   if (p === 'assistant' && method === 'POST') {
     const user = await requireUser();
     await requireFeature('assistant');
-    const input = z
-      .object({ message: z.string().trim().min(1).max(300) })
-      .parse(await body());
-    const question = input.message.toLowerCase();
-    if (/password|oauth|mailbox|payment|billing|cv upload/.test(question))
-      return {
-        data: {
-          mode: 'guided-help',
-          answer:
-            'Use your workspace for profile, mailbox and billing controls. Mail delivery, scanned file uploads and payments remain unavailable until their providers are configured. Never share passwords or tokens in chat.',
-          jobs: [],
-        },
-      };
-    const result = await searchJobs(
-      new URLSearchParams({ q: input.message }),
-      user,
-    );
-    return {
-      data: {
-        mode: 'keyword-search',
-        answer: result.total
-          ? `I found ${result.total} matching opportunities. This assistant currently uses keyword search; review each job and its eligibility before applying.`
-          : 'No exact keyword matches. Try a role, skill or location such as React, design, remote or India.',
-        jobs: result.jobs.slice(0, 5),
-      },
-    };
+    return { data: await runAssistant(user, await body()) };
   }
   if (p === 'admin/configuration') {
     const user = await requireUser('admin');
@@ -385,8 +424,7 @@ export async function featureRoute(
   }
   if (p === 'admin/source-policies') {
     const user = await requireUser('admin');
-    if (method === 'GET')
-      return { data: await read((r) => r.find('jobSources', {}, 100)) };
+    if (method === 'GET') return { data: await listJobSources() };
     if (method === 'POST') {
       const input = z
         .object({
@@ -404,18 +442,19 @@ export async function featureRoute(
           'APPROVAL_REQUIRED',
           'Approve and document the source policy before enabling it.',
         );
-      const record = {
-        id: id(),
-        type: 'greenhouse',
-        ...input,
-        reviewedBy: user.id,
-        reviewedAt: new Date().toISOString(),
+      return {
+        data: await createJobSource(user.id, {
+          name: input.name, provider: 'greenhouse', configuration: { board: input.board },
+          enabled: input.enabled,
+          compliance: {
+            status: input.approved ? 'approved' : 'pending', policyEvidence: input.policyEvidence,
+            permittedMethod: 'official_api', jurisdictions: [],
+          },
+          schedule: { intervalMinutes: 60 }, rate: { requestsPerMinute: input.requestsPerMinute },
+          retry: { maxAttempts: 3, baseDelaySeconds: 30, maxDelaySeconds: 3600 },
+        }),
+        status: 201,
       };
-      await transaction(async (r) => {
-        await r.put('jobSources', record);
-        await audit(r, user.id, 'source.policy_created', record.id);
-      });
-      return { data: record, status: 201 };
     }
   }
   if (p === 'public/configuration' && method === 'GET') {
@@ -490,6 +529,7 @@ export async function featureRoute(
             `New match: ${search.name}`,
             safe.title,
             `/jobs/${encodeURIComponent(job.id)}`,
+            'job_match',
           );
           await r.put('searchAlerts', {
             id: alertId,

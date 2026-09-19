@@ -49,7 +49,7 @@ export async function checkEmailOtp() {
   const logs = await read((r) => r.find<Record<string, unknown>>("auditLogs", { actorId: id }));
   assert.ok(
     logs.every((r) =>
-      Object.keys(r).every((k) => ["id", "actorId", "action", "entityId", "createdAt"].includes(k)),
+      Object.keys(r).every((k) => ["id", "actorId", "action", "entityId", "createdAt", "expiresAtDate"].includes(k)),
     ),
   );
   await transaction(async (r) => {

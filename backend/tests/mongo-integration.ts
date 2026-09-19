@@ -17,6 +17,18 @@ let server: ReturnType<typeof app.listen> | undefined;
 try {
   await bootstrapIndexes();
   await bootstrapIndexes(); // Repeated bootstrap must preserve existing indexes.
+  const applicationIndexes = await client.db('architecture_test').collection('applications').indexes();
+  assert.ok(applicationIndexes.some(index => index.key.status === 1 && index.key.scheduledAt === 1), 'application scheduling index');
+  assert.ok(applicationIndexes.some(index => index.key.userId === 1 && index.key.jobId === 1 && index.unique), 'application deduplication index');
+  const subscriptionIndexes = await client.db('architecture_test').collection('studentSubscriptions').indexes();
+  assert.ok(subscriptionIndexes.some(index => index.key.userId === 1 && index.unique), 'subscription ownership index');
+  assert.ok(subscriptionIndexes.some(index => index.key.status === 1 && index.key.currentPeriodEnd === 1), 'subscription expiry index');
+  const usageIndexes = await client.db('architecture_test').collection('entitlementUsage').indexes();
+  assert.ok(usageIndexes.some(index => index.key.userId === 1 && index.key.period === 1 && index.key.metric === 1 && index.unique), 'entitlement usage uniqueness index');
+  const paymentIndexes = await client.db('architecture_test').collection('payments').indexes();
+  assert.ok(paymentIndexes.some(index => index.key.providerPaymentId === 1 && index.unique), 'provider payment uniqueness index');
+  const billingIndexes = await client.db('architecture_test').collection('billingRecords').indexes();
+  assert.ok(billingIndexes.some(index => index.key.userId === 1 && index.key.createdAt === -1), 'billing history index');
   for (const name of ["cvDocuments", "studentOnboarding", "candidateConsents", "candidateConsentEvents"]) {
     const entries = await client.db("architecture_test").collection(name).indexes();
     assert.ok(entries.some(index => index.key.userId === 1), `${name} ownership index`);
@@ -29,6 +41,8 @@ try {
   await checkModule2();
   const { checkModule2Foundation } = await import('./module2-foundation-checks.js');
   await checkModule2Foundation();
+  const { checkApplicationEngine } = await import('./application-engine-checks.js');
+  await checkApplicationEngine();
   const receipts = await client.db('architecture_test').collection('cvDeletionReceipts').indexes();
   assert.ok(receipts.some(index => index.expireAfterSeconds === 0));
   const cvIndexes = await client.db('architecture_test').collection('cvDocuments').indexes();

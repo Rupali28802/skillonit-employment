@@ -3,7 +3,7 @@ import type { Repository } from './store.js';
 import { matchJob, normalize, phrase, unique } from './job-matching.js';
 import type { RankingPolicy } from './matching-contracts.js';
 
-export type CatalogEntry = { id: string; active: boolean; displayName: string; aliases?: string[]; parentId?: string | null; relatedRoleIds?: string[]; type?: string; countryCode?: string };
+export type CatalogEntry = { id: string; slug?: string; active: boolean; displayName: string; aliases?: string[]; localizedNames?: { locale: string; value: string }[]; mappings?: { scheme: string; code: string }[]; ancestorIds?: string[]; parentId?: string | null; relatedRoleIds?: string[]; type?: string; countryCode?: string };
 export type MatchingCatalogs = { skills: CatalogEntry[]; occupations: CatalogEntry[]; locations: CatalogEntry[] };
 export const emptyCatalogs = (): MatchingCatalogs => ({ skills: [], occupations: [], locations: [] });
 export async function loadMatchingCatalogs(r: Repository): Promise<MatchingCatalogs> {
@@ -25,7 +25,7 @@ export async function loadMatchingCatalogs(r: Repository): Promise<MatchingCatal
 export function resolveEntry(value: string, rows: CatalogEntry[]) {
   const direct = rows.find(row => row.id === value && row.active);
   if (direct) return direct;
-  const matches = rows.filter(row => row.active && [row.displayName, ...(row.aliases ?? [])].some(label => normalize(label) === normalize(value)));
+  const matches = rows.filter(row => row.active && [row.slug ?? '', row.displayName, ...(row.aliases ?? []), ...(row.localizedNames ?? []).map(item => item.value), ...(row.mappings ?? []).flatMap(item => [item.code, `${item.scheme}:${item.code}`])].some(label => normalize(label) === normalize(value)));
   return matches.length === 1 ? matches[0] : undefined; // Ambiguous aliases never become facts.
 }
 function canonicalSkills(values: string[], catalogs: MatchingCatalogs) {

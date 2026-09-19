@@ -107,6 +107,9 @@ test('vector/config validation rejects unsafe endpoints and malformed vectors', 
   assert.equal(cosine([1, 0], [1, 0]), 1); assert.equal(cosine([1, 0], [0, 1]), 0);
   for (const vector of [[0, 0], [1], [Infinity, 0]]) assert.throws(() => validateVector(vector, 2));
   assert.throws(() => matchingProviderConfig({ MATCHING_SEARCH_PROVIDER: 'opensearch', MATCHING_OPENSEARCH_URL: 'http://example.invalid' }), /MATCHING_PROVIDER_CONFIG/);
+  const aiven = matchingProviderConfig({ MATCHING_SEARCH_PROVIDER: 'aiven', MATCHING_OPENSEARCH_URL: 'https://search.example.invalid:12345', MATCHING_OPENSEARCH_USERNAME: 'service-user', MATCHING_OPENSEARCH_PASSWORD: 'secret-value' });
+  assert.equal(aiven.provider, 'aiven'); assert.match(aiven.authorization!, /^Basic /);
+  assert.throws(() => matchingProviderConfig({ MATCHING_SEARCH_PROVIDER: 'aiven', MATCHING_OPENSEARCH_URL: 'https://search.example.invalid', MATCHING_OPENSEARCH_USERNAME: 'user:name', MATCHING_OPENSEARCH_PASSWORD: 'secret' }), /MATCHING_PROVIDER_CONFIG/);
   assert.equal(indexMapping(2).mappings.properties.embedding?.dimension, 2);
 });
 test('OpenSearch HTTP contract uses filtered keyword and versioned vector retrieval, never query_string', async () => {
@@ -142,7 +145,7 @@ test('indexer is replay-safe, refreshes changed jobs, removes deleted jobs and w
 test('embedding HTTP contract enforces model, dimensions and finite values', async () => {
   let payload: any;
   let reply: unknown = { model: 'contract-model', data: [{ index: 0, embedding: [1, 0] }] };
-  const adapter = new HttpEmbeddingProvider({ endpoint: 'https://embedding.example.invalid/v1/embeddings', token: 'contract-only', model: 'contract-model', version: 'v1', dimensions: 2 },
+  const adapter = new HttpEmbeddingProvider({ provider: 'openai', endpoint: 'https://embedding.example.invalid/v1/embeddings', token: 'contract-only', model: 'contract-model', version: 'v1', dimensions: 2 },
     new MatchingTransport(1000, (async (_url, init) => { payload = JSON.parse(String(init?.body)); return Response.json(reply); }) as typeof fetch));
   assert.deepEqual(await adapter.embed('Confirmed skills'), [1, 0]);
   assert.deepEqual(payload, { model: 'contract-model', input: 'Confirmed skills', dimensions: 2, encoding_format: 'float' });
@@ -150,6 +153,16 @@ test('embedding HTTP contract enforces model, dimensions and finite values', asy
     reply = bad; await assert.rejects(adapter.embed('Confirmed skills'), /EMBEDDING_UNAVAILABLE/);
   }
   assert.equal(cosine([1e-200, 0], [1e-200, 0]), 1);
+});
+test('Gemini embedding contract reuses the protected token variable and validates dimensions', async () => {
+  let payload: any, headers: HeadersInit | undefined;
+  const adapter = new HttpEmbeddingProvider({ provider: 'gemini', endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent', token: 'contract-only', model: 'gemini-embedding-001', version: 'gemini-v1', dimensions: 2 },
+    new MatchingTransport(1000, (async (_url, init) => { payload = JSON.parse(String(init?.body)); headers = init?.headers; return Response.json({ embedding: { values: [1, 0] } }); }) as typeof fetch));
+  assert.deepEqual(await adapter.embed('Confirmed skills'), [1, 0]);
+  assert.deepEqual(payload, { content: { parts: [{ text: 'Confirmed skills' }] }, output_dimensionality: 2 });
+  assert.equal((headers as Record<string, string>)['x-goog-api-key'], 'contract-only');
+  assert.equal((headers as Record<string, string>).Authorization, undefined);
+  assert.throws(() => matchingProviderConfig({ MATCHING_SEARCH_PROVIDER: 'opensearch', MATCHING_OPENSEARCH_URL: 'https://search.example.test', MATCHING_OPENSEARCH_AUTHORIZATION: 'Bearer contract', MATCHING_SEMANTIC: 'on', MATCHING_EMBEDDING_PROVIDER: 'gemini', MATCHING_EMBEDDING_URL: 'https://evil.example.test/v1beta/models/gemini-embedding-001:embedContent', MATCHING_EMBEDDING_TOKEN: 'secret', MATCHING_EMBEDDING_MODEL: 'gemini-embedding-001', MATCHING_EMBEDDING_VERSION: 'v1', MATCHING_EMBEDDING_DIMENSIONS: '2' }), /MATCHING_PROVIDER_CONFIG/);
 });
 test('explicit unconfirmed CV-derived fields never contribute to ranking or embeddings', async () => {
   const r = repository({ jobs: [job], candidateConsents: [{ id: user.id + ':profile', granted: true }] });

@@ -10,6 +10,8 @@ import { profileSchema } from './schemas.js';
 import type { Profile } from './domain.js';
 import type { CvProviders } from './cv-providers.js';
 import { extractedDraft } from './cv-draft.js';
+import { resolveStudentEntitlements } from './student-entitlements.js';
+import { safeLog } from './safe-logger.js';
 
 export const CV_MAX_BYTES = 5 * 1024 * 1024;
 export type CvDocument = {
@@ -68,7 +70,7 @@ export async function uploadCv(userId: string, filename: string, contentType: st
     const u = await student(r, userId);
     const duplicate = (await r.find<CvDocument>('cvDocuments', { userId, sha256: row.sha256 }, 1))[0];
     if (duplicate) return duplicate;
-    const limit = plans.find(p => p.code === u.plan)?.cvs ?? 1;
+    const limit = (await resolveStudentEntitlements(r, u, plans)).limits.cvVersions;
     // Serialize reservations on the user, including simultaneous uploads.
     if (await r.count('cvDocuments', { userId }) >= limit) throw new ApiError(409, 'ENTITLEMENT_REQUIRED', 'Your CV document limit has been reached.');
     await r.put('users', { ...u, cvQuotaRevision: (u.cvQuotaRevision ?? 0) + 1 }); await r.put('cvDocuments', row);
@@ -135,7 +137,7 @@ export async function processCv(id: string, providers: CvProviders) {
     await r.put('cvDocuments', { ...base, scanStatus, extractionStatus, parserVersion: providers.parser.version ?? 'adapter-unspecified', scannedAt: new Date().toISOString(), status: errorCode ? 'failed' : 'review', ...(draft ? { draft, provenance } : {}), ...(errorCode ? { errorCode } : {}), revision: base.revision + 1, updatedAt: new Date().toISOString() });
     await audit(r, row.userId, errorCode ? 'cv.processing_failed' : 'cv.review_ready', id);
   });
-  console.info('CV processing completed', { operation: 'cv-process', durationMs: Date.now() - started, scanStatus, extractionStatus, failed: !!errorCode });
+  safeLog('info', 'cv.processing_completed', { operation: 'cv-process', durationMs: Date.now() - started, scanStatus, extractionStatus, failed: !!errorCode });
   return true;
 }
 
@@ -148,7 +150,7 @@ export async function confirmCv(userId: string, id: string, input: unknown) {
     if (!row || row.userId !== userId) throw new ApiError(404, 'NOT_FOUND', 'CV not found.');
     if (!['review', 'confirmed'].includes(row.status) || row.revision !== data.expectedRevision || (u.profileRevision ?? 0) !== data.expectedProfileRevision)
       throw new ApiError(409, 'CV_REVIEW_CONFLICT', 'Reload the CV review and profile before confirming.');
-    if (await r.count('cvVersions', { userId }) >= (plans.find(p => p.code === u.plan)?.cvs ?? 1)) throw new ApiError(409, 'ENTITLEMENT_REQUIRED', 'Your CV version limit has been reached.');
+    if (await r.count('cvVersions', { userId }) >= (await resolveStudentEntitlements(r, u, plans)).limits.cvVersions) throw new ApiError(409, 'ENTITLEMENT_REQUIRED', 'Your CV version limit has been reached.');
     const now = new Date().toISOString();
     const profile = profileSchema.parse({ ...extractedDraft(row.draft ?? {}).profile, ...data.profile, confirmed: true });
     const provenance = { ...row.provenance };

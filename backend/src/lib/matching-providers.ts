@@ -11,21 +11,36 @@ const https = z.string().url().refine(value => { const u = new URL(value); retur
 const identifier = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,80}$/);
 export function matchingProviderConfig(env = process.env) {
   try {
-    const provider = z.enum(['local', 'opensearch']).parse(env.MATCHING_SEARCH_PROVIDER || 'local');
+    const provider = z.enum(['local', 'opensearch', 'aiven']).parse(env.MATCHING_SEARCH_PROVIDER || 'local');
     const semantic = z.enum(['off', 'on']).parse(env.MATCHING_SEMANTIC || 'off') === 'on';
     const timeoutMs = z.coerce.number().int().min(100).max(30000).parse(env.MATCHING_PROVIDER_TIMEOUT_MS || '5000');
-    const endpoint = provider === 'opensearch' ? https.parse(env.MATCHING_OPENSEARCH_URL) : undefined;
+    const external = provider !== 'local';
+    const endpoint = external ? https.parse(env.MATCHING_OPENSEARCH_URL) : undefined;
     if (endpoint && new URL(endpoint).pathname !== '/') throw new Error();
-    const authorization = provider === 'opensearch' ? z.string().min(1).max(4096).regex(/^(?:Basic|Bearer) [^\r\n]+$/).parse(env.MATCHING_OPENSEARCH_AUTHORIZATION) : undefined;
+    let authorization: string | undefined;
+    if (external) {
+      if (provider === 'aiven') {
+        const username = z.string().min(1).max(500).regex(/^[^\r\n:]+$/).parse(env.MATCHING_OPENSEARCH_USERNAME);
+        const password = z.string().min(1).max(2000).regex(/^[^\r\n]+$/).parse(env.MATCHING_OPENSEARCH_PASSWORD);
+        authorization = `Basic ${Buffer.from(`${username}:${password}`, 'utf8').toString('base64')}`;
+      } else authorization = z.string().min(1).max(4096).regex(/^(?:Basic|Bearer) [^\r\n]+$/).parse(env.MATCHING_OPENSEARCH_AUTHORIZATION);
+    }
     const index = identifier.parse(env.MATCHING_OPENSEARCH_INDEX || 'skillonit-jobs-v1');
+    const embeddingProvider = z.enum(['openai', 'gemini']).parse(env.MATCHING_EMBEDDING_PROVIDER || 'openai');
     const embedding = semantic ? {
+      provider: embeddingProvider,
       endpoint: https.parse(env.MATCHING_EMBEDDING_URL),
       token: z.string().min(1).max(4096).regex(/^[^\r\n]+$/).parse(env.MATCHING_EMBEDDING_TOKEN),
       model: z.string().min(1).max(200).parse(env.MATCHING_EMBEDDING_MODEL),
       version: z.string().regex(/^[a-zA-Z0-9._-]{1,100}$/).parse(env.MATCHING_EMBEDDING_VERSION),
       dimensions: z.coerce.number().int().min(2).max(4096).parse(env.MATCHING_EMBEDDING_DIMENSIONS),
     } : undefined;
-    if (semantic && provider !== 'opensearch') throw new Error();
+    if (embedding?.provider === 'gemini') {
+      const url = new URL(embedding.endpoint);
+      if (url.hostname !== 'generativelanguage.googleapis.com' ||
+        url.pathname !== `/v1beta/models/${encodeURIComponent(embedding.model)}:embedContent`) throw new Error();
+    }
+    if (semantic && !external) throw new Error();
     const candidateEmbeddingAllowed = env.MATCHING_ALLOW_CANDIDATE_EMBEDDINGS === 'true';
     return { provider, semantic, endpoint, authorization, index, timeoutMs, embedding, candidateEmbeddingAllowed };
   } catch { throw new MatchingProviderError('MATCHING_PROVIDER_CONFIG'); }
@@ -84,6 +99,12 @@ export class HttpEmbeddingProvider implements EmbeddingProvider {
   async embed(text: string) {
     if (!text.trim() || text.length > 8000) throw new MatchingProviderError('EMBEDDING_INPUT');
     try {
+      if (this.config.provider === 'gemini') {
+        const result = z.object({ embedding: z.object({ values: z.array(z.number()) }) })
+          .parse(await this.transport.json(this.config.endpoint, { method: 'POST', headers: { 'x-goog-api-key': this.config.token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: { parts: [{ text }] }, output_dimensionality: this.dimensions }) }));
+        return validateVector(result.embedding.values, this.dimensions);
+      }
       const result = z.object({ model: z.string(), data: z.array(z.object({ index: z.literal(0), embedding: z.array(z.number()) })).length(1) })
         .parse(await this.transport.json(this.config.endpoint, { method: 'POST', headers: { Authorization: `Bearer ${this.config.token}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ model: this.config.model, input: text, dimensions: this.dimensions, encoding_format: 'float' }) }));
@@ -183,6 +204,6 @@ export function configuredMatchingProviders(env = process.env) {
   if (cached?.key === key) return cached;
   const transport = new MatchingTransport(config.timeoutMs);
   const embeddings = config.embedding ? new HttpEmbeddingProvider(config.embedding, transport) : undefined;
-  cached = { key, config, embeddings, search: config.provider === 'opensearch' ? new OpenSearchMatchingProvider(config, transport, embeddings) : undefined };
+  cached = { key, config, embeddings, search: config.provider !== 'local' ? new OpenSearchMatchingProvider(config, transport, embeddings) : undefined };
   return cached;
 }

@@ -6,16 +6,34 @@ import express, { type ErrorRequestHandler } from 'express';
 import { handle } from './api.js';
 import { requestContext } from './request-context.js';
 import { randomUUID } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
+import { prometheusMetrics, recordHttpObservation, recordIncidentSignal, routeGroup } from './lib/observability.js';
+import { safeLog } from './lib/safe-logger.js';
 
 export const app = express();
 app.disable('x-powered-by');
+const proxyHops = Number(process.env.TRUST_PROXY_HOPS || 0);
+if (Number.isInteger(proxyHops) && proxyHops > 0 && proxyHops <= 3) app.set('trust proxy', proxyHops);
 app.use((req, res, next) => {
+  const requestStarted = performance.now();
   res.locals.correlationId = randomUUID();
   res.set({
     'X-Request-Id': res.locals.correlationId,
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'no-store',
     'X-Frame-Options': 'DENY',
+    'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+    'Referrer-Policy': 'no-referrer',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Resource-Policy': 'same-origin',
+  });
+  if (process.env.NODE_ENV === 'production' && process.env.APP_URL?.startsWith('https://')) res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.on('finish', () => {
+    const durationMs = Math.max(0, Math.round(performance.now() - requestStarted)), group = routeGroup(req.originalUrl.split('?')[0]);
+    recordHttpObservation(req.method, group, res.statusCode, durationMs);
+    safeLog(res.statusCode >= 500 ? 'error' : res.statusCode === 429 ? 'warn' : 'info', 'http.request_completed', { correlationId: res.locals.correlationId, method: req.method, routeGroup: group, status: res.statusCode, statusClass: `${Math.floor(res.statusCode / 100)}xx`, durationMs });
+    if (res.statusCode >= 429) void recordIncidentSignal({ correlationId: res.locals.correlationId, routeGroup: group, status: res.statusCode, durationMs, classification: res.statusCode === 429 ? 'rate_limit' : res.statusCode >= 500 ? 'dependency' : 'request' }).catch(() => safeLog('error', 'incident.signal_persist_failed', { correlationId: res.locals.correlationId }));
   });
   const origin = req.get('origin');
   if (origin && (origin === (process.env.APP_URL || 'http://localhost:3000') || isLocalPreviewOrigin(origin))) {
@@ -36,6 +54,12 @@ app.use((req, res, next) => {
     return;
   }
   next();
+});
+app.get('/internal/metrics', (req, res) => {
+  const secret = process.env.OBSERVABILITY_METRICS_TOKEN || '', supplied = req.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
+  const authorized = secret.length >= 32 && supplied.length === secret.length && timingSafeEqual(Buffer.from(secret), Buffer.from(supplied));
+  if (!authorized) { res.status(secret ? 401 : 404).set('Cache-Control', 'no-store').send(secret ? 'Unauthorized' : 'Not found'); return; }
+  res.set({ 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8', 'Cache-Control': 'no-store' }).send(prometheusMetrics());
 });
 app.use('/api/v1/auth', googleAuth);
 app.use('/api/v1/mail', mailboxAuth);
@@ -91,7 +115,7 @@ app.use(
         const sessionCookie = (Array.isArray(outgoing) ? outgoing : outgoing ? [String(outgoing)] : [])
           .find(value => value.startsWith('skillonit_session='));
         // Fixed labels and booleans only; never log request bodies or cookie values.
-        console.info('Auth session transport', {
+        safeLog('info', 'auth.session_transport', {
           endpoint: url.pathname === '/api/v1/auth/login' ? 'login' : 'session',
           status: response.status,
           incomingSessionCookie: /(?:^|;\s*)skillonit_session=/.test(req.headers.cookie || ''),

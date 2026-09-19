@@ -16,6 +16,7 @@ import {
   requireUser,
   safeUser,
   rateLimit,
+  abuseLimits,
   sameOrigin,
   audit,
 } from "./lib/security.js";
@@ -47,23 +48,28 @@ import { issuePasswordReset, resetPassword, revokeSessions } from "./lib/auth-li
 import { getStudentProfileStatus, updateStudentProfile } from "./lib/student-profile.js";
 import { studentModuleRoute } from "./student-module.js";
 import { savePreferences } from "./lib/student-onboarding.js";
+import { validateTaxonomyReferences } from './lib/student-catalog.js';
 import {
   disconnectMailbox,
   mailboxConnectStartUrl,
   mailboxStatus,
 } from './mailbox-auth.js';
-type App = {
-  id: string;
-  userId: string;
-  jobId: string;
-  employerId: string;
-  status: ApplicationStatus;
-  createdAt: string;
-  scheduledAt: string;
-  job: { title: string; country: string; city: string };
-  events: { status: string; at: string }[];
-  snapshot: unknown;
-};
+import {
+  configureApplicationPolicy,
+  applicationEligibility,
+  createApplication,
+  getApplicationPolicy,
+  employerApplication,
+  previewApplication,
+  publicApplication,
+  type ApplicationRecord as App,
+} from './lib/application-engine.js';
+import { assessEmployer, assessSource, persistJobFraudAssessment } from './lib/fraud-detection.js';
+import { transitionJobLifecycle } from './lib/lifecycle.js';
+import { activateStudentSubscription, cancelStudentSubscription, expireStudentSubscriptions, getStudentSubscription } from './lib/student-entitlements.js';
+import { billingHistory, createPaymentOrder, processRazorpayWebhook, reconcilePayment, requestRefund, verifyCheckout } from './lib/payment-billing.js';
+import { addApplicantNote, closeEmployerJob, createEmployerProfile, getEmployerApplicant, getEmployerJob, getEmployerProfile, getEmployerVerification, listApplicantNotes, listEmployerApplicants, recordEmployerVerificationDecision, submitEmployerVerification, updateApplicantStatus, updateEmployerJob, updateEmployerProfile } from './lib/employer-portal.js';
+import { adminConsoleRoute } from './lib/admin-console.js';
 export async function handle(
   request: Request,
   { params }: { params: Promise<{ path: string[] }> },
@@ -76,7 +82,12 @@ export async function handle(
       p = parts.join("/"),
       method = request.method,
       url = new URL(request.url);
-    if (p !== "webhooks/razorpay") sameOrigin(request);
+    if (p !== 'webhooks/razorpay') sameOrigin(request);
+    const limits = abuseLimits();
+    const requester = request.headers.get("x-real-ip") || "local";
+    await rateLimit(`request:${requester}`, limits.requests);
+    if (method === "GET" || method === "HEAD")
+      await rateLimit(`read:${requester}`, limits.reads);
     const ok = (data: unknown, status = 200) =>
       Response.json(
         { data, correlationId },
@@ -112,9 +123,22 @@ export async function handle(
         const matches = result.items
           .map(({ job, match }) => ({ job: publicJob(job, user, plans), match }))
           .slice(0, 4);
-        return { apps, saved, matches };
+        return { apps: (apps as App[]).map(publicApplication), saved, matches };
       });
       return ok(data);
+    }
+    if (p === 'me/subscription' && method === 'GET') {
+      const user = await requireUser('student');
+      return ok(await getStudentSubscription(user.id));
+    }
+    if (p === 'me/subscription/cancel' && method === 'POST') {
+      const user = await requireUser('student');
+      return ok(await cancelStudentSubscription(user.id));
+    }
+    if (p === 'health/live' && method === 'GET') return ok({ status: 'ok' });
+    if (p === 'health/ready' && method === 'GET') {
+      await read(r => r.count('systemConfig', {}));
+      return ok({ status: 'ready' });
     }
     if (p === "health")
       return ok({
@@ -122,7 +146,7 @@ export async function handle(
         mode: demoMode() ? "demo" : "production",
         providers: providerHealth(),
       });
-    if (method !== "GET" && p !== "webhooks/razorpay")
+    if (method !== "GET" && p !== 'webhooks/razorpay')
       await rateLimit(
         (p.startsWith("auth/") ? "auth:" : "write:") +
           (request.headers.get("x-real-ip") || "local"),
@@ -473,7 +497,7 @@ export async function handle(
       const u = await requireUser();
       return ok({
         user: safeUser(u),
-        applications: await read((r) => r.find("applications", { userId: u.id })),
+        applications: (await read((r) => r.find<App>("applications", { userId: u.id }))).map(publicApplication),
         consents: u.preferences,
       });
     }
@@ -509,98 +533,44 @@ export async function handle(
     }
     if (p === "applications" && method === "GET") {
       const u = await requireUser("student");
-      return ok(await read((r) => r.find<App>("applications", { userId: u.id })));
+      return ok((await read((r) => r.find<App>("applications", { userId: u.id }))).map(publicApplication));
+    }
+    if (p === "applications/preview" && method === "POST") {
+      const u = await requireUser("student");
+      return ok(await previewApplication(u.id, await body()));
+    }
+    if (p === 'applications/eligibility' && method === 'POST') {
+      const u = await requireUser('student');
+      return ok(await applicationEligibility(u.id, await body()));
     }
     if (p === "applications" && method === "POST") {
       const u = await requireUser("student");
-      const { jobId } = z.object({ jobId: z.string().min(1).max(100) }).parse(await body());
-      const plan = (await configuredPlans()).find((p) => p.code === u.plan)!;
-      const app = await transaction(async (r) => {
-        const latest = await r.get<User>("users", u.id);
-        const old = (await r.find<App>("applications", { userId: u.id, jobId }))[0];
-        if (old) return old;
-        const job = await r.get<Job>("jobs", jobId);
-        if (!job) throw new ApiError(404, "NOT_FOUND", "Job not found.");
-        if (job.sample && !demoMode())
-          throw new ApiError(
-            409,
-            "SAMPLE_JOB",
-            "Sample vacancies cannot receive real applications.",
-          );
-        const period = new Date().toISOString().slice(0, 10);
-        const usageId = `${u.id}:${period}`;
-        const usage = await r.get<{ count: number }>("entitlementUsage", usageId);
-        // Both the quota reservation and application insertion share one transaction.
-        // Count is initialized from today's existing records for pre-ledger deployments.
-        const nextDay = new Date(Date.parse(period) + 86400000).toISOString().slice(0, 10);
-        const used =
-          usage?.count ??
-          (await r.count("applications", {
-            userId: u.id,
-            createdAt: { $gte: period, $lt: nextDay },
-          }));
-        const reasons = eligibility(latest!, job, plan, used);
-        if (reasons.length) throw new ApiError(409, "NOT_ELIGIBLE", reasons.join(" "));
-        if (job.method === "email")
-          throw new ApiError(503, "MAIL_UNAVAILABLE", "Email delivery is not configured.");
-        const now = new Date().toISOString();
-        const status: ApplicationStatus =
-          job.method === "external" ? "EXTERNAL_STARTED" : "DIRECT_SUBMITTED";
-        const a: App = {
-          id: id(),
-          userId: u.id,
-          jobId,
-          employerId: job.employerId,
-          status,
-          createdAt: now,
-          scheduledAt: new Date(Date.now() + plan.delayMinutes * 60000).toISOString(),
-          job: { title: job.title, country: job.country, city: job.city },
-          snapshot: {
-            profile: latest!.profile,
-            job: publicJob(job, u, [plan]),
-            template: await r.get("applicationTemplates", u.id),
-          },
-          events: [{ status, at: now }],
-        };
-        await r.put("applications", a);
-        await r.put("entitlementUsage", {
-          id: usageId,
-          userId: u.id,
-          period,
-          count: used + 1,
-        });
-        await notify(
-          r,
-          u.id,
-          "Application updated",
-          `${job.title}: ${status.replaceAll("_", " ")}`,
-          "/applications",
-        );
-        await audit(r, u.id, "application." + status.toLowerCase(), a.id);
-        return a;
-      });
-      const job = await read((r) => r.get<Job>("jobs", jobId));
-      return ok(
-        {
-          ...app,
-          externalUrl: job?.method === "external" ? job.url : undefined,
-        },
-        201,
-      );
+      const result = await createApplication(u.id, await body());
+      return ok({ ...publicApplication(result.application), externalUrl: result.externalUrl }, 201);
     }
     if (
       parts[0] === "applications" &&
       parts.length === 3 &&
-      ["cancel", "confirm-external", "withdraw"].includes(parts[2]) &&
+      ["cancel", "open-external", "confirm-external", "withdraw"].includes(parts[2]) &&
       method === "POST"
     ) {
       const u = await requireUser("student");
+      let openedExternalUrl: string | undefined;
+      if (parts[2] === 'open-external') {
+        const application = await read(r => r.get<App>('applications', parts[1]));
+        if (!application || application.userId !== u.id || application.method !== 'external') throw new ApiError(404, 'NOT_FOUND', 'Application not found.');
+        const job = await read(r => r.get<Job>('jobs', application.jobId));
+        try { if (!job?.url || new URL(job.url).protocol !== 'https:') throw new Error(); openedExternalUrl = job.url; }
+        catch { throw new ApiError(409, 'CANONICAL_ATS_URL_REQUIRED', 'A verified ATS destination is required.'); }
+      }
       await transaction(async (r) => {
         const a = await r.get<App>("applications", parts[1]);
         if (!a || a.userId !== u.id) throw new ApiError(404, "NOT_FOUND", "Application not found.");
         const target: ApplicationStatus =
           parts[2] === "cancel"
             ? "CANCELLED"
+            : parts[2] === 'open-external'
+              ? 'EXTERNAL_STARTED'
             : parts[2] === "confirm-external"
               ? "EXTERNAL_SUBMITTED"
               : "WITHDRAWN";
@@ -613,10 +583,13 @@ export async function handle(
         await r.put("applications", {
           ...a,
           status: target,
-          events: [...a.events, { status: target, at: new Date().toISOString() }],
+          events: [...a.events, { status: target, at: new Date().toISOString(), actorId: u.id }],
         });
         await audit(r, u.id, "application." + target.toLowerCase(), a.id);
       });
+      if (parts[2] === 'open-external') {
+        return ok({ updated: true, externalUrl: openedExternalUrl });
+      }
       return ok({ updated: true });
     }
     if (p === "contact" && method === "POST") {
@@ -642,9 +615,11 @@ export async function handle(
       const u = await requireUser();
       const input = z
         .object({
+          entityType: z.enum(['job', 'employer', 'source', 'destination']).default('job'),
           entityId: z.string().max(100),
           reason: z.string().min(10).max(3000),
         })
+        .strict()
         .parse(await body());
       await transaction(async (r) => {
         const reportId = id();
@@ -655,33 +630,43 @@ export async function handle(
           status: "pending",
           createdAt: new Date().toISOString(),
         });
+        if (input.entityType === 'job') {
+          const job = await r.get<Job>('jobs', input.entityId);
+          if (job) {
+            const risk = await persistJobFraudAssessment(r, job);
+            if (risk.riskLevel === 'high' || risk.riskLevel === 'blocked') {
+              const transitioned = job.lifecycle?.state === 'active' ? await transitionJobLifecycle(r, job.id, 'publishing', u.id, 'FRAUD_REPORT_REVIEW') : job;
+              await r.put('jobs', { ...transitioned, trust: 'flagged', status: 'review' });
+            }
+          }
+        } else if (input.entityType === 'employer') {
+          const employer = await r.get<any>('employers', input.entityId);
+          if (employer) await r.put('entityRiskAssessments', await assessEmployer(r, employer));
+        } else if (input.entityType === 'source') {
+          const source = await r.get<any>('jobSources', input.entityId);
+          if (source) await r.put('entityRiskAssessments', await assessSource(r, source));
+        }
         await audit(r, u.id, "report.created", reportId);
       });
       return ok({ reported: true }, 201);
     }
     if (p === "employers") {
       const u = await requireUser("employer");
-      if (method === "GET") return ok(await read((r) => r.get("employers", u.id)));
-      if (method === "POST") {
-        const input = employerSchema.parse(await body());
-        await transaction(async (r) => {
-          await r.put("employers", {
-            id: u.id,
-            ...input,
-            ownerId: u.id,
-            status: "pending",
-            createdAt: new Date().toISOString(),
-          });
-          await audit(r, u.id, "employer.verification_requested", u.id);
-        });
-        return ok({ status: "pending" }, 201);
-      }
+      if (method === "GET") return ok(await getEmployerProfile(u.id));
+      if (method === "POST") return ok(await createEmployerProfile(u.id, await body()), 201);
+      if (method === 'PUT') return ok(await updateEmployerProfile(u.id, await body()));
+    }
+    if (p === 'employer/verification') {
+      const u = await requireUser('employer');
+      if (method === 'GET') return ok(await getEmployerVerification(u.id));
+      if (method === 'POST') return ok(await submitEmployerVerification(u.id, await body()));
     }
     if (p === "employer/jobs") {
       const u = await requireUser("employer");
       if (method === "GET") return ok(await read((r) => r.find<Job>("jobs", { employerId: u.id })));
       if (method === "POST") {
         const input = jobSchema.parse(await body());
+        await read(r => validateTaxonomyReferences(r, { occupationId: input.matching?.occupationId, locationId: input.matching?.locationId }));
         const org = await read((r) =>
           r.get<{ name: string; domain: string; status: string }>("employers", u.id),
         );
@@ -692,12 +677,15 @@ export async function handle(
           company: org.name,
           domain: org.domain,
           employerId: u.id,
-          status: "review",
-          trust: "pending",
+            status: "review",
+            trust: "pending",
           source: "Employer submission",
           discoveredAt: new Date().toISOString(),
-          expiresAt: new Date(Date.now() + 90 * 86400000).toISOString(),
-        };
+            expiresAt: new Date(Date.now() + 90 * 86400000).toISOString(),
+            revision: 0,
+            updatedAt: new Date().toISOString(),
+            lifecycle: { schemaVersion: 1, state: 'publishing', revision: 0, changedAt: new Date().toISOString(), reasonCode: 'EMPLOYER_SUBMITTED' },
+        } as Job;
         await transaction(async (r) => {
           await r.put("jobs", job);
           await audit(r, u.id, "job.review_requested", job.id);
@@ -705,120 +693,99 @@ export async function handle(
         return ok(job, 201);
       }
     }
+    if (parts[0] === 'employer' && parts[1] === 'jobs' && parts[2] && method === 'GET') {
+      const u = await requireUser('employer'); return ok(await getEmployerJob(u.id, parts[2]));
+    }
+    if (parts[0] === 'employer' && parts[1] === 'jobs' && parts[2] && method === 'PUT') {
+      const u = await requireUser('employer'); return ok(await updateEmployerJob(u.id, parts[2], await body()));
+    }
+    if (parts[0] === 'employer' && parts[1] === 'jobs' && parts[2] && parts[3] === 'close' && method === 'POST') {
+      const u = await requireUser('employer'); return ok(await closeEmployerJob(u.id, parts[2]));
+    }
     if (parts[0] === "employer" && parts[1] === "jobs" && parts[2] && method === "PATCH") {
       const u = await requireUser("employer");
       await transaction(async (r) => {
         const job = await r.get<Job>("jobs", parts[2]);
         if (!job || job.employerId !== u.id) throw new ApiError(404, "NOT_FOUND", "Job not found.");
-        await r.put("jobs", { ...job, status: "closed" });
-        await audit(r, u.id, "job.closed", job.id);
+        await transitionJobLifecycle(r, job.id, 'closed', u.id, 'EMPLOYER_CLOSED');
       });
       return ok({ closed: true });
     }
     if (p === "employer/applicants" && method === "GET") {
       const u = await requireUser("employer");
-      return ok(await read((r) => r.find<App>("applications", { employerId: u.id })));
+      const status = url.searchParams.get('status');
+      const allowed = ['QUEUED','NEEDS_REVIEW','SENDING','SENT','EXTERNAL_STARTED','EXTERNAL_SUBMITTED','DIRECT_SUBMITTED','VIEWED','SHORTLISTED','INTERVIEW','OFFER','REJECTED','WITHDRAWN','CANCELLED','FAILED'] as const;
+      if (status && !(allowed as readonly string[]).includes(status)) throw new ApiError(400, 'INVALID_STATUS', 'Applicant status is invalid.');
+      return ok(await listEmployerApplicants(u.id, { jobId: url.searchParams.get('jobId') || undefined, status: status as ApplicationStatus | undefined }));
+    }
+    if (parts[0] === 'employer' && parts[1] === 'applicants' && parts[2] && parts.length === 3 && method === 'GET') {
+      const u = await requireUser('employer'); return ok(await getEmployerApplicant(u.id, parts[2]));
+    }
+    if (parts[0] === 'employer' && parts[1] === 'applicants' && parts[2] && parts[3] === 'notes') {
+      const u = await requireUser('employer');
+      if (method === 'GET') return ok(await listApplicantNotes(u.id, parts[2]));
+      if (method === 'POST') return ok(await addApplicantNote(u.id, parts[2], await body()), 201);
     }
     if (parts[0] === "employer" && parts[1] === "applicants" && parts[2] && method === "PATCH") {
       const u = await requireUser("employer");
-      const { status } = z
+      const { status, expectedStatus } = z
         .object({
           status: z.enum(["VIEWED", "SHORTLISTED", "INTERVIEW", "OFFER", "REJECTED"]),
+          expectedStatus: z.enum(['DIRECT_SUBMITTED','VIEWED','SHORTLISTED','INTERVIEW']).optional(),
         })
+        .strict()
         .parse(await body());
-      await transaction(async (r) => {
-        const a = await r.get<App>("applications", parts[2]);
-        if (!a || a.employerId !== u.id)
-          throw new ApiError(404, "NOT_FOUND", "Application not found.");
-        if (!canTransition(a.status, status))
-          throw new ApiError(409, "INVALID_TRANSITION", "Invalid applicant status transition.");
-        await r.put("applications", {
-          ...a,
-          status,
-          events: [...a.events, { status, at: new Date().toISOString() }],
-        });
-        await audit(r, u.id, "applicant." + status.toLowerCase(), a.id);
-        await notify(
-          r,
-          a.userId,
-          "An employer updated your application",
-          `${a.job.title}: ${status.replaceAll("_", " ")}`,
-          "/applications",
-        );
-      });
+      const updated = await updateApplicantStatus(u.id, parts[2], status, expectedStatus);
+      await transaction(async r => { const application = await r.get<App>('applications', parts[2]); if (application) await notify(r, application.userId, 'An employer updated your application', `${application.job.title}: ${status.replaceAll('_', ' ')}`, '/applications', 'application_status'); });
       return ok({ updated: true });
     }
     if (p === "billing/checkout" && method === "POST") {
-      const u = await requireUser();
+      const u = await requireUser('student');
       const { planCode } = z
-        .object({ planCode: z.enum(["basic", "pro", "premium"]) })
+        .object({ planCode: z.enum(["basic", "pro", "premium"]) }).strict()
         .parse(await body());
-      const plan = (await configuredPlans()).find((p) => p.code === planCode)!;
-      if (plan.price === null)
-        throw new ApiError(
-          503,
-          "PRICING_PENDING",
-          "Paid subscriptions are not open yet. Final pricing is being configured.",
-        );
-      const order = await new RazorpayProvider().checkout({
-        amount: plan.price * 100,
-        currency: plan.currency,
-        receipt: id(),
-      });
-      await transaction(async (r) => {
-        await r.put("payments", {
-          id: order.id,
-          userId: u.id,
-          planCode,
-          status: "created",
-          amount: order.amount,
-          currency: order.currency,
-        });
-        await audit(r, u.id, "checkout.created", order.id);
-      });
-      return ok({ order, keyId: process.env.RAZORPAY_KEY_ID });
+      const idempotencyKey = request.headers.get('idempotency-key');
+      if (!idempotencyKey) throw new ApiError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'An Idempotency-Key header is required.');
+      return ok(await createPaymentOrder(u, planCode, idempotencyKey, new RazorpayProvider()), 201);
+    }
+    if (p === 'billing/verify' && method === 'POST') {
+      const u = await requireUser('student');
+      return ok(await verifyCheckout(u.id, await body(), new RazorpayProvider()));
+    }
+    if (p === 'billing/history' && method === 'GET') {
+      const u = await requireUser('student');
+      return ok(await billingHistory(u.id));
     }
     if (p === "webhooks/razorpay" && method === "POST") {
       const raw = await request.text();
       if (raw.length > 100000) throw new ApiError(413, "TOO_LARGE", "Webhook is too large.");
       if (!new RazorpayProvider().verify(raw, request.headers.get("x-razorpay-signature") || ""))
         throw new ApiError(401, "INVALID_SIGNATURE", "Webhook signature is invalid.");
-      const event = JSON.parse(raw);
+      let event: unknown;
+      try { event = JSON.parse(raw); } catch { throw new ApiError(400, 'INVALID_JSON', 'Webhook payload is invalid.'); }
       const eventId = request.headers.get("x-razorpay-event-id");
       if (!eventId) throw new ApiError(400, "EVENT_ID_REQUIRED", "Event identifier required.");
+      const subscriptionPlans = await configuredPlans();
       await transaction(async (r) => {
-        if (await r.get("paymentEvents", eventId)) return;
-        const payment = event.payload?.payment?.entity;
-        const order = payment?.order_id ? await r.get<Row>("payments", payment.order_id) : null;
-        if (
-          event.event === "payment.captured" &&
-          order &&
-          order.amount === payment.amount &&
-          order.currency === payment.currency
-        ) {
-          await r.put("payments", {
-            ...order,
-            status: "captured",
-            providerPaymentId: payment.id,
-          });
-          await audit(
-            r,
-            "razorpay",
-            "payment.captured",
-            order.id,
-          ); /* Activation is deliberately held for reconciliation until subscription periods and final prices are configured. */
-        }
-        await r.put("paymentEvents", {
-          id: eventId,
-          event: event.event,
-          status: "recorded",
-          createdAt: new Date().toISOString(),
-        });
+        await processRazorpayWebhook(r, eventId, event, subscriptionPlans);
       });
       return ok({ received: true });
     }
     if (parts[0] === "admin") {
       const u = await requireUser("admin");
+      if (parts[1] === 'console') return ok(await adminConsoleRoute(u, parts, method, url.searchParams, body));
+      if (parts[1] === 'student-subscriptions' && parts.length === 3 && method === 'PUT')
+        return ok(await activateStudentSubscription(u, parts[2], await body()));
+      if (p === 'admin/student-subscriptions/expire' && method === 'POST')
+        return ok(await expireStudentSubscriptions());
+      if (parts[1] === 'payments' && parts.length === 4 && parts[3] === 'refund' && method === 'POST')
+        return ok(await requestRefund(u, parts[2], await body(), new RazorpayProvider()));
+      if (parts[1] === 'payments' && parts.length === 4 && parts[3] === 'reconcile' && method === 'POST')
+        return ok(await reconcilePayment(u, parts[2], new RazorpayProvider()));
+      if (p === 'admin/application-policy') {
+        if (method === 'GET') return ok(await getApplicationPolicy());
+        if (method === 'PUT') return ok(await configureApplicationPolicy(u, await body()));
+      }
       const allowed: Record<string, string> = {
         users: "users",
         employers: "employers",
@@ -860,6 +827,8 @@ export async function handle(
                 identity: z.boolean(),
                 autoApply: z.boolean(),
                 cvs: z.number().int().min(1).max(20),
+                autoApplyDailyCap: z.number().int().min(0).max(100).optional(),
+                billingPeriodDays: z.number().int().min(1).max(366).default(30),
               }),
             )
             .length(3)
@@ -876,9 +845,12 @@ export async function handle(
       const collection = allowed[parts[1]];
       if (collection && method === "GET") {
         const rows = await read((r) => r.find<Row>(collection, {}, 200));
-        return ok(
-          collection === "users" ? rows.map((row) => safeUser(row as unknown as User)) : rows,
-        );
+        if (collection === 'users') return ok(rows.map(row => safeUser(row as unknown as User)));
+        if (collection === 'applications') return ok(rows.map(row => publicApplication(row as unknown as App)));
+        if (collection === 'payments') return ok(rows.map(({ providerPaymentId: _payment, providerOrderId: _order, signature: _signature, ...row }) => row));
+        if (collection === 'systemConfig') return ok(rows.map(row => ({ id: row.id, revision: row.revision ?? 0 })));
+        if (collection === 'auditLogs') return ok(rows.map(row => ({ id: row.id, actorId: row.actorId, action: row.action, entityId: row.entityId, entityType: row.entityType, correlationId: row.correlationId, createdAt: row.createdAt ?? row.timestamp })));
+        return ok(rows);
       }
       if (collection && method === "PATCH" && parts[2]) {
         const change = z
@@ -908,6 +880,15 @@ export async function handle(
                 "VERIFICATION_REQUIRED",
                 "Verify the organization before publishing.",
               );
+            const assessment = await persistJobFraudAssessment(r, row as unknown as Job);
+            if (assessment.riskLevel === 'high' || assessment.riskLevel === 'blocked')
+              throw new ApiError(409, 'FRAUD_REVIEW_REQUIRED', 'Complete fraud review before publishing this job.');
+          }
+          if (collection === 'employers' && change.status === 'verified') {
+            const assessment = await assessEmployer(r, { ...(row as any), status: 'verified' });
+            if (assessment.riskLevel === 'high' || assessment.riskLevel === 'blocked')
+              throw new ApiError(409, 'FRAUD_REVIEW_REQUIRED', 'Resolve employer fraud signals before verification.');
+            await r.put('entityRiskAssessments', assessment);
           }
           const allowedStatuses: Record<string, string[]> = {
             jobs: ["published", "disabled", "closed", "review"],
@@ -922,6 +903,16 @@ export async function handle(
               "INVALID_ACTION",
               "This action is not permitted for this resource.",
             );
+          if (collection === 'jobs') {
+            const target = change.status === 'published' ? 'active' : change.status === 'disabled' ? 'removed' : change.status === 'closed' ? 'closed' : 'publishing';
+            if (change.status === 'published') await r.put('jobs', { ...(row as any), trust: 'verified' });
+            await transitionJobLifecycle(r, row.id, target, u.id, change.status === 'published' ? 'ADMIN_PUBLISHED' : change.status === 'disabled' ? 'ADMIN_REMOVED' : change.status === 'closed' ? 'ADMIN_CLOSED' : 'ADMIN_REVIEW');
+            return;
+          }
+          if (collection === 'employers') {
+            await recordEmployerVerificationDecision(r, row.id, u.id, change.status as 'verified' | 'rejected' | 'pending', change.note);
+            return;
+          }
           await r.put(collection, {
             ...row,
             ...change,
@@ -956,7 +947,11 @@ export async function handle(
       },
       {
         status: known ? error.status : validation ? 400 : 503,
-        headers: { "Cache-Control": "no-store", "X-Request-Id": correlationId },
+        headers: {
+          "Cache-Control": "no-store",
+          "X-Request-Id": correlationId,
+          ...(status === 429 ? { "Retry-After": "60" } : {}),
+        },
       },
     );
   }

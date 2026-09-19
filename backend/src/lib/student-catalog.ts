@@ -1,93 +1,74 @@
 import { z } from 'zod';
 import { read, transaction, type Repository } from './store.js';
 import { ApiError, audit } from './security.js';
+import { createHash } from 'node:crypto';
+
 const identifier = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$/);
 const slug = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(180);
-export const occupationSchema = z.object({ id: identifier, slug, displayName: z.string().trim().min(1).max(200), parentId: identifier.nullable(), aliases: z.array(z.string().trim().min(1).max(200)).max(50), active: z.boolean(), relatedRoleIds: z.array(identifier).max(100) }).strict();
-export const locationSchema = z.object({ id: identifier, slug, code: identifier, displayName: z.string().trim().min(1).max(200), type: z.enum(['country', 'region', 'state', 'province', 'union_territory', 'city']), parentId: identifier.nullable(), countryCode: z.string().regex(/^[A-Z]{2}$/), active: z.boolean() }).strict();
-export const skillSchema = z.object({ id: identifier, slug, displayName: z.string().trim().min(1).max(200), aliases: z.array(z.string().trim().min(1).max(200)).max(50), active: z.boolean() }).strict();
-export const catalogSchema = z.object({ skills: z.array(skillSchema).max(500).default([]), metadata: z.object({ version: z.string().min(1).max(100), source: z.enum(['seed', 'managed']) }).strict().optional(), occupations: z.array(occupationSchema).max(500).default([]), locations: z.array(locationSchema).max(500).default([]) }).strict();
-type Occupation = z.infer<typeof occupationSchema>;
-type Location = z.infer<typeof locationSchema>;
-async function neighborhood<T extends { id: string; parentId: string | null; slug: string }>(r: Repository, collection: string, updates: T[]): Promise<T[]> {
-  const rows = new Map<string, T>(), incoming = new Map(updates.map(row => [row.id, row])), visited = new Set<string>();
-  const pending = updates.flatMap(row => [row.id, ...(row.parentId ? [row.parentId] : [])]);
-  // Indexed direct-child and ancestor reads replace whole-catalog scans.
-  for (const row of updates) {
-    const clash = (await r.find<T>(collection, { slug: row.slug }, 1))[0];
-    if (clash && clash.id !== row.id) throw new ApiError(409, 'CATALOG_SLUG_CONFLICT', 'Catalog slugs must be unique.');
-    let cursor = '';
-    for (;;) { const children = await r.scan<T>(collection, { parentId: row.id }, cursor, 500); pending.push(...children.map(child => child.id)); if (children.length < 500) break; cursor = children[children.length - 1].id; }
-  }
-  while (pending.length) {
-    const key = pending.pop()!; if (visited.has(key)) continue; visited.add(key);
-    const stored = await r.get<T>(collection, key);
-    if (stored) { rows.set(key, stored); if (stored.parentId) pending.push(stored.parentId); }
-    const changed = incoming.get(key); if (changed?.parentId) pending.push(changed.parentId);
-  }
+const label = z.string().trim().min(1).max(200);
+const mappingSchema = z.object({ scheme: z.string().regex(/^[A-Za-z][A-Za-z0-9._-]{0,49}$/), code: z.string().trim().min(1).max(100), version: z.string().trim().min(1).max(100).optional() }).strict();
+const localizedNameSchema = z.object({ locale: z.string().regex(/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/), value: label }).strict();
+export const occupationSchema = z.object({ id: identifier, slug, displayName: label, parentId: identifier.nullable(), aliases: z.array(label).max(100), active: z.boolean(), relatedRoleIds: z.array(identifier).max(100), localizedNames: z.array(localizedNameSchema).max(100).default([]), mappings: z.array(mappingSchema).max(50).default([]), ancestorIds: z.array(identifier).max(20).optional(), depth: z.number().int().min(0).max(20).optional() }).strict();
+export const locationSchema = z.object({ id: identifier, slug, code: identifier, displayName: label, type: z.enum(['country', 'region', 'state', 'province', 'union_territory', 'city']), parentId: identifier.nullable(), countryCode: z.string().regex(/^[A-Z]{2}$/), active: z.boolean(), aliases: z.array(label).max(100).default([]), localizedNames: z.array(localizedNameSchema).max(100).default([]), mappings: z.array(mappingSchema).max(50).default([]), coordinates: z.object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) }).strict().optional(), geo: z.object({ type: z.literal('Point'), coordinates: z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)]) }).strict().optional(), ancestorIds: z.array(identifier).max(20).optional(), depth: z.number().int().min(0).max(20).optional() }).strict();
+export const skillSchema = z.object({ id: identifier, slug, displayName: label, aliases: z.array(label).max(50), active: z.boolean() }).strict();
+export const catalogSchema = z.object({ skills: z.array(skillSchema).max(500).default([]), metadata: z.object({ version: z.string().min(1).max(100), source: z.enum(['seed', 'managed']), occupationScheme: z.string().max(50).optional(), locationScheme: z.string().max(50).optional(), license: z.string().max(500).optional() }).strict().optional(), occupations: z.array(occupationSchema).max(500).default([]), locations: z.array(locationSchema).max(500).default([]) }).strict();
+export type Occupation = z.infer<typeof occupationSchema>;
+export type Location = z.infer<typeof locationSchema>;
+type Kind = 'occupations' | 'locations' | 'skills';
+type Row = { id: string; slug: string; displayName: string; parentId: string | null; active: boolean; aliases?: string[]; localizedNames?: { locale: string; value: string }[]; mappings?: { scheme: string; code: string; version?: string }[]; relatedRoleIds?: string[]; ancestorIds?: string[]; depth?: number; countryCode?: string; type?: Location['type'] };
+
+const normalize = (value: string) => value.normalize('NFKC').trim().toLocaleLowerCase('en').replace(/\s+/g, ' ');
+const mappingId = (kind: 'occupation' | 'location', scheme: string, code: string) => `${kind}:${normalize(scheme)}:${normalize(code)}`;
+function distinctNames(row: Row) { const values = [row.displayName, ...(row.aliases ?? []), ...(row.localizedNames ?? []).map(item => item.value)].map(normalize); if (new Set(values).size !== values.length) throw new ApiError(400, 'CATALOG_ALIAS', 'Names and aliases must be distinct within an entry.'); }
+async function neighborhood<T extends Row>(r: Repository, collection: string, updates: T[]) {
+  const rows = new Map<string, T>(), incoming = new Map(updates.map(row => [row.id, row])), visited = new Set<string>(), pending = updates.flatMap(row => [row.id, ...(row.parentId ? [row.parentId] : []), ...(row.relatedRoleIds ?? [])]);
+  for (const row of updates) { const clash = (await r.find<T>(collection, { slug: row.slug }, 1))[0]; if (clash && clash.id !== row.id) throw new ApiError(409, 'CATALOG_SLUG_CONFLICT', 'Catalog slugs must be unique.'); let cursor = ''; for (;;) { const children = await r.scan<T>(collection, { parentId: row.id }, cursor, 500); pending.push(...children.map(child => child.id)); if (children.length < 500) break; cursor = children.at(-1)!.id; } }
+  while (pending.length) { const key = pending.pop()!; if (visited.has(key)) continue; visited.add(key); const stored = await r.get<T>(collection, key); if (stored) { rows.set(key, stored); if (stored.parentId) pending.push(stored.parentId); } const changed = incoming.get(key); if (changed?.parentId) pending.push(changed.parentId); }
   return [...rows.values()];
 }
-function graph<T extends { id: string; slug: string; parentId: string | null }>(rows: T[]) {
-  const byId = new Map(rows.map(row => [row.id, row]));
-  if (new Set(rows.map(row => row.slug)).size !== rows.length) throw new ApiError(409, 'CATALOG_SLUG_CONFLICT', 'Catalog slugs must be unique.');
-  for (const row of rows) {
-    const seen = new Set([row.id]); let parent = row.parentId;
-    while (parent) {
-      if (seen.has(parent)) throw new ApiError(400, 'CATALOG_CYCLE', 'Catalog hierarchy must not contain cycles.');
-      seen.add(parent); const ancestor = byId.get(parent);
-      if (!ancestor) throw new ApiError(400, 'CATALOG_PARENT', 'Catalog parent does not exist.');
-      parent = ancestor.parentId;
-    }
-  }
-  return byId;
-}
-/** Admin/CLI configuration entry point. Batches merge by stable ID; no deletes or hidden seed. */
+function graph<T extends Row>(rows: T[]) { const byId = new Map(rows.map(row => [row.id, row])); if (new Set(rows.map(row => row.slug)).size !== rows.length) throw new ApiError(409, 'CATALOG_SLUG_CONFLICT', 'Catalog slugs must be unique.'); for (const row of rows) { const seen = new Set([row.id]); let parent = row.parentId; while (parent) { if (seen.has(parent)) throw new ApiError(400, 'CATALOG_CYCLE', 'Catalog hierarchy must not contain cycles.'); seen.add(parent); const ancestor = byId.get(parent); if (!ancestor) throw new ApiError(400, 'CATALOG_PARENT', 'Catalog parent does not exist.'); parent = ancestor.parentId; } } return byId; }
+function derive<T extends Row>(row: T, byId: Map<string, T>) { const ancestorIds: string[] = []; let parent = row.parentId; while (parent) { ancestorIds.unshift(parent); parent = byId.get(parent)?.parentId ?? null; } const { ancestorIds: _ancestors, depth: _depth, ...base } = row; return { ...base, ancestorIds, depth: ancestorIds.length }; }
+async function storeMappings(r: Repository, kind: 'occupation' | 'location', rows: Row[]) { const seen = new Set<string>(); for (const row of rows) { const desired = new Set((row.mappings ?? []).map(mapping => mappingId(kind, mapping.scheme, mapping.code))); for (const old of await r.find<{ id: string }>('taxonomyMappings', { kind, ownerId: row.id }, 100)) if (!desired.has(old.id)) await r.remove('taxonomyMappings', old.id); for (const mapping of row.mappings ?? []) { const id = mappingId(kind, mapping.scheme, mapping.code); if (seen.has(id)) throw new ApiError(409, 'CATALOG_MAPPING_CONFLICT', 'A standard code can map to only one catalog entry.'); seen.add(id); const existing = await r.get<{ ownerId: string }>('taxonomyMappings', id); if (existing && existing.ownerId !== row.id) throw new ApiError(409, 'CATALOG_MAPPING_CONFLICT', 'A standard code can map to only one catalog entry.'); await r.put('taxonomyMappings', { id, kind, ownerId: row.id, scheme: mapping.scheme, code: mapping.code, version: mapping.version ?? null }); } } }
+async function storeTerms(r: Repository, kind: 'occupation' | 'location', rows: Row[]) { for (const row of rows) { for (const old of await r.find<{ id: string }>('taxonomyTerms', { kind, ownerId: row.id }, 500)) await r.remove('taxonomyTerms', old.id); const terms = new Set([row.slug, row.displayName, ...(row.aliases ?? []), ...(row.localizedNames ?? []).map(item => item.value)].map(normalize)); for (const normalized of terms) { const id = createHash('sha256').update(`${kind}\0${normalized}\0${row.id}`).digest('hex'); await r.put('taxonomyTerms', { id, kind, normalized, ownerId: row.id }); } } }
+
+/** Managed batches merge by stable ID. No worldwide records are fabricated or automatically seeded. */
 export async function configureCatalog(actorId: string, input: unknown) {
   const batch = catalogSchema.parse(input);
   return transaction(async r => {
-    // Serialize graph edits so disjoint concurrent requests cannot create a cycle.
-    const lock = await r.get<{ id: string; revision: number }>('systemConfig', 'student-catalog-revision');
-    await r.put('systemConfig', { id: 'student-catalog-revision', revision: (lock?.revision ?? 0) + 1 });
+    const lock = await r.get<{ id: string; revision: number }>('systemConfig', 'student-catalog-revision'); await r.put('systemConfig', { id: 'student-catalog-revision', revision: (lock?.revision ?? 0) + 1 });
     if (batch.metadata) await r.put('systemConfig', { id: 'student-catalog-policy', value: batch.metadata });
     for (const row of batch.skills) { const existing = (await r.find<{ id: string }>('skills', { slug: row.slug }, 1))[0]; if (existing && existing.id !== row.id) throw new ApiError(409, 'CATALOG_SLUG_CONFLICT', 'Skill slugs must be unique.'); await r.put('skills', row); }
-    const occupations = await neighborhood<Occupation>(r, 'occupationFamilies', batch.occupations), locations = await neighborhood<Location>(r, 'locations', batch.locations);
+    const oldOccupations = await neighborhood<Occupation>(r, 'occupationFamilies', batch.occupations), oldLocations = await neighborhood<Location>(r, 'locations', batch.locations);
     for (const row of batch.locations) { const clash = (await r.find<Location>('locations', { countryCode: row.countryCode, code: row.code }, 1))[0]; if (clash && clash.id !== row.id) throw new ApiError(409, 'LOCATION_CODE_CONFLICT', 'Location codes must be unique within a country.'); }
-    const merge = <T extends { id: string }>(old: T[], updates: T[]) => {
-      if (new Set(updates.map(row => row.id)).size !== updates.length) throw new ApiError(400, 'CATALOG_DUPLICATE_ID', 'Duplicate ID in configuration batch.');
-      return [...new Map([...old, ...updates].map(row => [row.id, row])).values()];
-    };
-    const mergedOccupations = merge(occupations, batch.occupations), mergedLocations = merge(locations, batch.locations);
-    for (const [updates, existing] of [[batch.occupations, occupations], [batch.locations, locations]] as const) {
-      for (const row of updates) {
-        const old = existing.find(previous => previous.id === row.id);
-        if (old && old.slug !== row.slug) throw new ApiError(409, 'CATALOG_STABLE_SLUG', 'Existing catalog slugs cannot be reassigned.');
-      }
-    }
-    const occupationMap = graph(mergedOccupations), locationMap = graph(mergedLocations);
-    for (const row of mergedOccupations) {
-      if (row.active && row.parentId && !occupationMap.get(row.parentId)?.active) throw new ApiError(400, 'CATALOG_PARENT', 'Active occupations require an active parent.');
-      if (new Set(row.aliases.map(v => v.toLowerCase())).size !== row.aliases.length) throw new ApiError(400, 'CATALOG_ALIAS', 'Aliases must be distinct.');
-      if (new Set(row.relatedRoleIds).size !== row.relatedRoleIds.length) throw new ApiError(400, 'CATALOG_RELATED_ROLE', 'Related roles must be distinct existing roles.');
-      for (const key of row.relatedRoleIds) if (key === row.id || (!occupationMap.has(key) && !(await r.get('occupationFamilies', key)))) throw new ApiError(400, 'CATALOG_RELATED_ROLE', 'Related roles must be distinct existing roles.');
-    }
-    if (new Set(mergedLocations.map(row => row.countryCode + ':' + row.code)).size !== mergedLocations.length) throw new ApiError(409, 'LOCATION_CODE_CONFLICT', 'Location codes must be unique within a country.');
-    for (const row of mergedLocations) {
-      const parent = row.parentId ? locationMap.get(row.parentId) : undefined;
-      if (row.active && parent && !parent.active) throw new ApiError(400, 'LOCATION_HIERARCHY', 'Active locations require an active parent.');
-      if ((row.type === 'country' && row.parentId !== null) || (row.type !== 'country' && (!parent || parent.countryCode !== row.countryCode || parent.type === 'city')) || (row.type !== 'country' && row.type !== 'city' && parent?.type !== 'country') || (row.type === 'union_territory' && row.countryCode !== 'IN')) throw new ApiError(400, 'LOCATION_HIERARCHY', 'Invalid country, subdivision or city relationship.');
-    }
-    for (const row of batch.occupations) await r.put('occupationFamilies', row);
-    for (const row of batch.locations) await r.put('locations', row);
-    await audit(r, actorId, 'catalog.configured', 'student-catalog');
-    return { occupationsUpdated: batch.occupations.length, locationsUpdated: batch.locations.length, revision: (lock?.revision ?? 0) + 1 };
+    const merge = <T extends { id: string }>(old: T[], updates: T[]) => { if (new Set(updates.map(row => row.id)).size !== updates.length) throw new ApiError(400, 'CATALOG_DUPLICATE_ID', 'Duplicate ID in configuration batch.'); return [...new Map([...old, ...updates].map(row => [row.id, row])).values()]; };
+    const occupations = merge(oldOccupations, batch.occupations), locations = merge(oldLocations, batch.locations);
+    for (const [updates, existing] of [[batch.occupations, oldOccupations], [batch.locations, oldLocations]] as const) for (const row of updates) { const old = existing.find(previous => previous.id === row.id); if (old && old.slug !== row.slug) throw new ApiError(409, 'CATALOG_STABLE_SLUG', 'Existing catalog slugs cannot be reassigned.'); }
+    const occupationMap = graph(occupations), locationMap = graph(locations); if (new Set(locations.map(row => `${row.countryCode}:${row.code}`)).size !== locations.length) throw new ApiError(409, 'LOCATION_CODE_CONFLICT', 'Location codes must be unique within a country.');
+    for (const row of occupations) { distinctNames(row); if (row.active && row.parentId && !occupationMap.get(row.parentId)?.active) throw new ApiError(400, 'CATALOG_PARENT', 'Active occupations require an active parent.'); if (new Set(row.relatedRoleIds).size !== row.relatedRoleIds.length) throw new ApiError(400, 'CATALOG_RELATED_ROLE', 'Related roles must be distinct active roles.'); for (const key of row.relatedRoleIds) if (key === row.id || !occupationMap.get(key)?.active) throw new ApiError(400, 'CATALOG_RELATED_ROLE', 'Related roles must be distinct active roles.'); }
+    for (const row of locations) { distinctNames(row); const parent = row.parentId ? locationMap.get(row.parentId) : undefined; if (row.active && parent && !parent.active) throw new ApiError(400, 'LOCATION_HIERARCHY', 'Active locations require an active parent.'); const allowed: Record<Location['type'], Location['type'][]> = { country: [], region: ['country', 'region'], state: ['country', 'region'], province: ['country', 'region'], union_territory: ['country', 'region'], city: ['country', 'region', 'state', 'province', 'union_territory'] }; if ((row.type === 'country' && row.parentId !== null) || (row.type !== 'country' && (!parent || parent.countryCode !== row.countryCode || !allowed[row.type].includes(parent.type))) || (row.type === 'union_territory' && row.countryCode !== 'IN')) throw new ApiError(400, 'LOCATION_HIERARCHY', 'Invalid country, region, subdivision or city relationship.'); }
+    const derivedOccupations = batch.occupations.map(row => derive(row, occupationMap)), derivedLocations = batch.locations.map(row => { const { geo: _geo, ...base } = derive(row, locationMap); return { ...base, ...(row.coordinates ? { geo: { type: 'Point' as const, coordinates: [row.coordinates.longitude, row.coordinates.latitude] as [number, number] } } : {}) }; }); await storeMappings(r, 'occupation', derivedOccupations); await storeMappings(r, 'location', derivedLocations); await storeTerms(r, 'occupation', derivedOccupations); await storeTerms(r, 'location', derivedLocations);
+    for (const row of derivedOccupations) await r.put('occupationFamilies', row); for (const row of derivedLocations) await r.put('locations', row);
+    await audit(r, actorId, 'catalog.configured', 'student-catalog'); return { occupationsUpdated: batch.occupations.length, locationsUpdated: batch.locations.length, revision: (lock?.revision ?? 0) + 1 };
   });
 }
-export async function lookupCatalog(kind: 'occupations' | 'locations' | 'skills', input: unknown) {
-  const query = z.object({ parentId: identifier.or(z.literal('root')).optional(), countryCode: z.string().regex(/^[A-Z]{2}$/).optional(), type: locationSchema.shape.type.optional(), after: identifier.optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).strict().parse(input);
-  if (kind !== 'locations' && (query.countryCode || query.type)) throw new ApiError(400, 'CATALOG_FILTER', 'Location filters do not apply to occupations.');
-  return read(async r => {
-    const items = await r.scan<Occupation | Location>(kind === 'occupations' ? 'occupationFamilies' : kind === 'skills' ? 'skills' : 'locations', { active: true, ...(query.parentId ? { parentId: query.parentId === 'root' ? null : query.parentId } : {}), ...(query.countryCode ? { countryCode: query.countryCode } : {}), ...(query.type ? { type: query.type } : {}) }, query.after, query.limit + 1);
-    const catalog = await r.get<{ value: unknown }>('systemConfig', 'student-catalog-policy');
-    return { catalog: catalog?.value ?? { version: 'unmanaged', source: 'seed' }, items: items.slice(0, query.limit), nextCursor: items.length > query.limit ? items[query.limit - 1].id : null };
-  });
+
+export async function resolveCatalogReference(kind: 'occupation' | 'location', reference: { id?: string; scheme?: string; code?: string; label?: string; countryCode?: string; type?: Location['type'] }, repository?: Repository) {
+  const run = async (r: Repository) => { const collection = kind === 'occupation' ? 'occupationFamilies' : 'locations'; if (reference.id) { const row = await r.get<Row>(collection, reference.id); return row?.active ? row : null; } if (reference.scheme && reference.code) { const mapping = await r.get<{ ownerId: string }>('taxonomyMappings', mappingId(kind, reference.scheme, reference.code)); if (!mapping) return null; const row = await r.get<Row>(collection, mapping.ownerId); return row?.active ? row : null; } if (!reference.label) return null; const wanted = normalize(reference.label), terms = await r.find<{ ownerId: string }>('taxonomyTerms', { kind, normalized: wanted }, 3), matches: Row[] = []; for (const term of terms) { const row = await r.get<Row>(collection, term.ownerId); if (row?.active && (!reference.countryCode || row.countryCode === reference.countryCode) && (!reference.type || row.type === reference.type)) matches.push(row); } if (!terms.length) { let after = ''; for (;;) { const page = await r.scan<Row>(collection, { active: true, ...(reference.countryCode ? { countryCode: reference.countryCode } : {}), ...(reference.type ? { type: reference.type } : {}) }, after, 500); matches.push(...page.filter(row => [row.slug, row.displayName, ...(row.aliases ?? []), ...(row.localizedNames ?? []).map(item => item.value)].some(value => normalize(value) === wanted))); if (page.length < 500 || matches.length > 1) break; after = page.at(-1)!.id; } } if (matches.length > 1) throw new ApiError(409, 'CATALOG_AMBIGUOUS', 'The taxonomy reference is ambiguous. Provide a standard code or stable ID.'); return matches[0] ?? null; };
+  return repository ? run(repository) : read(run);
+}
+export async function validateTaxonomyReferences(r: Repository, input: { occupationIds?: string[]; occupationId?: string; locationId?: string }) { for (const id of [...(input.occupationIds ?? []), ...(input.occupationId ? [input.occupationId] : [])]) if (!(await resolveCatalogReference('occupation', { id }, r))) throw new ApiError(400, 'OCCUPATION_REFERENCE', 'Select an active occupation.'); if (input.locationId && !(await resolveCatalogReference('location', { id: input.locationId }, r))) throw new ApiError(400, 'LOCATION_REFERENCE', 'Select an active location.'); }
+
+/** Shared by ingestion/profile/job normalization. Unresolved or ambiguous labels never become canonical facts. */
+export async function resolveJobTaxonomy(r: Repository, input: { occupation?: Parameters<typeof resolveCatalogReference>[1]; location?: Parameters<typeof resolveCatalogReference>[1] }) {
+  const occupation = input.occupation ? await resolveCatalogReference('occupation', input.occupation, r) : null;
+  const location = input.location ? await resolveCatalogReference('location', input.location, r) : null;
+  if (input.occupation && !occupation) throw new ApiError(409, 'OCCUPATION_UNRESOLVED', 'Occupation requires managed taxonomy review.');
+  if (input.location && !location) throw new ApiError(409, 'LOCATION_UNRESOLVED', 'Location requires managed taxonomy review.');
+  return { occupationId: occupation?.id ?? null, locationId: location?.id ?? null };
+}
+
+export async function lookupCatalog(kind: Kind, input: unknown) {
+  const query = z.object({ parentId: identifier.or(z.literal('root')).optional(), countryCode: z.string().regex(/^[A-Z]{2}$/).optional(), type: locationSchema.shape.type.optional(), q: z.string().trim().min(1).max(200).optional(), scheme: mappingSchema.shape.scheme.optional(), code: mappingSchema.shape.code.optional(), after: identifier.optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).strict().parse(input);
+  if (kind !== 'locations' && (query.countryCode || query.type)) throw new ApiError(400, 'CATALOG_FILTER', 'Location filters do not apply to occupations.'); if ((query.scheme && !query.code) || (!query.scheme && query.code) || (kind === 'skills' && query.scheme)) throw new ApiError(400, 'CATALOG_FILTER', 'Provide a complete supported taxonomy mapping.');
+  return read(async r => { const collection = kind === 'occupations' ? 'occupationFamilies' : kind === 'skills' ? 'skills' : 'locations', policy = (await r.get<{ value: unknown }>('systemConfig', 'student-catalog-policy'))?.value ?? { version: 'unmanaged', source: 'seed' }; if (query.scheme && query.code && kind !== 'skills') { const item = await resolveCatalogReference(kind === 'occupations' ? 'occupation' : 'location', { scheme: query.scheme, code: query.code }, r); return { catalog: policy, items: item ? [item] : [], nextCursor: null }; } const filter = { active: true, ...(query.parentId ? { parentId: query.parentId === 'root' ? null : query.parentId } : {}), ...(query.countryCode ? { countryCode: query.countryCode } : {}), ...(query.type ? { type: query.type } : {}) }; if (query.q && kind !== 'skills') { const wanted = normalize(query.q), termKind = kind === 'occupations' ? 'occupation' : 'location', terms = await r.scan<{ id: string; ownerId: string }>('taxonomyTerms', { kind: termKind, normalized: { $gte: wanted, $lt: wanted + '\uffff' } }, query.after, 500), items: Row[] = [], seen = new Set<string>(); let cursor: string | null = null; for (const term of terms) { cursor = term.id; if (seen.has(term.ownerId)) continue; const row = await r.get<Row>(collection, term.ownerId); if (row?.active && (!('parentId' in filter) || row.parentId === filter.parentId) && (!query.countryCode || row.countryCode === query.countryCode) && (!query.type || row.type === query.type)) { seen.add(row.id); items.push(row); if (items.length > query.limit) break; } } return { catalog: policy, items: items.slice(0, query.limit), nextCursor: items.length > query.limit || terms.length === 500 ? cursor : null }; } let items = await r.scan<Row>(collection, filter, query.after, query.q ? 500 : query.limit + 1); if (query.q) { const wanted = normalize(query.q); items = items.filter(row => [row.slug, row.displayName, ...(row.aliases ?? [])].some(value => normalize(value).includes(wanted))); } const page = items.slice(0, query.limit); return { catalog: policy, items: page, nextCursor: items.length > query.limit && page.length ? page.at(-1)!.id : null }; });
 }

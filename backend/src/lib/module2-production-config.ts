@@ -8,7 +8,7 @@ import { redisSettings } from './module2-redis.js';
 /** Returns variable/category names only, never values or raw validator errors. */
 export function module2ProductionIssues(env = process.env): string[] {
   const issues = new Set<string>();
-  const required = ['MONGODB_URI', 'MONGODB_DATABASE', 'APP_URL', 'AUTH_OTP_SECRET', 'ENABLE_AUTH_EMAIL', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'AUTH_EMAIL_FROM', 'ENABLE_CV_UPLOADS', 'CV_STORAGE_PROVIDER', 'CV_S3_BUCKET', 'CV_S3_REGION', 'CV_SCANNER_PROVIDER', 'CV_SCANNER_URL', 'CV_SCANNER_TOKEN', 'CV_PARSER_PROVIDER', 'CV_PARSER_URL', 'CV_PARSER_TOKEN', 'CV_PARSER_VERSION', 'REDIS_URL'];
+  const required = ['MONGODB_URI', 'MONGODB_DATABASE', 'APP_URL', 'AUTH_OTP_SECRET', 'ENABLE_AUTH_EMAIL', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'AUTH_EMAIL_FROM', 'ENABLE_CV_UPLOADS', 'CV_STORAGE_PROVIDER', 'CV_GOOGLE_DRIVE_CLIENT_ID', 'CV_GOOGLE_DRIVE_CLIENT_SECRET', 'CV_GOOGLE_DRIVE_REFRESH_TOKEN', 'CV_GOOGLE_DRIVE_FOLDER_ID', 'CV_GOOGLE_DRIVE_ACCOUNT', 'CV_SCANNER_PROVIDER', 'CV_SCANNER_URL', 'CV_SCANNER_TOKEN', 'CV_PARSER_PROVIDER', 'CV_PARSER_URL', 'CV_PARSER_TOKEN', 'CV_PARSER_VERSION', 'REDIS_URL'];
   for (const key of required) if (!env[key]?.trim()) issues.add(key);
   if (env.DEMO_MODE !== 'false') issues.add('DEMO_MODE');
   if (env.ENABLE_CV_UPLOADS !== 'true') issues.add('ENABLE_CV_UPLOADS');

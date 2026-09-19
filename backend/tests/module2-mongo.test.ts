@@ -30,7 +30,7 @@ test('Module 2 isolated MongoDB replica-set API workflows, indexes and integrity
     for (const forbidden of ['Candidate confirmed education', 'Candidate supplied education', 'Unconfirmed extraction', 'private scanner error', 'private parser error', 'private upload error', 'private delete error', 'mongodb://', 'skillonit_session=']) {
       assert.ok(!output.includes(forbidden), 'Sensitive fixture content must not appear in application logs');
     }
-    assert.ok(messages.some(line => line.includes('CV processing completed')), 'Worker log redaction was exercised');
+    assert.ok(messages.some(line => line.includes('cv.processing_completed')), 'Structured worker log redaction was exercised');
     const priorLimit = process.env.MODULE2_MUTATIONS_PER_MINUTE;
     try {
       process.env.MODULE2_MUTATIONS_PER_MINUTE = '1';
@@ -49,10 +49,15 @@ test('Module 2 isolated MongoDB replica-set API workflows, indexes and integrity
       ['candidateConsentEvents', { userId: 1, updatedAt: -1 }],
       ['occupationFamilies', { slug: 1 }, true],
       ['occupationFamilies', { parentId: 1, active: 1 }],
+      ['occupationFamilies', { 'mappings.scheme': 1, 'mappings.code': 1 }],
+      ['taxonomyMappings', { kind: 1, scheme: 1, code: 1 }, true],
+      ['taxonomyTerms', { kind: 1, normalized: 1, ownerId: 1 }, true],
+      ['taxonomyTerms', { kind: 1, ownerId: 1 }],
       ['locations', { slug: 1 }, true],
       ['locations', { countryCode: 1, code: 1 }, true],
       ['locations', { parentId: 1, active: 1 }],
       ['locations', { countryCode: 1, type: 1, active: 1 }],
+      ['locations', { 'mappings.scheme': 1, 'mappings.code': 1 }],
       ['skills', { slug: 1 }, true],
       ['cvDocuments', { userId: 1, createdAt: -1 }],
       ['cvDocuments', { userId: 1, sha256: 1 }],
@@ -68,6 +73,7 @@ test('Module 2 isolated MongoDB replica-set API workflows, indexes and integrity
       assert.ok(indexes.some(index => JSON.stringify(index.key) === JSON.stringify(key) && (!unique || index.unique)), `${collection}: required index`);
       assert.ok(indexes.some(index => index.key.id === 1 && index.unique), `${collection}: stable unique ID`);
     }
+    assert.ok((await db.collection('locations').indexes()).some(index => index.key.geo === '2dsphere'), 'locations: future geospatial index');
     assert.ok((await db.collection('cvDeletionReceipts').indexes()).some(index => index.key.expiresAtDate === 1 && index.expireAfterSeconds === 0));
     for (const collection of ['studentPreferences', 'automationPreferences', 'studentOnboarding', 'candidateConsents']) {
       const row = await db.collection(collection).findOne({}); assert.ok(row);

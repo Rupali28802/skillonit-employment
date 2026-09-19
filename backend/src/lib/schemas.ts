@@ -49,8 +49,7 @@ export const preferencesSchema = z.object({
   companyPreferences: z.object({ preferred: list, excluded: list }).optional(),
   automationConstraints: z.object({ enabled: z.boolean(), dailyCap: z.number().int().min(0).max(100), minimumMatch: z.number().min(0).max(100), excludedMethods: z.array(z.enum(['direct', 'external', 'email'])).max(3) }).optional(),
 });
-export const jobSchema = z
-  .object({
+export const jobBaseSchema = z.object({
     title: text,
     category: text,
     country: text,
@@ -70,7 +69,8 @@ export const jobSchema = z
     method: z.enum(['direct', 'external', 'email']),
     url: z.url().optional(),
     email: z.email().optional(),
-  })
+  });
+export const jobSchema = jobBaseSchema
   .refine(
     (j) => j.salaryMax >= j.salaryMin && j.experienceMax >= j.experienceMin,
     'Maximum values must be at least the minimum.',
@@ -92,11 +92,20 @@ export const contactSchema = z.object({
   website: z.string().max(0).optional(),
   source: z.string().max(200).optional(),
 });
-export const employerSchema = z.object({
+export const employerBaseSchema = z.object({
   name: text,
   domain: z.string().regex(/^[a-z0-9.-]+\.[a-z]{2,}$/),
   country: text,
   description: z.string().max(3000),
+  website: z.url().refine(value => new URL(value).protocol === 'https:', 'Company website must use HTTPS.').optional(),
+  industry: z.string().trim().max(200).default(''),
+  companySize: z.enum(['1-10', '11-50', '51-200', '201-500', '501-1000', '1001-5000', '5001+']).optional(),
+  headquarters: z.string().trim().max(300).default(''),
+}).strict();
+export const employerSchema = employerBaseSchema.superRefine((value, context) => {
+  if (!value.website) return;
+  const hostname = new URL(value.website).hostname.toLowerCase();
+  if (hostname !== value.domain && !hostname.endsWith('.' + value.domain)) context.addIssue({ code: 'custom', path: ['website'], message: 'Website must belong to the company domain.' });
 });
 export const templateSchema = z.object({
   subject: z.string().min(1).max(300),

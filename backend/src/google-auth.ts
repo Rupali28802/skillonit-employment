@@ -6,6 +6,7 @@ import { cookies, requestContext } from './request-context.js';
 import { transaction } from './lib/store.js';
 import { ApiError, audit, currentUser, digest, id, rateLimit, signIn } from './lib/security.js';
 import type { User } from './lib/domain.js';
+import { safeLog } from './lib/safe-logger.js';
 
 const cookieName = 'skillonit_google_state';
 const callbackPath = '/api/v1/auth/google/callback';
@@ -72,7 +73,7 @@ googleAuth.get('/google', async (req, res) => {
     const { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
     const state = randomBytes(32).toString('base64url'), nonce = randomBytes(32).toString('base64url');
     const user = await currentUser();
-    console.info('Google OAuth start session', {
+    safeLog('info', 'google_oauth.start_session', {
       cookiePresent: !!cookies().get('skillonit_session'),
       authenticated: !!user,
     });
@@ -92,7 +93,7 @@ googleAuth.get('/google/callback', async (req, res) => {
   res.set('Referrer-Policy', 'no-referrer');
   // Log only fixed stage names: never requests, identities, cookies or provider errors.
   let stage = 'callback_validation';
-  console.info('Google OAuth callback received');
+  safeLog('info', 'google_oauth.callback_received');
   try {
     const { code, state } = z.object({ code: z.string().min(1).max(4096), state: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }).parse(req.query);
     const cookie = req.headers.cookie?.split(';').map(x => x.trim()).find(x => x.startsWith(cookieName + '='))?.slice(cookieName.length + 1);
@@ -115,11 +116,11 @@ googleAuth.get('/google/callback', async (req, res) => {
     const payload = ticket.getPayload();
     if (!payload || payload.nonce !== saved.nonce || payload.email_verified !== true || !payload.sub || !payload.email || (payload.azp && payload.azp !== c.GOOGLE_CLIENT_ID)) throw new Error('Identity rejected');
     const email = z.email().parse(payload.email).toLowerCase();
-    console.info('Google OAuth identity validation passed');
+    safeLog('info', 'google_oauth.identity_validated');
     stage = 'account_resolution';
     const linking = await currentUser();
     const allowed = linking && linking.id === saved.linkUserId && digest(linking.passwordHash ?? ('google:' + linking.googleId)) === saved.linkCredential ? linking : undefined;
-    console.info('Google OAuth callback session', {
+    safeLog('info', 'google_oauth.callback_session', {
       cookiePresent: !!cookies().get('skillonit_session'),
       authenticated: !!linking,
       startedAuthenticated: !!saved.linkUserId,
@@ -132,11 +133,11 @@ googleAuth.get('/google/callback', async (req, res) => {
     await signIn(user);
     stage = 'login_audit';
     await transaction(r => audit(r, user.id, 'auth.google_login', user.id));
-    console.info('Google OAuth session created; redirecting');
+    safeLog('info', 'google_oauth.session_created');
     res.redirect(303, new URL('/', c.APP_URL).href);
   } catch (e) {
     const proofRequired = e instanceof ApiError && e.code === 'GOOGLE_EMAIL_PROOF_REQUIRED';
-    console.warn('Google OAuth callback rejected at ' + stage + (proofRequired ? ': email ownership proof required' : ''));
+    safeLog('warn', 'google_oauth.callback_rejected', { stage, code: proofRequired ? 'GOOGLE_EMAIL_PROOF_REQUIRED' : 'GOOGLE_REJECTED' });
     res.status(proofRequired ? 409 : 400).json({ error: { code: proofRequired ? 'GOOGLE_EMAIL_PROOF_REQUIRED' : 'GOOGLE_REJECTED', message: proofRequired ? e.message : 'Google sign-in could not be completed. Start again from the login page.' } });
   }
 });

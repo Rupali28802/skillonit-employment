@@ -1,16 +1,5 @@
 import { createHash } from 'node:crypto';
 import type { Job } from './domain.js';
-export type SourcePolicy = {
-  id: string;
-  type: 'greenhouse';
-  board: string;
-  enabled: boolean;
-  approved: boolean;
-  requestsPerMinute: number;
-};
-export interface SourceAdapter {
-  discover(policy: SourcePolicy): Promise<Partial<Job>[]>;
-}
 export function fingerprint(
   job: Pick<Job, 'title' | 'company' | 'city' | 'country'>,
 ) {
@@ -42,48 +31,6 @@ export function classifyRisk(
     reasons,
     automationAllowed: false,
   };
-}
-export class GreenhouseAdapter implements SourceAdapter {
-  async discover(policy: SourcePolicy) {
-    if (!policy.enabled || !policy.approved)
-      throw Error('Source is not approved and enabled.');
-    if (!/^[a-z0-9_-]{1,80}$/i.test(policy.board))
-      throw Error('Invalid board identifier.');
-    const response = await fetch(
-      `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(policy.board)}/jobs?content=true`,
-      { signal: AbortSignal.timeout(10000) },
-    );
-    if (!response.ok) throw Error('Source returned HTTP ' + response.status);
-    const data = await response.json();
-    return (data.jobs || [])
-      .slice(0, 1000)
-      .map(
-        (j: {
-          id: number;
-          title: string;
-          absolute_url: string;
-          content: string;
-          location: { name: string };
-        }) => ({
-          id: `greenhouse-${policy.board}-${j.id}`,
-          title: j.title,
-          url: j.absolute_url,
-          description: j.content.replace(/<[^>]*>/g, ' ').slice(0, 15000),
-          city: j.location?.name || '',
-          method: 'external' as const,
-          source: policy.id,
-          status: 'review' as const,
-          trust: 'pending' as const,
-        }),
-      );
-  }
-}
-export class MockSourceAdapter implements SourceAdapter {
-  constructor(private jobs: Partial<Job>[]) {}
-  async discover(policy: SourcePolicy) {
-    if (!policy.approved || !policy.enabled) throw Error('Source not approved');
-    return this.jobs;
-  }
 }
 export function retryDelay(attempt: number) {
   return Math.min(3600000, 1000 * 2 ** Math.min(attempt, 12));

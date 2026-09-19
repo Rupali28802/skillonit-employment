@@ -48,7 +48,7 @@ await student('jobs/sample-1/save', 'POST', {});
 const saved = await student('me/saved');
 assert.ok(saved.some((j) => j.id === 'sample-1'));
 await student('mail/connect', 'POST', {}, 503);
-await student('billing/checkout', 'POST', { planCode: 'premium' }, 503);
+await student('billing/checkout', 'POST', { planCode: 'premium' }, 400);
 await student('webhooks/razorpay', 'POST', {}, 401);
 await employer('auth/demo', 'POST', { role: 'employer' });
 await employer(
@@ -62,6 +62,10 @@ await employer(
   },
   201,
 );
+await employer('employer/verification', 'POST', {
+  expectedRevision: 0,
+  evidence: [{ type: 'domain', reference: 'example.test' }],
+});
 const input = {
   title: 'Integration Test Developer',
   category: 'Technology',

@@ -8,7 +8,7 @@ import { processModule2Task, cvJobOptions, startModule2Worker } from '../src/wor
 
 test('Module 2 production gate names missing variables without disclosing their values', () => {
   const missing = module2ProductionIssues({});
-  for (const name of ['MONGODB_URI', 'APP_URL', 'AUTH_OTP_SECRET', 'CV_S3_BUCKET', 'CV_SCANNER_TOKEN', 'CV_PARSER_TOKEN', 'REDIS_URL']) assert.ok(missing.includes(name));
+  for (const name of ['MONGODB_URI', 'APP_URL', 'AUTH_OTP_SECRET', 'CV_GOOGLE_DRIVE_CLIENT_ID', 'CV_GOOGLE_DRIVE_REFRESH_TOKEN', 'CV_GOOGLE_DRIVE_FOLDER_ID', 'CV_SCANNER_TOKEN', 'CV_PARSER_TOKEN', 'REDIS_URL']) assert.ok(missing.includes(name));
   const output = module2ProductionIssues({ MONGODB_URI: 'invalid-private-fixture', REDIS_URL: 'https://user:private-fixture@example.test', CV_PARSER_URL: 'invalid-private-fixture' });
   assert.ok(!JSON.stringify(output).includes('private-fixture'));
 });

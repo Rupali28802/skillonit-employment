@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { safeLog } from './safe-logger.js';
 import { z } from "zod";
 import { ApiError } from "./security.js";
 
@@ -107,9 +108,9 @@ export async function sendAuthMail(
       authMessage(config.AUTH_EMAIL_FROM, to, purpose, token, config.APP_URL),
     );
     if (!sent.accepted.length) throw unavailable();
-    console.log("Auth email accepted by SMTP provider; inbox delivery not confirmed.");
+    safeLog('info', 'auth_email.provider_accepted');
   } catch {
-    console.error("Auth email delivery failed; provider details withheld.");
+    safeLog('error', 'auth_email.delivery_failed');
     // Never expose provider errors: they may contain addresses or credentials.
     throw unavailable();
   }

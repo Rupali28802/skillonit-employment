@@ -10,7 +10,7 @@ import { app } from '../src/app.js';
 import { createCvUploadRouter } from '../src/student-module.js';
 import { read, transaction } from '../src/lib/store.js';
 import { hashPassword } from '../src/lib/security.js';
-import type { User, Profile } from '../src/lib/domain.js';
+import { plans, type User, type Profile } from '../src/lib/domain.js';
 import type { CvProviders } from '../src/lib/cv-providers.js';
 import { getCv, deleteCv, processCv, retryCv, downloadCv, confirmCv, uploadCv, CV_MAX_BYTES, type CvDocument } from '../src/lib/cv-service.js';
 import { onboardingState, saveOnboarding, saveConsent, savePreferences } from '../src/lib/student-onboarding.js';
@@ -20,7 +20,11 @@ export async function checkModule2() {
   const id = randomUUID(), otherId = randomUUID(), password = randomUUID();
   const profile: Profile = { name: 'Module Two', headline: 'Engineer', skills: ['TypeScript'], experience: 0, education: 'Candidate confirmed education', country: 'India', city: 'Pune', confirmed: false };
   const user: User = { id, email: id + '@example.test', name: profile.name, passwordHash: hashPassword(password), role: 'student', verified: true, plan: 'premium', createdAt: new Date().toISOString(), profile, preferences: { roles: [], relatedRoles: [], countries: [], modes: [], exclusions: [], automation: false, dailyCap: 5 } };
-  await transaction(async r => { await r.put('users', user); await r.put('users', { ...user, id: otherId, email: otherId + '@example.test' }); });
+  await transaction(async r => {
+    await r.put('users', user); await r.put('users', { ...user, id: otherId, email: otherId + '@example.test' });
+    const now = new Date();
+    await r.put('studentSubscriptions', { id, userId: id, planCode: 'premium', status: 'active', currentPeriodStart: now.toISOString(), currentPeriodEnd: new Date(now.getTime() + 86400000).toISOString(), autoRenew: false, cancelAtPeriodEnd: false, revision: 1, source: 'admin', planSnapshot: plans[2], createdAt: now.toISOString(), updatedAt: now.toISOString(), activatedAt: now.toISOString() });
+  });
   // In-memory adapters are confined to tests; no test provider is exposed by runtime config.
   const objects = new Map<string, Uint8Array>(); let scanResult: 'clean' | 'rejected' = 'clean';
   const providers: CvProviders = {

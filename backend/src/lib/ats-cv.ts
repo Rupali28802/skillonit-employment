@@ -5,6 +5,7 @@ import type { Profile } from './domain.js';
 import { transaction, configuredPlans } from './store.js';
 import { student } from './student-onboarding.js';
 import { ApiError, audit } from './security.js';
+import { resolveStudentEntitlements } from './student-entitlements.js';
 
 type Draft = { id: string; userId: string; profile: Profile; revision: number; sourceProfileRevision: number; confirmed: boolean; createdAt: string; versionId?: string };
 /** Deterministic text rendering: no inference, enrichment, or generated candidate facts. */
@@ -40,7 +41,7 @@ export async function atsCv(userId: string, id: string | undefined, action: 'cre
       if (edit) row = { ...row, profile: profileSchema.parse({ ...row.profile, ...edit.profile, confirmed: false }), confirmed: false, versionId: undefined, revision: row.revision + 1 };
       else {
         if (row.confirmed) throw new ApiError(409, 'ALREADY_CONFIRMED', 'This revision is already saved.');
-        if (await r.count('cvVersions', { userId }) >= (plans.find(p => p.code === u.plan)?.cvs ?? 1)) throw new ApiError(409, 'ENTITLEMENT_REQUIRED', 'Your CV version limit has been reached.');
+        if (await r.count('cvVersions', { userId }) >= (await resolveStudentEntitlements(r, u, plans)).limits.cvVersions) throw new ApiError(409, 'ENTITLEMENT_REQUIRED', 'Your CV version limit has been reached.');
         row = { ...row, profile: { ...row.profile, confirmed: true }, confirmed: true, revision: row.revision + 1, versionId: randomUUID() };
         await r.put('cvVersions', { id: row.versionId!, userId, draftId: row.id, name: confirm!.name, profile: row.profile, content: renderAts(row.profile), sourceProfileRevision: row.sourceProfileRevision, source: 'candidate-reviewed', confirmed: true, createdAt: new Date().toISOString() });
         await r.put('users', { ...u, activeCvVersionId: row.versionId!, cvQuotaRevision: (u.cvQuotaRevision ?? 0) + 1 });

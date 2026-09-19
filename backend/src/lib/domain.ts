@@ -32,6 +32,7 @@ export type Job = {
   sample?: boolean;
   mnc?: boolean;
   matching?: JobMatching;
+  lifecycle?: { schemaVersion: 1; state: 'publishing' | 'active' | 'expired' | 'closed' | 'removed' | 'reposted'; revision: number; changedAt: string; reasonCode: string; declaredExpiresAt?: string; effectiveExpiresAt?: string };
 };
 export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company'> & {
   company: string;
@@ -105,6 +106,10 @@ export type Plan = {
   identity: boolean;
   autoApply: boolean;
   cvs: number;
+  /** Separate automation allowance. Defaults to dailyCap for enabled plans. */
+  autoApplyDailyCap?: number;
+  /** Billing period used only after a verified payment or administrator grant. */
+  billingPeriodDays?: number;
 };
 export const plans: Plan[] = [
   {
@@ -117,6 +122,8 @@ export const plans: Plan[] = [
     identity: false,
     autoApply: false,
     cvs: 1,
+    autoApplyDailyCap: 0,
+    billingPeriodDays: 30,
   },
   {
     code: 'pro',
@@ -128,6 +135,8 @@ export const plans: Plan[] = [
     identity: true,
     autoApply: true,
     cvs: 3,
+    autoApplyDailyCap: 10,
+    billingPeriodDays: 30,
   },
   {
     code: 'premium',
@@ -139,6 +148,8 @@ export const plans: Plan[] = [
     identity: true,
     autoApply: true,
     cvs: 5,
+    autoApplyDailyCap: 50,
+    billingPeriodDays: 30,
   },
 ];
 export const categories = [
@@ -221,7 +232,7 @@ export type ApplicationStatus =
   | 'FAILED';
 export const transitions: Record<ApplicationStatus, ApplicationStatus[]> = {
   QUEUED: ['NEEDS_REVIEW', 'SENDING', 'CANCELLED', 'FAILED'],
-  NEEDS_REVIEW: ['QUEUED', 'CANCELLED'],
+  NEEDS_REVIEW: ['QUEUED', 'EXTERNAL_STARTED', 'CANCELLED'],
   SENDING: ['SENT', 'FAILED'],
   SENT: ['INTERVIEW', 'REJECTED'],
   EXTERNAL_STARTED: ['EXTERNAL_SUBMITTED', 'WITHDRAWN'],
@@ -281,8 +292,10 @@ export function publicJob(
   };
 }
 export function isRecent(job: Job, days = 90, now = Date.now()) {
+  const state = job.lifecycle?.state;
   return (
     job.status === 'published' &&
+    (!state || state === 'active') &&
     Date.parse(job.discoveredAt) >= now - days * 86400000 &&
     Date.parse(job.expiresAt) > now
   );

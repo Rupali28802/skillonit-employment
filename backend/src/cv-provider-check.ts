@@ -10,7 +10,7 @@ async function main() {
   }
   try { cvProductionConfig(); module2Config(); }
   catch {
-    console.error('CV provider configuration: FAIL. Configure private S3 storage, HTTPS scanner/parser gateways and Module 2 limits using backend/.env.example. No values were printed.');
+    console.error('CV provider configuration: FAIL. Configure private Google Drive storage, HTTPS scanner/parser gateways and Module 2 limits using backend/.env.example. No values were printed.');
     process.exitCode = 1; return;
   }
   console.info('CV provider configuration: PASS (syntax only).');

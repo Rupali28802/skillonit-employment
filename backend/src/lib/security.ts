@@ -9,6 +9,9 @@ import { cookies, requestContext } from '../request-context.js';
 import { isLocalPreviewOrigin } from './runtime-config.js';
 import { read, transaction, type Repository } from './store.js';
 import type { User, Role } from './domain.js';
+import { captureAnalyticsAudit } from './analytics-events.js';
+import { safeLog } from './safe-logger.js';
+import { retentionExpiry } from './data-retention.js';
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -111,7 +114,10 @@ export async function audit(
     entityId,
     ...(entityType ? { entityType, correlationId: requestContext.getStore()?.response.locals.correlationId ?? id(), metadata: {}, timestamp: new Date().toISOString() } : {}),
     createdAt: new Date().toISOString(),
+    expiresAtDate: retentionExpiry('audit'),
   });
+  try { await captureAnalyticsAudit(r, actorId, action); }
+  catch { safeLog('warn', 'analytics.capture_failed'); }
 }
 export function safeUser(u: User) {
   const { passwordHash: _secret, ...safe } = u;
@@ -133,6 +139,14 @@ export async function rateLimit(key: string, limit = 60) {
       expiresAtDate: new Date(Date.now() + 120000),
     });
   });
+}
+export function abuseLimits(env = process.env) {
+  const parse = (name: string, fallback: number, min: number, max: number) => {
+    const value = Number(env[name] || fallback);
+    if (!Number.isInteger(value) || value < min || value > max) throw new Error(`${name} must be an integer from ${min} to ${max}.`);
+    return value;
+  };
+  return { requests: parse('ABUSE_REQUESTS_PER_MINUTE', 300, 30, 5000), reads: parse('ABUSE_READS_PER_MINUTE', 240, 20, 5000), webhooks: parse('ABUSE_WEBHOOKS_PER_MINUTE', 600, 30, 10000) };
 }
 export function sameOrigin(request: Request) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return;
