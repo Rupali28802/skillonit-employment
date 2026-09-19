@@ -1,6 +1,61 @@
 'use client';
 
-import { useState } from 'react';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+
+export type MailboxStatus = {
+  available: boolean;
+  connected: boolean;
+  provider: string | null;
+  email: string | null;
+  scopes: string[];
+};
+
+function maskedEmail(email: string | null) {
+  if (!email) return '';
+  const [name, domain] = email.split('@');
+  if (!domain) return 'Connected account';
+  return `${name.slice(0, 2)}${'*'.repeat(Math.max(2, Math.min(6, name.length - 2)))}@${domain}`;
+}
+
+export function GmailConnection({ initial, compact = false }: { initial: MailboxStatus; compact?: boolean }) {
+  const [status, setStatus] = useState(initial);
+  const [state, setState] = useState<'idle' | 'connecting' | 'failed'>('idle');
+  const [message, setMessage] = useState('');
+  useEffect(() => {
+    const result = new URLSearchParams(window.location.search).get('mail');
+    void fetch('/api/v1/mail/status').then(responseMessage).then(current => {
+      setStatus(current);
+      if (result === 'error') {
+        setState('failed');
+        setMessage('Gmail connection was not completed.');
+      }
+    }).catch(() => undefined);
+  }, []);
+  const connect = async () => {
+    setState('connecting'); setMessage('');
+    try {
+      const data = await responseMessage(await fetch('/api/v1/mail/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }));
+      if (typeof data?.startUrl !== 'string') throw new Error('Gmail authorization is unavailable.');
+      const destination = new URL(data.startUrl, window.location.origin);
+      if (destination.origin !== window.location.origin) throw new Error('Gmail authorization destination is invalid.');
+      window.location.assign(destination.href);
+    } catch (error) { setState('failed'); setMessage((error as Error).message); }
+  };
+  const disconnect = async () => {
+    if (!window.confirm('Disconnect Gmail from SkillOnIT?')) return;
+    setState('connecting'); setMessage('');
+    try { await responseMessage(await fetch('/api/v1/mail/disconnect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })); setStatus({ ...status, connected: false, email: null, scopes: [] }); setState('idle'); }
+    catch (error) { setState('failed'); setMessage((error as Error).message); }
+  };
+  return <div className={compact ? '' : 'panel'}>
+    <span className="pill">{status.connected ? '✓ Gmail Connected' : state === 'failed' ? 'Connection failed' : 'Gmail not connected'}</span>
+    {!compact && <><h2 style={{marginTop: 15}}>Send applications from your Gmail</h2><p>SkillOnIT requests only permission to send approved applications. It cannot read your inbox and never receives your Gmail password.</p></>}
+    {status.connected ? <><p><strong>Email:</strong> {maskedEmail(status.email)}</p><p><strong>Permission:</strong><br />✓ Send applications from your Gmail</p><div className="actions"><button className="secondary" disabled={state === 'connecting'} onClick={() => void connect()}>Manage Gmail</button><button className="secondary" disabled={state === 'connecting'} onClick={() => void disconnect()}>Disconnect Gmail</button></div></> : <div className="actions"><button className="primary" disabled={state === 'connecting' || !status.available} onClick={() => void connect()}>{state === 'connecting' ? 'Connecting...' : state === 'failed' ? 'Try Again' : 'Connect Gmail'}</button>{compact && <Link className="secondary" href="/mail">Why connect Gmail?</Link>}</div>}
+    {!status.available && <p className="notice error">Gmail authorization is awaiting secure backend configuration.</p>}
+    {message && <p className="notice error" aria-live="polite">{message}</p>}
+  </div>;
+}
 
 type CvDocument = {
   id: string;

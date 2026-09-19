@@ -73,6 +73,8 @@ export async function checkModule2Foundation() {
     await assert.rejects(saveAutomation(uid, { enabled: true }), { code: 'CONSENT_REQUIRED' });
     const consent = await saveConsent(uid, { purpose: 'automation', granted: true, policyVersion: 'v1', source: 'settings' });
     assert.equal(consent.consentType, 'automation'); assert.equal(consent.status, 'granted'); assert.ok(consent.grantedAt);
+    await assert.rejects(saveAutomation(uid, { enabled: true }), { code: 'MAILBOX_REQUIRED' });
+    await transaction(r => r.put('mailboxConnections', { id: uid, userId: uid, provider: 'google', providerSubject: 'fixture', email: user.email.toLowerCase(), scopes: ['https://www.googleapis.com/auth/gmail.send'], refreshToken: { ciphertext: 'encrypted-fixture', iv: 'fixture', tag: 'fixture' }, status: 'connected', connectedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }));
     const events = await read(r => r.count('candidateConsentEvents', { userId: uid }));
     await saveConsent(uid, { purpose: 'automation', granted: true, policyVersion: 'v1', source: 'settings' });
     assert.equal(await read(r => r.count('candidateConsentEvents', { userId: uid })), events);

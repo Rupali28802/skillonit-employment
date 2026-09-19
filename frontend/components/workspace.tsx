@@ -7,7 +7,8 @@ import { api, configuredPlans, demoMode } from '@/lib/api';
 import { type PublicJob, type User, countries, categories } from '@/lib/domain';
 import { SmartForm, Action } from './forms';
 import { PlanEditor } from './admin-config';
-import { ConsentManager, CvManager, OnboardingActions } from './candidate-tools';
+import { ConsentManager, CvManager, GmailConnection, OnboardingActions, type MailboxStatus } from './candidate-tools';
+import { AssistantPanel, NotificationCenter, SavedSearchManager, TaxonomyLookup } from './candidate-extras';
 type RecordRow = { id: string; [key: string]: unknown };
 const candidateLinks = [
   ['dashboard', 'Overview'],
@@ -15,9 +16,15 @@ const candidateLinks = [
   ['profile', 'My profile'],
   ['preferences', 'Job preferences'],
   ['saved', 'Saved jobs'],
+  ['alerts', 'Job alerts'],
   ['applications', 'Applications'],
   ['cvs', 'My CVs'],
+  ['cv-versions', 'CV versions'],
   ['templates', 'Email templates'],
+  ['notifications', 'Notifications'],
+  ['assistant', 'AI assistant'],
+  ['taxonomy', 'Occupation & location'],
+  ['insights', 'Profile & usage'],
   ['mail', 'Email integration'],
   ['automation', 'Automation'],
   ['billing', 'Billing'],
@@ -129,14 +136,16 @@ export async function Workspace({ section }: { section: string }) {
 async function Candidate({ section, user }: { section: string; user: User }) {
   if (section === 'onboarding') {
     const state = await api<{ revision: number; mode: string | null; completeness: number; ready: boolean; completed: boolean; steps: { number: number; name: string; complete: boolean; optional: boolean }[] }>('me/onboarding');
-    return <div className="stack"><div className="panel"><span className="pill">{state.completeness}% complete</span><h2 style={{marginTop: 15}}>Set up your candidate workspace</h2><p>Choose a CV-first or manual path. Extracted CV facts stay as a draft until you review and confirm them.</p><OnboardingActions revision={state.revision} mode={state.mode} ready={state.ready} completed={state.completed} /></div><div className="panel"><h2>Setup checklist</h2><ol>{state.steps.map(step => <li key={step.name}>{step.complete ? '✓' : '○'} {step.name.replaceAll('-', ' ')}{step.optional ? ' (optional)' : ''}</li>)}</ol></div></div>;
+    const mailbox = await api<MailboxStatus>('mail/status');
+    return <div className="stack"><GmailConnection initial={mailbox} /><div className="panel"><span className="pill">{state.completeness}% complete</span><h2 style={{marginTop: 15}}>Set up your candidate workspace</h2><p>Choose a CV-first or manual path. Extracted CV facts stay as a draft until you review and confirm them.</p><OnboardingActions revision={state.revision} mode={state.mode} ready={state.ready} completed={state.completed} /></div><div className="panel"><h2>Your setup journey</h2><ol><li>{mailbox.connected ? '✓' : '○'} Gmail connection</li><li><Link href="/profile">Continue to profile</Link></li><li><Link href="/cvs">Upload resume</Link></li><li>Review and confirm resume facts</li><li><Link href="/preferences">Choose job preferences</Link></li><li><Link href="/automation">Set auto-apply preferences</Link></li><li><Link href="/billing">Review subscription</Link></li></ol><h3>Backend onboarding checks</h3><ol>{state.steps.map(step => <li key={step.name}>{step.complete ? '✓' : '○'} {step.name.replaceAll('-', ' ')}{step.optional ? ' (optional)' : ''}</li>)}</ol></div></div>;
   }
   if (section === 'profile') {
     // Use the revision from the same authenticated user snapshot as the form.
     // A separate status read could accept stale profile data after a concurrent edit.
     const revision = user.profileRevision ?? 0;
+    const mailbox = await api<MailboxStatus>('mail/status');
     return (
-      <div className="panel">
+      <div className="stack"><GmailConnection initial={mailbox} compact /><div className="panel">
         <h2>Your experience, in your words.</h2>
         <p>Only facts you confirm can be used in matching and applications.</p>
         <ProfileSidebar user={user} editor />
@@ -177,7 +186,7 @@ async function Candidate({ section, user }: { section: string; user: User }) {
             },
           ]}
         />
-      </div>
+      </div></div>
     );
   }
   if (section === 'preferences') {
@@ -265,6 +274,27 @@ async function Candidate({ section, user }: { section: string; user: User }) {
         )}
       </div>
     );
+  }
+  if (section === 'alerts') {
+    const searches = await api<{ id: string; name: string; query: string; country: string; mode: string; enabled: boolean }[]>('me/saved-searches');
+    return <SavedSearchManager searches={searches} />;
+  }
+  if (section === 'notifications') {
+    const [notifications, preferences] = await Promise.all([
+      api<{ id: string; type: string; title: string; message: string; href: string; read: boolean; createdAt: string }[]>('me/notifications'),
+      api<{ inApp: boolean; email: boolean; whatsapp: boolean; unsubscribeAll: boolean; types: Record<string, boolean> }>('me/notification-preferences'),
+    ]);
+    return <NotificationCenter notifications={notifications} preferences={preferences} />;
+  }
+  if (section === 'assistant') return <AssistantPanel />;
+  if (section === 'taxonomy') return <TaxonomyLookup />;
+  if (section === 'insights') {
+    const [completion, usage] = await Promise.all([api<RecordRow>('me/profile/completion'), api<RecordRow>('me/usage')]);
+    return <div className="stack"><div className="panel"><h2>Profile completion</h2><p>These readiness checks come from the backend policy used by onboarding and matching.</p><pre>{JSON.stringify(completion, null, 2)}</pre></div><div className="panel"><h2>Plan usage and entitlements</h2><p>Your effective limits and current subscription state.</p><pre>{JSON.stringify(usage, null, 2)}</pre></div></div>;
+  }
+  if (section === 'cv-versions') {
+    const versions = await api<RecordRow[]>('me/cv-versions');
+    return <div className="stack"><div className="panel"><h2>Create an ATS-friendly CV version</h2><p>This uses only your confirmed profile. Review the summary before saving.</p><SmartForm endpoint="me/cv-versions" preservedFields={{profile:user.profile,confirmed:true}} fields={[{name:'name',label:'Version name'},{name:'targetRole',label:'Target role',required:false},{name:'summary',label:'Professional summary',type:'textarea',hint:'At least 20 characters; use confirmed facts only.'}]} submit="Save CV version" /></div>{versions.length ? versions.map(version=><div className="panel" key={version.id}><span className="pill">{display(version.source)}</span><h2 style={{marginTop:12}}>{display(version.name)}</h2><p>{display(version.targetRole)}</p><p>{display(version.summary)}</p><Action endpoint={`me/cv-versions/${version.id}`} method="DELETE" label="Delete version" confirm /></div>):<div className="panel"><h2>No saved versions</h2><p>Create a version after confirming your candidate profile.</p></div>}</div>;
   }
   if (section === 'applications') {
     const apps = await api<RecordRow[]>('applications');
@@ -362,40 +392,16 @@ async function Candidate({ section, user }: { section: string; user: User }) {
   }
   if (section === 'automation') {
     const automation = await api<RecordRow & { revision: number; executionAvailable: boolean }>('me/automation-preferences');
-    return <div className="panel"><span className="pill">{automation.executionAvailable ? 'Execution available' : 'Execution paused by platform'}</span><h2 style={{marginTop: 15}}>Application automation controls</h2><p>Automation uses only confirmed facts, eligible jobs, your consent, and the daily cap you choose.</p><SmartForm endpoint="me/automation-preferences" method="PUT" initial={automation} expectedRevision={automation.revision} fields={[{name:'enabled',label:'Enable automation',type:'checkbox'},{name:'paused',label:'Pause all automated applications',type:'checkbox'},{name:'dailyCap',label:'Maximum applications per day',type:'number'},{name:'allowedRoleFamilies',label:'Allowed occupation IDs',type:'list',required:false},{name:'excludedRoles',label:'Excluded role names',type:'list',required:false},{name:'allowedLocations',label:'Allowed location IDs',type:'list',required:false},{name:'excludedLocations',label:'Excluded location IDs',type:'list',required:false},{name:'workModes',label:'Work arrangements',type:'list',required:false},{name:'employmentTypes',label:'Employment types',type:'list',required:false}]} /></div>;
+    const mailbox = await api<MailboxStatus>('mail/status');
+    return <div className="stack"><GmailConnection initial={mailbox} compact /><div className="panel"><span className="pill">{automation.executionAvailable && mailbox.connected ? 'Execution available' : 'Execution paused'}</span><h2 style={{marginTop: 15}}>Application automation controls</h2><p>Automation uses only confirmed facts, eligible jobs, your consent, a connected Gmail account, and the daily cap you choose. Development testing never sends a real job application automatically.</p><SmartForm endpoint="me/automation-preferences" method="PUT" initial={automation} expectedRevision={automation.revision} requirements={[{field:'enabled',satisfied:mailbox.connected,message:'Connect your Gmail account first to enable automatic applications.',href:'/mail',action:'Connect Gmail'}]} fields={[{name:'enabled',label:'Enable Automatic Job Applications',type:'checkbox'},{name:'paused',label:'Pause all automated applications',type:'checkbox'},{name:'dailyCap',label:'Maximum applications per day',type:'number'},{name:'allowedRoleFamilies',label:'Allowed occupation IDs',type:'list',required:false},{name:'excludedRoles',label:'Excluded role names',type:'list',required:false},{name:'allowedLocations',label:'Allowed location IDs',type:'list',required:false},{name:'excludedLocations',label:'Excluded location IDs',type:'list',required:false},{name:'workModes',label:'Work arrangements',type:'list',required:false},{name:'employmentTypes',label:'Employment types',type:'list',required:false}]} /></div></div>;
   }
   if (section === 'cvs') {
     const documents = await api<RecordRow[]>('me/cv');
     return <CvManager documents={documents as never[]} profileRevision={user.profileRevision ?? 0} />;
   }
   if (section === 'mail') {
-    const mailbox = await api<{
-      available: boolean;
-      connected: boolean;
-      provider: string | null;
-      email: string | null;
-    }>('mail/status');
-    return (
-      <div className="panel">
-        <span className="pill">{mailbox.connected ? 'Connected' : 'Not connected'}</span>
-        <h2 style={{ marginTop: 20 }}>Your mailbox, with your permission.</h2>
-        <p>
-          {mailbox.connected
-            ? `${mailbox.email} can send approved job applications. SkillOnIT cannot read your inbox.`
-            : 'Connect Gmail securely. SkillOnIT will never ask for your email password or read your inbox.'}
-        </p>
-        {mailbox.connected ? (
-          <Action endpoint="mail/disconnect" label="Disconnect mailbox" confirm />
-        ) : (
-          <Action endpoint="mail/connect" label="Connect Gmail" />
-        )}
-        <p className="small" style={{ marginTop: 20 }}>
-          {mailbox.available
-            ? 'You approve the send-only permission on Google. Access can be revoked at any time.'
-            : 'Mailbox authorization is awaiting Google project configuration.'}
-        </p>
-      </div>
-    );
+    const mailbox = await api<MailboxStatus>('mail/status');
+    return <GmailConnection initial={mailbox} />;
   }
   if (section === 'billing') {
     const subscription = await api<{ plan: { name: string; dailyCap: number; cvs: number; delayMinutes: number }; subscriptionStatus: string; subscription: { currentPeriodEnd: string; cancelAtPeriodEnd: boolean } | null; limits: { applicationsPerDay: number; autoApplyPerDay: number; cvVersions: number } }>('me/subscription');

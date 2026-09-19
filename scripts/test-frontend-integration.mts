@@ -10,7 +10,8 @@ const requireBackend = createRequire(new URL('../backend/package.json', import.m
 const { MongoMemoryReplSet } = requireBackend('mongodb-memory-server');
 const sharp = requireBackend('sharp');
 const replica = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
-const origin = 'http://127.0.0.1:3100';
+// Keep the isolated integration server away from the developer preview port.
+const origin = 'http://127.0.0.1:3199';
 Object.assign(process.env, {
   MONGODB_URI: replica.getUri(), MONGODB_DATABASE: 'architecture_test',
   DEMO_MODE: 'true', HOST: '127.0.0.1', APP_URL: origin, NODE_ENV: 'test',
@@ -68,7 +69,7 @@ try {
   await new Promise<void>((resolve, reject) => { server!.once('listening', resolve); server!.once('error', reject); });
   console.log('Building integrated frontend in .next-integration; current .next stays unchanged.');
   await command(['node_modules/next/dist/bin/next', 'build'], frontend, nextEnv, 'isolated frontend production build');
-  next = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', '3100'], {
+  next = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '--hostname', '127.0.0.1', '--port', '3199'], {
     cwd: frontend, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, env: nextEnv,
   });
   next.stderr?.on('data', () => {});
@@ -129,7 +130,7 @@ try {
   const cookie = cookieOf(login);
   const session = await payload('/api/v1/session', cookie);
   assert.equal(session.user.id, registeredUser.id);
-  for (const path of ['/', '/dashboard', '/dashboard', '/onboarding', '/profile', '/preferences', '/automation', '/cvs', '/saved', '/applications', '/billing', '/settings']) await request(path, 200, cookie);
+  for (const path of ['/', '/dashboard', '/onboarding', '/profile', '/preferences', '/automation', '/cvs', '/cv-versions', '/saved', '/alerts', '/notifications', '/assistant', '/taxonomy', '/insights', '/applications', '/billing', '/settings']) await request(path, 200, cookie);
   const onboarding = await payload('/api/v1/me/onboarding', cookie);
   assert.equal(onboarding.profileCreationPath, null);
   await request('/api/v1/me/onboarding', 200, cookie, 'PUT', { mode: 'manual', expectedRevision: onboarding.revision });

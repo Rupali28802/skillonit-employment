@@ -30,6 +30,7 @@ export function SmartForm({
   onSuccess,
   expectedRevision,
   preservedFields = {},
+  requirements = [],
 }: {
   fields: Field[];
   endpoint: string;
@@ -39,6 +40,7 @@ export function SmartForm({
   onSuccess?: () => void;
   expectedRevision?: number;
   preservedFields?: Record<string, unknown>;
+  requirements?: { field: string; satisfied: boolean; message: string; href: string; action: string }[];
 }) {
   const [revision, setRevision] = useState(expectedRevision);
   const [busy, setBusy] = useState(false),
@@ -65,6 +67,15 @@ export function SmartForm({
                       .map((s) => s.trim())
                       .filter(Boolean)
                   : v;
+        }
+        const unmet = requirements.find(
+          (requirement) => payload[requirement.field] === true && !requirement.satisfied,
+        );
+        if (unmet) {
+          setError(true);
+          setMessage(unmet.message);
+          setBusy(false);
+          return;
         }
         try {
           const r = await fetch('/api/v1/' + endpoint, {
@@ -150,6 +161,14 @@ export function SmartForm({
           <p className={'notice ' + (error ? 'error' : '')}>{message}</p>
         )}
       </div>
+      {requirements
+        .filter((requirement) => !requirement.satisfied)
+        .map((requirement) => (
+          <p className="notice" key={requirement.field}>
+            {requirement.message}{' '}
+            <Link href={requirement.href}>{requirement.action}</Link>
+          </p>
+        ))}
       <button className="primary" disabled={busy}>
         {busy ? 'Saving…' : submit}
       </button>

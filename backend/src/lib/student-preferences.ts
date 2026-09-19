@@ -91,6 +91,11 @@ export async function saveAutomation(userId: string, input: unknown) {
       for (const key of keys) if (!(await r.get<{ active: boolean }>(collection, key))?.active) throw new ApiError(400, 'PREFERENCE_REFERENCE', 'Select an active catalog entry.');
     }
     if (preferences.enabled && !(await r.get<{ granted: boolean }>('candidateConsents', userId + ':automation'))?.granted) throw new ApiError(409, 'CONSENT_REQUIRED', 'Explicit automation consent is required.');
+    if (preferences.enabled) {
+      const mailbox = await r.get<{ status: string; email: string; scopes: string[] }>('mailboxConnections', userId);
+      if (!mailbox || mailbox.status !== 'connected' || mailbox.email !== u.email.toLowerCase() || mailbox.scopes.length !== 1 || mailbox.scopes[0] !== 'https://www.googleapis.com/auth/gmail.send')
+        throw new ApiError(409, 'MAILBOX_REQUIRED', 'Connect your Gmail account first to enable automatic applications.');
+    }
     const now = new Date().toISOString();
     const next: AutomationRecord = { id: userId, userId, preferences, revision: (row?.revision ?? 0) + 1, createdAt: row?.createdAt ?? now, updatedAt: now };
     // Synchronizes with consent revocation and preference writes even on concurrent requests.

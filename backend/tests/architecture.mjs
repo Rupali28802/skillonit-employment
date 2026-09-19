@@ -109,7 +109,7 @@ for (const [group, paths] of pages.entries()) {
 }
 // Discovery lives at /. These legacy paths have no page handlers in the
 // preserved frontend; Next may stream its not-found boundary with HTTP 200.
-for (const path of ['jobs', 'search', 'faq', 'cookies', 'employer-pricing', 'saved-searches', 'notifications', 'assistant']) {
+for (const path of ['jobs', 'search', 'faq', 'cookies', 'employer-pricing', 'saved-searches']) {
   const response = await fetch(ui + '/' + path);
   assert.ok([200, 404].includes(response.status), path);
   const html = await response.text();
