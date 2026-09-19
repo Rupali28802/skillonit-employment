@@ -7,12 +7,24 @@ import { api, configuredPlans, demoMode } from '@/lib/api';
 import { type PublicJob, type User, countries, categories } from '@/lib/domain';
 import { SmartForm, Action } from './forms';
 import { PlanEditor } from './admin-config';
+import {
+  CVLibrary,
+  SavedSearches,
+  NotificationCenter,
+  SearchAssistant,
+  type CVVersion,
+  type SavedSearch,
+  type Notification,
+} from './candidate-tools';
 type RecordRow = { id: string; [key: string]: unknown };
 const candidateLinks = [
   ['dashboard', 'Overview'],
   ['profile', 'My profile'],
   ['preferences', 'Job preferences'],
   ['saved', 'Saved jobs'],
+  ['saved-searches', 'Saved searches'],
+  ['notifications', 'Notifications'],
+  ['assistant', 'Search assistant'],
   ['applications', 'Applications'],
   ['cvs', 'My CVs'],
   ['templates', 'Email templates'],
@@ -125,6 +137,27 @@ export async function Workspace({ section }: { section: string }) {
   );
 }
 async function Candidate({ section, user }: { section: string; user: User }) {
+  if (section === 'saved-searches')
+    return (
+      <SavedSearches searches={await api<SavedSearch[]>('me/saved-searches')} />
+    );
+  if (section === 'notifications')
+    return (
+      <NotificationCenter
+        notifications={await api<Notification[]>('me/notifications')}
+        preferences={await api<Record<string, unknown>>(
+          'me/notification-preferences',
+        )}
+      />
+    );
+  if (section === 'assistant') return <SearchAssistant />;
+  if (section === 'cvs')
+    return (
+      <CVLibrary
+        versions={await api<CVVersion[]>('me/cv-versions')}
+        profile={user.profile}
+      />
+    );
   if (section === 'profile') {
     // Use the revision from the same authenticated user snapshot as the form.
     // A separate status read could accept stale profile data after a concurrent edit.
@@ -356,20 +389,6 @@ async function Candidate({ section, user }: { section: string; user: User }) {
       </div>
     );
   }
-  if (section === 'cvs')
-    return (
-      <div className="panel">
-        <h2>Your CV collection</h2>
-        <p>
-          CV upload will be available after private storage, malware scanning
-          and document parsing are configured. No files are accepted into
-          unscanned storage.
-        </p>
-        <Link className="primary" href="/profile">
-          Complete your profile manually
-        </Link>
-      </div>
-    );
   if (section === 'mail') {
     const mailbox = await api<{
       available: boolean;

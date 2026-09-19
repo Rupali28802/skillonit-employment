@@ -24,15 +24,17 @@ import { searchIntent } from '@/lib/search-intent';
 export function Discovery({
   initialJobs,
   user,
+  initialSearch = {},
 }: {
   initialJobs: PublicJob[];
   user: User | null;
+  initialSearch?: { query?: string; country?: string; mode?: string };
 }) {
   const [jobs, setJobs] = useState(initialJobs),
-    [query, setQuery] = useState(''),
+    [query, setQuery] = useState(initialSearch.query || ''),
     [category, setCategory] = useState(''),
-    [country, setCountry] = useState(''),
-    [mode, setMode] = useState(''),
+    [country, setCountry] = useState(initialSearch.country || ''),
+    [mode, setMode] = useState(initialSearch.mode || ''),
     [jobType, setJobType] = useState(''),
     [experience, setExperience] = useState(''),
     [state, setState] = useState(''),

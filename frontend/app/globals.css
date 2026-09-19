@@ -800,6 +800,31 @@ footer small {
 .workspace-nav a:hover {
   background: #e8f2ed;
 }
+.feature-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.feature-heading > svg {
+  color: #116653;
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+.feature-heading h2 {
+  margin-bottom: 6px;
+}
+.feature-heading p {
+  color: #627479;
+  margin-bottom: 0;
+}
+.notification-card.unread {
+  border-left: 4px solid #116653;
+}
+.cv-summary {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .stat-grid,
 .plan-grid {
   display: grid;
