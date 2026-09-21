@@ -12,6 +12,8 @@ import { app } from '../src/app.js';
 test('Google configuration fails closed without credentials or trusted callback', () => {
   assert.throws(() => googleConfig({}));
   assert.throws(() => googleConfig({ GOOGLE_CLIENT_ID: 'unit-test', GOOGLE_CLIENT_SECRET: 'unit-test', APP_URL: 'https://example.test', GOOGLE_CALLBACK_URL: 'https://other.test/api/v1/auth/google/callback' }));
+  assert.equal(googleConfig({ GOOGLE_CLIENT_ID: 'unit-test', GOOGLE_CLIENT_SECRET: 'unit-test', APP_URL: 'http://localhost:3100', GOOGLE_CALLBACK_URL: 'http://localhost:3100/api/v1/auth/google/callback', NODE_ENV: 'development' }).APP_URL, 'http://localhost:3100');
+  assert.throws(() => googleConfig({ GOOGLE_CLIENT_ID: 'unit-test', GOOGLE_CLIENT_SECRET: 'unit-test', APP_URL: 'http://localhost:3100', GOOGLE_CALLBACK_URL: 'http://localhost:3100/api/v1/auth/google/callback', NODE_ENV: 'production' }));
 });
 
 test('local account-resolution unit checks (not a real Google identity validation)', async () => {

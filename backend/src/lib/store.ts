@@ -303,6 +303,8 @@ export async function bootstrapIndexes() {
     'studentSubscriptions',
     'mailboxConnections',
     'mailOauthStates',
+    'mailConnectionVerifications',
+    'mailConnectionProofs',
     'leadNotes',
   ])
     await db.collection(c).createIndex({ id: 1 }, { unique: true });
@@ -353,6 +355,9 @@ export async function bootstrapIndexes() {
   await db.collection('mailboxConnections').createIndex({ userId: 1 }, { unique: true });
   await db.collection('mailboxConnections').createIndex({ provider: 1, providerSubject: 1 }, { unique: true });
   await db.collection('mailOauthStates').createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
+  await db.collection('mailConnectionVerifications').createIndex({ userId: 1 });
+  await db.collection('mailConnectionVerifications').createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
+  await db.collection('mailConnectionProofs').createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
   await db.collection('oauthStates').createIndex({ id: 1 }, { unique: true });
   await db.collection('oauthStates').createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
   await db.collection('users').createIndex({ role: 1, disabled: 1, id: 1 });

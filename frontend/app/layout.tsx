@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { BriefcaseBusiness, ArrowUpRight } from 'lucide-react';
 import './globals.css';
 import { currentUser } from '@/lib/api';
+import { Toaster } from '@/components/ui/toast';
 
 export const metadata: Metadata = {
   icons: { icon: '/favicon.svg' },
@@ -30,6 +31,7 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body>
+        <Toaster />
         <a href="#main" className="skip-link">
           Skip to content
         </a>

@@ -59,6 +59,16 @@ export type Profile = {
   city: string;
   confirmed: boolean;
   employmentHistory?: { title: string; employer: string; start: string; end: string; description: string }[];
+  contactInfo?: string;
+  region?: string;
+  industry?: string;
+  targetRole?: string;
+  certifications?: string[];
+  projects?: string[];
+  professionalLinks?: string[];
+  languages?: string[];
+  availability?: string;
+  relocation?: string;
 };
 export type Preferences = {
   roles: string[];

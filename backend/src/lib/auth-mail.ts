@@ -1,14 +1,16 @@
 import nodemailer from "nodemailer";
 import { safeLog } from './safe-logger.js';
 import { z } from "zod";
+import { isTrustedAppOrigin } from "./public-origin.js";
 import { ApiError } from "./security.js";
 
-export type AuthPurpose = "verify-email" | "reset-password";
+export type AuthPurpose = "verify-email" | "reset-password" | "connect-email";
 export type AuthMessage = {
   from: string;
   to: string;
   subject: string;
   text: string;
+  html?: string;
 };
 export interface AuthMailTransport {
   sendMail(message: AuthMessage): Promise<{ accepted: unknown[] }>;
@@ -38,7 +40,7 @@ export function authMailConfig(env = process.env) {
   if (!parsed.success) throw unavailable();
   const base = new URL(parsed.data.APP_URL);
   if (
-    base.protocol !== "https:" ||
+    !isTrustedAppOrigin(base, env.NODE_ENV) ||
     base.username ||
     base.password ||
     base.search ||
@@ -55,6 +57,7 @@ export function authMessage(
   purpose: AuthPurpose,
   token: string,
   appUrl: string,
+  candidateName = "there",
 ): AuthMessage {
   if (purpose === "verify-email") {
     if (!/^[0-9]{6}$/.test(token)) throw unavailable();
@@ -66,6 +69,21 @@ export function authMessage(
         "Your SkillOnIT verification code is: " +
         token +
         "\n\nEnter it in the verification form. It expires within 5 minutes and can be used once. If you did not request this code, ignore this email.",
+    };
+  }
+  if (purpose === "connect-email") {
+    if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw unavailable();
+    const link = new URL("/connect-email", appUrl);
+    // Keep the bearer token out of HTTP access logs and referrer headers.
+    link.hash = new URLSearchParams({ token }).toString();
+    const safeName = candidateName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    const safeLink = link.href.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+    return {
+      from,
+      to,
+      subject: "Connect your email to SkillOnIT",
+      text: `Hello ${safeName},\n\nSkillOnIT needs your permission before it can send approved job applications from your Gmail account. Confirm this request, then Google will separately ask for Gmail send-only permission.\n\nConnect My Email: ${link.href}\n\nThis link expires in 15 minutes and can be used once. It does not contain your Gmail password or grant Gmail access by itself. If you did not request this, ignore this email.`,
+      html: `<p>Hello ${safeName},</p><p>SkillOnIT needs your permission before it can send approved job applications from your Gmail account. Confirm this request, then Google will separately ask for Gmail send-only permission.</p><p><a href="${safeLink}" style="display:inline-block;padding:12px 18px;background:#155eef;color:#fff;text-decoration:none;border-radius:6px">Connect My Email</a></p><p>This link expires in 15 minutes and can be used once. It does not contain your Gmail password or grant Gmail access by itself. If you did not request this, ignore this email.</p>`,
     };
   }
   const link = new URL("/" + purpose, appUrl);
@@ -84,6 +102,7 @@ export async function sendAuthMail(
   purpose: AuthPurpose,
   token: string,
   transport?: AuthMailTransport,
+  candidateName?: string,
 ) {
   const config = authMailConfig();
   const mailer =
@@ -105,7 +124,7 @@ export async function sendAuthMail(
     });
   try {
     const sent = await mailer.sendMail(
-      authMessage(config.AUTH_EMAIL_FROM, to, purpose, token, config.APP_URL),
+      authMessage(config.AUTH_EMAIL_FROM, to, purpose, token, config.APP_URL, candidateName),
     );
     if (!sent.accepted.length) throw unavailable();
     safeLog('info', 'auth_email.provider_accepted');

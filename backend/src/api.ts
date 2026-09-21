@@ -53,8 +53,9 @@ import { savePreferences } from "./lib/student-onboarding.js";
 import { validateTaxonomyReferences } from './lib/student-catalog.js';
 import {
   disconnectMailbox,
-  mailboxConnectStartUrl,
   mailboxStatus,
+  requestMailboxConnection,
+  verifyMailboxConnectionToken,
 } from './mailbox-auth.js';
 import {
   configureApplicationPolicy,
@@ -562,7 +563,11 @@ export async function handle(
       const u = await requireUser("student");
       if (p === "mail/status" && method === 'GET') return ok(await mailboxStatus(u.id));
       if (p === "mail/connect" && method === 'POST')
-        return ok({ startUrl: mailboxConnectStartUrl(u) });
+        return ok(await requestMailboxConnection(u));
+      if (p === "mail/verify-connection" && method === 'POST') {
+        const { token } = z.object({ token: z.string().min(1).max(256) }).strict().parse(await body());
+        return ok(await verifyMailboxConnectionToken(u, token));
+      }
       if (p === "mail/disconnect" && method === 'POST')
         return ok(await disconnectMailbox(u));
       throw new ApiError(

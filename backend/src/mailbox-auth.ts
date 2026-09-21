@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { safeLog } from './lib/safe-logger.js';
+import { isTrustedAppOrigin } from './lib/public-origin.js';
 import { OAuth2Client } from 'google-auth-library';
 import {
   createCipheriv,
@@ -11,6 +12,7 @@ import {
 import { z } from 'zod';
 import { cookies, requestContext } from './request-context.js';
 import { read, transaction } from './lib/store.js';
+import type { Repository } from './lib/store.js';
 import {
   ApiError,
   audit,
@@ -19,6 +21,7 @@ import {
   rateLimit,
 } from './lib/security.js';
 import type { User } from './lib/domain.js';
+import { sendAuthMail, type AuthMailTransport } from './lib/auth-mail.js';
 
 const gmailSendScope = 'https://www.googleapis.com/auth/gmail.send';
 const callbackPath = '/api/v1/mail/google/callback';
@@ -50,6 +53,21 @@ export type MailboxConnection = {
   status: 'connected' | 'revoked';
   connectedAt: string;
   updatedAt: string;
+};
+
+type MailConnectionVerification = {
+  id: string;
+  userId: string;
+  email: string;
+  credentialDigest: string;
+  expiresAtDate: Date;
+};
+
+type MailConnectionProof = {
+  id: string;
+  userId: string;
+  credentialDigest: string;
+  expiresAtDate: Date;
 };
 
 const outboundMessageSchema = z
@@ -136,7 +154,7 @@ export function mailboxConfig(env = process.env) {
     config.APP_URL,
   );
   if (
-    app.protocol !== 'https:' ||
+    !isTrustedAppOrigin(app, env.NODE_ENV) ||
     app.pathname !== '/' ||
     app.search ||
     app.hash ||
@@ -219,6 +237,12 @@ export async function beginMailboxConnect(user: User) {
     );
   const config = mailboxConfig();
   await rateLimit(`mail-connect:${user.id}`, 5);
+  await transaction(async (repository) => {
+    const proof = await repository.get<MailConnectionProof>('mailConnectionProofs', user.id);
+    if (!proof || new Date(proof.expiresAtDate).getTime() <= Date.now() || proof.credentialDigest !== credentialDigest(user))
+      throw new ApiError(409, 'EMAIL_CONNECTION_PROOF_REQUIRED', 'Use the secure link sent to your email before continuing.');
+    await repository.remove('mailConnectionProofs', proof.id);
+  });
   const client = new OAuth2Client(
     config.MAIL_GOOGLE_CLIENT_ID,
     config.MAIL_GOOGLE_CLIENT_SECRET,
@@ -255,6 +279,57 @@ export async function beginMailboxConnect(user: User) {
   url.searchParams.set('code_challenge', codeChallenge!);
   url.searchParams.set('code_challenge_method', 'S256');
   return url.href;
+}
+
+export async function requestMailboxConnection(user: User, transport?: AuthMailTransport) {
+  if (!user.verified)
+    throw new ApiError(409, 'EMAIL_VERIFICATION_REQUIRED', 'Verify your SkillOnIT email before connecting a mailbox.');
+  mailboxConfig();
+  await rateLimit(`mail-connect-email:${user.id}`, 3);
+  const token = randomBytes(32).toString('base64url');
+  const expiresAtDate = new Date(Date.now() + 15 * 60_000);
+  await transaction(repository => storeMailboxConnectionVerification(repository, user, token, expiresAtDate));
+  try {
+    await sendAuthMail(user.email, 'connect-email', token, transport, user.name);
+  } catch (error) {
+    await transaction(async (repository) => {
+      await repository.remove('mailConnectionVerifications', digest(token));
+      await audit(repository, user.id, 'mail.connection_email_delivery_failed', user.id);
+    });
+    throw error;
+  }
+  return { sent: true, expiresInSeconds: 900 };
+}
+
+export async function verifyMailboxConnectionToken(user: User, token: string) {
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token))
+    throw new ApiError(400, 'MAIL_CONNECTION_TOKEN_INVALID', 'This connection link is invalid or expired.');
+  await rateLimit(`mail-connect-verify:${user.id}`, 10);
+  await transaction(repository => consumeMailboxConnectionVerification(repository, user, token));
+  return { verified: true, startUrl: '/api/v1/mail/google' };
+}
+
+export async function storeMailboxConnectionVerification(repository: Repository, user: User, token: string, expiresAtDate: Date) {
+  for (const row of await repository.find<MailConnectionVerification>('mailConnectionVerifications', { userId: user.id }, 20))
+    await repository.remove('mailConnectionVerifications', row.id);
+  await repository.put<MailConnectionVerification>('mailConnectionVerifications', {
+    id: digest(token), userId: user.id, email: user.email.toLowerCase(),
+    credentialDigest: credentialDigest(user), expiresAtDate,
+  });
+  await audit(repository, user.id, 'mail.connection_email_requested', user.id);
+}
+
+export async function consumeMailboxConnectionVerification(repository: Repository, user: User, token: string) {
+  const row = await repository.get<MailConnectionVerification>('mailConnectionVerifications', digest(token));
+  if (!row || row.userId !== user.id || row.email !== user.email.toLowerCase() ||
+      row.credentialDigest !== credentialDigest(user) || new Date(row.expiresAtDate).getTime() <= Date.now())
+    throw new ApiError(400, 'MAIL_CONNECTION_TOKEN_INVALID', 'This connection link is invalid or expired.');
+  await repository.remove('mailConnectionVerifications', row.id);
+  await repository.put<MailConnectionProof>('mailConnectionProofs', {
+    id: user.id, userId: user.id, credentialDigest: credentialDigest(user),
+    expiresAtDate: new Date(Date.now() + 5 * 60_000),
+  });
+  await audit(repository, user.id, 'mail.connection_email_verified', user.id);
 }
 
 export async function sendMailboxMessage(
@@ -372,16 +447,18 @@ mailboxAuth.get('/google', async (_request, response) => {
       throw new ApiError(401, 'AUTH_REQUIRED', 'Please sign in to continue.');
     response.redirect(302, await beginMailboxConnect(user));
   } catch {
-    response.redirect(303, new URL('/mail?mail=error', appUrl).href);
+    response.redirect(303, new URL('/profile?mail=error', appUrl).href);
   }
 });
 
 mailboxAuth.get('/google/callback', async (request, response) => {
   response.set('Referrer-Policy', 'no-referrer');
   let appUrl = process.env.APP_URL || 'https://invalid.example';
+  let stage = 'configuration';
   try {
     const config = mailboxConfig();
     appUrl = config.APP_URL;
+    stage = 'callback_validation';
     const { code, state } = z
       .object({
         code: z.string().min(1).max(4096),
@@ -401,6 +478,7 @@ mailboxAuth.get('/google/callback', async (request, response) => {
       sameSite: 'lax',
       path: '/api/v1/mail/google',
     });
+    stage = 'state_consumption';
     const saved = await transaction(async (repository) => {
       const row = await repository.get<MailState>('mailOauthStates', digest(state));
       if (!row || new Date(row.expiresAtDate).getTime() <= Date.now())
@@ -408,6 +486,7 @@ mailboxAuth.get('/google/callback', async (request, response) => {
       await repository.remove('mailOauthStates', row.id);
       return row;
     });
+    stage = 'session_validation';
     const user = await currentUser();
     if (
       !user ||
@@ -416,6 +495,7 @@ mailboxAuth.get('/google/callback', async (request, response) => {
       !user.verified
     )
       throw new Error('Authenticated session changed');
+    stage = 'token_exchange';
     const client = new OAuth2Client(
       config.MAIL_GOOGLE_CLIENT_ID,
       config.MAIL_GOOGLE_CLIENT_SECRET,
@@ -428,6 +508,7 @@ mailboxAuth.get('/google/callback', async (request, response) => {
     });
     if (!tokens.id_token || !tokens.access_token || !tokens.refresh_token)
       throw new Error('Required authorization missing');
+    stage = 'identity_validation';
     const ticket = await client.verifyIdToken({
       idToken: tokens.id_token,
       audience: config.MAIL_GOOGLE_CLIENT_ID,
@@ -444,6 +525,7 @@ mailboxAuth.get('/google/callback', async (request, response) => {
       (identity.azp && identity.azp !== config.MAIL_GOOGLE_CLIENT_ID)
     )
       throw new Error('Identity rejected');
+    stage = 'scope_validation';
     const tokenInfo = await client.getTokenInfo(tokens.access_token);
     if (!tokenInfo.scopes.includes(gmailSendScope))
       throw new Error('Send permission missing');
@@ -466,13 +548,15 @@ mailboxAuth.get('/google/callback', async (request, response) => {
       connectedAt: existing?.connectedAt || now,
       updatedAt: now,
     };
+    stage = 'connection_persistence';
     await transaction(async (repository) => {
       await repository.put('mailboxConnections', connection);
       await audit(repository, user.id, 'mail.connected', user.id);
     });
-    response.redirect(303, new URL('/mail?mail=connected', appUrl).href);
+    response.redirect(303, new URL('/profile?mail=connected', appUrl).href);
   } catch {
-    safeLog('warn', 'mailbox_oauth.callback_rejected');
-    response.redirect(303, new URL('/mail?mail=error', appUrl).href);
+    safeLog('warn', 'mailbox_oauth.callback_rejected', { stage });
+    const result = request.query.error === 'access_denied' ? 'cancelled' : 'error';
+    response.redirect(303, new URL(`/profile?mail=${result}`, appUrl).href);
   }
 });

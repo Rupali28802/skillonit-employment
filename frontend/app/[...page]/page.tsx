@@ -1,9 +1,11 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { AuthForm, SmartForm, Action } from '@/components/forms';
+import { AuthForm, SmartForm } from '@/components/forms';
 import { AuthRecovery } from '@/components/auth-recovery';
+import { EmailConnectionVerification } from '@/components/email-connection';
 import { Workspace } from '@/components/workspace';
-import { demoMode, configuredPlans } from '@/lib/api';
+import { PlansCarousel } from '@/components/plans-carousel';
+import { demoMode, configuredPlans, currentUser } from '@/lib/api';
 export const dynamic = 'force-dynamic';
 export async function generateMetadata({
   params,
@@ -27,6 +29,7 @@ export default async function Page({
   params: Promise<{ page: string[] }>;
 }) {
   const page = (await params).page.join('/');
+  if (page === 'connect-email') return <EmailConnectionVerification />;
   if (page === 'verify-email' || page === 'resend-verification' || page === 'forgot-password' || page === 'reset-password')
     return <AuthRecovery key={page} mode={page} />;
   if (page === 'login' || page === 'register')
@@ -77,7 +80,7 @@ export default async function Page({
   )
     return <Workspace section={page} />;
   if (page === 'pricing') {
-    const plans = await configuredPlans();
+    const [plans, user] = await Promise.all([configuredPlans(), currentUser()]);
     return (
       <div className="page-wrap">
         <div className="eyebrow">A PLAN FOR YOUR NEXT CHAPTER</div>
@@ -86,55 +89,7 @@ export default async function Page({
           Compare candidate plans. Paid subscriptions open after final pricing
           and payment verification are configured.
         </p>
-        <div className="plan-grid">
-          {plans.map((p) => (
-            <div className="panel" key={p.code}>
-              <span className="pill">
-                {p.code === 'pro'
-                  ? 'More room to explore'
-                  : p.code === 'premium'
-                    ? 'Priority support'
-                    : 'Start your search'}
-              </span>
-              <h2 style={{ marginTop: 20 }}>{p.name}</h2>
-              <p>
-                {p.price === null
-                  ? 'Pricing to be announced'
-                  : new Intl.NumberFormat('en-IN', {
-                      style: 'currency',
-                      currency: p.currency,
-                    }).format(p.price)}
-              </p>
-              <ul>
-                <li>Worldwide job discovery</li>
-                <li>{p.dailyCap} daily application allowance</li>
-                <li>
-                  {p.identity
-                    ? 'Expanded employer identity'
-                    : 'Protected employer identity'}
-                </li>
-                <li>
-                  {p.cvs} CV version{p.cvs > 1 ? 's' : ''}
-                </li>
-                <li>
-                  {p.autoApply
-                    ? 'Automation when eligible'
-                    : 'Manual application workflow'}
-                </li>
-                <li>
-                  {p.delayMinutes === 0
-                    ? 'Priority scheduling'
-                    : p.delayMinutes + ' minute automation delay'}
-                </li>
-              </ul>
-              <Action
-                endpoint="billing/checkout"
-                label={'Choose ' + p.name}
-                payload={{ planCode: p.code }}
-              />
-            </div>
-          ))}
-        </div>
+        <PlansCarousel plans={plans} currentPlan={user?.role === 'student' ? user.plan : null} />
         <p className="small">
           Displayed quotas are configurable development defaults, not a final
           commercial offer. Automation requires verified destinations, a

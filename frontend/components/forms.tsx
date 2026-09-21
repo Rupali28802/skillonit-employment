@@ -31,6 +31,7 @@ export function SmartForm({
   expectedRevision,
   preservedFields = {},
   requirements = [],
+  successMessage,
 }: {
   fields: Field[];
   endpoint: string;
@@ -41,6 +42,7 @@ export function SmartForm({
   expectedRevision?: number;
   preservedFields?: Record<string, unknown>;
   requirements?: { field: string; satisfied: boolean; message: string; href: string; action: string }[];
+  successMessage?: string;
 }) {
   const [revision, setRevision] = useState(expectedRevision);
   const [busy, setBusy] = useState(false),
@@ -89,7 +91,7 @@ export function SmartForm({
           setError(false);
           if (revision !== undefined)
             setRevision(typeof j.data?.revision === 'number' ? j.data.revision : revision + 1);
-          setMessage(j.data?.message || 'Your changes have been saved.');
+          setMessage(successMessage || j.data?.message || 'Your changes have been saved.');
           onSuccess?.();
         } catch (e) {
           setError(true);
@@ -250,6 +252,7 @@ export function AuthForm({
     [showPassword, setShowPassword] = useState(false),
     [accountType, setAccountType] = useState('student');
   const authError = useSyncExternalStore(noAuthSubscription, () => new URLSearchParams(window.location.search).get('auth_error'), () => null);
+  const nextPath = useSyncExternalStore(noAuthSubscription, () => new URLSearchParams(window.location.search).get('next') === '/connect-email' ? '/connect-email' : null, () => null);
   const providerMessage = authError === 'google_email_proof' ? 'Sign in with your password first to link this Google email safely.' : authError ? 'Google sign-in was not completed. Please try again.' : '';
   return (
     <div className="auth-page">
@@ -374,7 +377,9 @@ export function AuthForm({
                 const response = await fetch('/api/v1/auth/google/status');
                 const result = await response.json();
                 if (!response.ok || !result.data?.available) throw Error('Google sign-in is not available yet. Please use email sign-in.');
-                window.location.assign(result.data.startUrl);
+                const destination = new URL(result.data.startUrl, window.location.origin);
+                if (nextPath) destination.searchParams.set('next', nextPath);
+                window.location.assign(destination.href);
               } catch (error) { setMessage(error instanceof Error ? error.message : 'Google sign-in is unavailable.'); setBusy(false); }
             }}><span className="auth-google-mark" aria-hidden="true">G</span>Continue with Google</button>
             <div className="auth-divider"><span>or continue with email</span></div>
@@ -409,12 +414,12 @@ export function AuthForm({
                   sessionStorage.setItem('skillonit-verification-email', typeof data.email === 'string' ? data.email : '');
                   window.location.assign('/verify-email');
                 } else
-                  window.location.href =
-                    j.data.user.role === 'employer'
+                  window.location.href = nextPath ||
+                    (j.data.user.role === 'employer'
                       ? '/employer'
                       : j.data.user.role === 'admin'
                         ? '/admin'
-                        : '/dashboard';
+                        : '/dashboard');
               } catch (e) {
                 setMessage((e as Error).message);
               } finally {

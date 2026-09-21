@@ -14,6 +14,8 @@ test("auth email requires explicit enablement, HTTPS origin and complete SMTP co
     APP_URL: "https://example.test",
   };
   assert.equal(authMailConfig(config).SMTP_PORT, "587");
+  assert.equal(authMailConfig({ ...config, APP_URL: "http://localhost:3100", NODE_ENV: "development" }).APP_URL, "http://localhost:3100");
+  assert.throws(() => authMailConfig({ ...config, APP_URL: "http://localhost:3100", NODE_ENV: "production" }));
   for (const change of [
     { ENABLE_AUTH_EMAIL: "false" },
     { SMTP_PASSWORD: "" },
@@ -87,4 +89,22 @@ test("verification mail contains a six-digit code and no bearer link", () => {
   );
   assert.ok(mail.text.includes(otp));
   assert.ok(!mail.text.includes("https://") && !mail.text.includes("#token="));
+});
+
+test("email connection mail uses a short-lived fragment link and clear security copy", () => {
+  const token = randomBytes(32).toString("base64url");
+  const mail = authMessage(
+    "accounts@example.test",
+    "user@example.test",
+    "connect-email",
+    token,
+    "https://example.test",
+    "Candidate",
+  );
+  assert.equal(mail.subject, "Connect your email to SkillOnIT");
+  assert.ok(mail.text.includes("Connect My Email"));
+  assert.ok(mail.text.includes("expires in 15 minutes"));
+  assert.ok(mail.text.includes(`/connect-email#token=${token}`));
+  assert.ok(mail.html?.includes("Connect My Email"));
+  assert.ok(!mail.text.toLowerCase().includes("gmail password:"));
 });

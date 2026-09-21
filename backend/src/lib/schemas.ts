@@ -28,6 +28,16 @@ export const profileSchema = z.object({
     end: z.string().regex(/^(?:|Present|\d{4}(?:-(?:0[1-9]|1[0-2]))?)$/),
     description: z.string().trim().max(3000),
   }).refine(row => !row.start || !row.end || row.end === 'Present' || (row.end.length === 4 ? row.end + '-12' : row.end) >= (row.start.length === 4 ? row.start + '-01' : row.start), 'Employment end precedes start.')).max(30).optional(),
+  contactInfo: z.string().trim().max(500).optional(),
+  region: z.string().trim().max(200).optional(),
+  industry: z.string().trim().max(200).optional(),
+  targetRole: z.string().trim().max(200).optional(),
+  certifications: list.optional(),
+  projects: z.array(z.string().trim().min(1).max(1000)).max(50).optional(),
+  professionalLinks: z.array(z.url().refine(value => new URL(value).protocol === 'https:', 'Professional links must use HTTPS.')).max(20).optional(),
+  languages: list.optional(),
+  availability: z.string().trim().max(300).optional(),
+  relocation: z.string().trim().max(300).optional(),
 });
 export const preferencesSchema = z.object({
   roles: list,

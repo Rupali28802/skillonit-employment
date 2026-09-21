@@ -7,6 +7,7 @@ import { transaction } from './lib/store.js';
 import { ApiError, audit, currentUser, digest, id, rateLimit, signIn } from './lib/security.js';
 import type { User } from './lib/domain.js';
 import { safeLog } from './lib/safe-logger.js';
+import { isTrustedAppOrigin } from './lib/public-origin.js';
 
 const cookieName = 'skillonit_google_state';
 const callbackPath = '/api/v1/auth/google/callback';
@@ -14,11 +15,11 @@ export function googleConfig(env = process.env) {
   const parsed = z.object({ GOOGLE_CLIENT_ID: z.string().min(1), GOOGLE_CLIENT_SECRET: z.string().min(1), GOOGLE_CALLBACK_URL: z.url(), APP_URL: z.url() }).safeParse(env);
   if (!parsed.success) throw new ApiError(503, 'GOOGLE_UNAVAILABLE', 'Google sign-in is not configured.');
   const c = parsed.data, app = new URL(c.APP_URL), callback = new URL(c.GOOGLE_CALLBACK_URL);
-  if (app.protocol !== 'https:' || app.pathname !== '/' || app.search || app.hash || app.username || app.password || callback.origin !== app.origin || callback.pathname !== callbackPath || callback.search || callback.hash || callback.username || callback.password)
+  if (!isTrustedAppOrigin(app, env.NODE_ENV) || app.pathname !== '/' || app.search || app.hash || app.username || app.password || callback.origin !== app.origin || callback.pathname !== callbackPath || callback.search || callback.hash || callback.username || callback.password)
     throw new ApiError(503, 'GOOGLE_UNAVAILABLE', 'Google sign-in configuration is invalid.');
   return c;
 }
-type State = { id: string; nonce: string; verifier: string; expiresAtDate: Date; linkUserId?: string; linkCredential?: string };
+type State = { id: string; nonce: string; verifier: string; expiresAtDate: Date; linkUserId?: string; linkCredential?: string; returnTo?: string };
 type Identity = { sub: string; email: string; name: string; emailVerified: boolean; hostedDomain?: string };
 
 // Called only with a server-validated Google ID token. Google is authoritative
@@ -72,6 +73,7 @@ googleAuth.get('/google', async (req, res) => {
     const client = new OAuth2Client(c.GOOGLE_CLIENT_ID, c.GOOGLE_CLIENT_SECRET, c.GOOGLE_CALLBACK_URL);
     const { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
     const state = randomBytes(32).toString('base64url'), nonce = randomBytes(32).toString('base64url');
+    const returnTo = req.query.next === '/connect-email' ? '/connect-email' : undefined;
     const user = await currentUser();
     safeLog('info', 'google_oauth.start_session', {
       cookiePresent: !!cookies().get('skillonit_session'),
@@ -79,6 +81,7 @@ googleAuth.get('/google', async (req, res) => {
     });
     await transaction(r => r.put('oauthStates', {
       id: digest(state), nonce, verifier: codeVerifier, expiresAtDate: new Date(Date.now() + 600000),
+      ...(returnTo ? { returnTo } : {}),
       ...(user ? { linkUserId: user.id, linkCredential: digest(user.passwordHash ?? ('google:' + user.googleId)) } : {}),
     }));
     res.cookie(cookieName, state, { httpOnly: true, secure: true, sameSite: 'lax', path: '/api/v1/auth/google', maxAge: 600000 });
@@ -134,7 +137,7 @@ googleAuth.get('/google/callback', async (req, res) => {
     stage = 'login_audit';
     await transaction(r => audit(r, user.id, 'auth.google_login', user.id));
     safeLog('info', 'google_oauth.session_created');
-    res.redirect(303, new URL('/', c.APP_URL).href);
+    res.redirect(303, new URL(saved.returnTo || '/', c.APP_URL).href);
   } catch (e) {
     const proofRequired = e instanceof ApiError && e.code === 'GOOGLE_EMAIL_PROOF_REQUIRED';
     safeLog('warn', 'google_oauth.callback_rejected', { stage, code: proofRequired ? 'GOOGLE_EMAIL_PROOF_REQUIRED' : 'GOOGLE_REJECTED' });
