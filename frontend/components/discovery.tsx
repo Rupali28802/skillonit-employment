@@ -195,7 +195,7 @@ export function Discovery({
   return (
     <>
       <section className="live-discovery" aria-labelledby="live-discovery-heading">
-        <div className="radar-metrics" aria-label="Live discovery statistics"><strong>LIVE DISCOVERY</strong>{[['Sources online',stats?.sourcesOnline],['Detected today (UTC)',stats?.detectedToday],['New in 10 minutes',stats?.newJobs],['Countries / territories · includes eligibility',stats?.countries]].map(([label,value])=><span key={label}><b>{typeof value==='number'?value.toLocaleString():'—'}</b>{label}</span>)}</div>
+        <div className="radar-metrics" aria-label="Live discovery statistics"><strong>LIVE DISCOVERY</strong><div className="radar-metric-values">{[['Sources online',stats?.sourcesOnline],['Detected today (UTC)',stats?.detectedToday],['New in 10 minutes',stats?.newJobs],['Countries / territories · includes eligibility',stats?.countries]].map(([label,value])=><span key={label}><b>{typeof value==='number'?value.toLocaleString():'—'}</b>{label}</span>)}</div></div>
         <div className="live-discovery-top">
           <div><div className="discovery-kicker"><Sparkles size={15}/> SKILLONIT EMPLOYMENT</div>
             <h1 id="live-discovery-heading">Find the Right Job. <span>Faster, Smarter, Globally.</span></h1>

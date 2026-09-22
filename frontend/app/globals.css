@@ -1491,3 +1491,106 @@ body:has(.auth-page) > footer { display: none; }
 .admin-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:20px}.admin-kpis article,.admin-card{background:#fff;border:1px solid #dce8e2;border-radius:16px;box-shadow:0 8px 28px #153c2b0b}.admin-kpis article{padding:20px;display:grid;gap:7px}.admin-kpis span{color:#61756c;font-size:12px;text-transform:capitalize}.admin-kpis strong{font-size:30px;letter-spacing:-1px;color:#123b2e}.admin-kpis small{color:#829087}.admin-card{padding:22px}.admin-card-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:20px}.admin-card-head h2{margin:5px 0;font-size:24px}.admin-card-head p{margin:4px 0;color:#65776f}.admin-card-head>button,.admin-pagination button,.admin-actions button,.admin-state button{border:1px solid #bfd2c9;background:#fff;color:#155e47;border-radius:8px;padding:9px 12px;font-weight:650}.admin-review-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.admin-review-grid div{padding:18px;background:#f4f9f6;border-radius:12px;display:grid;gap:4px}.admin-review-grid strong{font-size:24px;color:#08785a}.admin-review-grid span{font-size:12px;color:#61756c}.admin-filters{display:grid;grid-template-columns:minmax(180px,1fr) minmax(150px,.6fr) auto;gap:12px;align-items:end;padding:15px;background:#f6faf8;border:1px solid #e0ebe5;border-radius:12px;margin-bottom:18px}.admin-filters label{font-size:12px;font-weight:700;color:#385448}.admin-filters input{display:block;width:100%;margin-top:6px;border:1px solid #cbdcd4;border-radius:8px;background:#fff;padding:10px}.admin-table{min-width:850px}.admin-table th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#64766e}.admin-table td{font-size:12px;vertical-align:top;max-width:240px;overflow-wrap:anywhere}.admin-badge{display:inline-flex;padding:5px 8px;border-radius:20px;background:#edf2ef;color:#52645c;text-transform:capitalize;font-weight:700}.admin-badge.is-good{background:#e0f5e9;color:#087149}.admin-badge.is-bad{background:#fde9e7;color:#ad332d}.admin-actions{display:flex;gap:6px;flex-wrap:wrap;min-width:140px}.admin-actions button{padding:6px 8px;font-size:11px}.admin-actions span{width:100%;font-size:11px;color:#17684f}.admin-pagination{display:flex;justify-content:space-between;align-items:center;margin-top:18px;color:#687a72;font-size:12px}.admin-pagination button:disabled{opacity:.4}.admin-state,.admin-empty{padding:44px;text-align:center;border:1px dashed #c9d9d1;border-radius:16px;background:#fafcfb}.admin-state p,.admin-empty p{color:#687a72}.admin-state.is-error{border-color:#e9bcb8;background:#fff8f7}.admin-spinner{display:inline-block;width:17px;height:17px;margin-right:9px;border:2px solid #cbded5;border-top-color:#08785a;border-radius:50%;animation:admin-spin .8s linear infinite;vertical-align:middle}.admin-safe-json{max-height:620px;overflow:auto;padding:18px;border-radius:12px;background:#10291f;color:#d9efe5;font-size:12px;white-space:pre-wrap;word-break:break-word}@keyframes admin-spin{to{transform:rotate(360deg)}}@media(max-width:1000px){.admin-kpis{grid-template-columns:repeat(2,1fr)}.admin-review-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:640px){.admin-kpis,.admin-review-grid{grid-template-columns:1fr}.admin-filters{grid-template-columns:1fr}.admin-card{padding:15px}.admin-card-head{align-items:stretch;flex-direction:column}.admin-pagination{gap:10px}.admin-pagination span{text-align:center}}@media(prefers-reduced-motion:reduce){.admin-spinner{animation:none}}
 
 .admin-role-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:18px}.admin-role-grid article{border:1px solid #dce8e2;border-radius:14px;padding:18px;background:#fff}.admin-role-grid h3{margin:0 0 5px}.admin-role-grid p{margin:0;color:#53665e}.admin-permission-list{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}.admin-permission-list code{font:500 12px/1.3 ui-monospace,SFMono-Regular,Consolas,monospace;color:#0b6247;background:#edf7f2;border:1px solid #d4eade;border-radius:999px;padding:5px 8px}.admin-filters select{display:block;width:100%;margin-top:6px;min-height:42px;border:1px solid #cbdad2;border-radius:9px;background:#fff;padding:0 10px;color:#183229}
+
+/* Find Jobs: compact, centered Live Discovery controls. */
+.live-discovery {
+  padding-bottom: 18px;
+  margin-bottom: 20px;
+}
+.radar-metrics {
+  display: grid;
+  place-items: center;
+  gap: 14px;
+  text-align: center;
+}
+.radar-metrics > strong {
+  width: auto;
+}
+.radar-metric-values {
+  width: 100%;
+  display: flex;
+  align-items: start;
+  justify-content: center;
+  gap: clamp(24px, 5vw, 64px);
+  flex-wrap: wrap;
+}
+.radar-metric-values > span {
+  display: grid;
+  gap: 4px;
+  max-width: 180px;
+  color: #667871;
+  font-size: 11px;
+}
+.radar-filters {
+  justify-content: center;
+  flex-wrap: wrap;
+  overflow-x: visible;
+  gap: 10px;
+  padding: 10px 2px;
+}
+.radar-filters button {
+  position: relative;
+  padding: 10px 16px;
+  border: 1px solid #d2e2da;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #fff, #f6faf8);
+  color: #405b50;
+  font-size: 12px;
+  font-weight: 650;
+  box-shadow: 0 3px 10px #173d2f0c;
+  transition: transform .18s ease, border-color .18s ease, background .18s ease, color .18s ease, box-shadow .18s ease;
+}
+.radar-filters button:hover {
+  transform: translateY(-2px);
+  border-color: #72ae94;
+  background: #fff;
+  color: #116344;
+  box-shadow: 0 7px 16px #173d2f17;
+}
+.radar-filters button:focus-visible {
+  outline: 3px solid #32a57738;
+  outline-offset: 2px;
+}
+.radar-filters button[aria-pressed="true"] {
+  border-color: #126d52;
+  background: linear-gradient(135deg, #0f7858, #188b68);
+  color: #fff;
+  box-shadow: 0 7px 18px #126d5230;
+}
+.radar-filters button[aria-pressed="true"]::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 9px;
+  margin-right: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-1px) rotate(45deg);
+}
+@media (max-width: 600px) {
+  .live-discovery {
+    padding-bottom: 14px;
+    margin-bottom: 16px;
+  }
+  .radar-metrics {
+    gap: 12px;
+  }
+  .radar-metric-values {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px 12px;
+  }
+  .radar-metric-values > span {
+    max-width: none;
+  }
+  .radar-filters {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 8px;
+    padding: 8px 1px;
+  }
+  .radar-filters button {
+    padding: 9px 13px;
+  }
+}
