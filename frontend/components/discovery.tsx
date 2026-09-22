@@ -21,6 +21,8 @@ import { CategorySlider } from './category-slider';
 import { ProfileSidebar } from './profile-sidebar';
 import { countries, states } from '@/lib/domain';
 import { searchIntent } from '@/lib/search-intent';
+import { SupportChatbot } from './support-chatbot';
+import { WhatsAppSupport } from './whatsapp-support';
 export function Discovery({
   initialJobs,
   user,
@@ -500,6 +502,8 @@ export function Discovery({
           </div>
         </aside>
       </div>
+      <WhatsAppSupport />
+      <SupportChatbot />
     </>
   );
 }

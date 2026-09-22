@@ -23,6 +23,7 @@ test('admin console securely manages and oversees existing backend resources', a
     await store.bootstrapIndexes();
     await store.transaction(async r => {
       for (const user of [admin, secondAdmin, student]) await r.put('users', user);
+      await r.put('adminAssignments', { id: admin.id, userId: admin.id, roleId: 'super_admin', createdAt: now.toISOString(), updatedAt: now.toISOString(), updatedBy: admin.id });
       await r.put('sessions', { id: 'session-one', userId: student.id, expiresAt: '2027-01-01T00:00:00.000Z' });
       await r.put('employers', { id: 'employer-one', ownerId: 'employer-one', name: 'Example', domain: 'example.test', country: 'India', description: '', status: 'pending', revision: 0, createdAt: now.toISOString(), updatedAt: now.toISOString() });
       await r.put('employerVerifications', { id: 'employer-one', employerId: 'employer-one', status: 'pending', revision: 0, evidence: [{ id: 'ev-1', type: 'domain', reference: 'example.test', submittedAt: now.toISOString() }], history: [], createdAt: now.toISOString(), updatedAt: now.toISOString() });
@@ -65,6 +66,20 @@ test('admin console securely manages and oversees existing backend resources', a
     const auditRows = await adminConsole.listAdminAudit(admin, new URLSearchParams());
     assert.ok(auditRows.items.length >= 4);
     await assert.rejects(adminConsole.adminOverview(student), { code: 'FORBIDDEN' });
+
+    const roles = await adminConsole.adminConsoleRoute(admin, ['admin', 'console', 'roles'], 'GET', new URLSearchParams(), async () => ({})) as { roles: { id: string; protected:boolean; editable:boolean; memberCount:number }[]; members:{id:string;roleId:string}[]; assignableRoleIds:string[] };
+    assert.ok(roles.roles.some(role => role.id === 'super_admin'));
+    assert.equal(roles.roles.find(role=>role.id==='super_admin')?.protected,true);
+    assert.equal(roles.roles.find(role=>role.id==='super_admin')?.editable,false);
+    assert.equal(roles.roles.find(role=>role.id==='super_admin')?.memberCount,1);
+    assert.equal(roles.members.find(member=>member.id===admin.id)?.roleId,'super_admin');
+    assert.ok(roles.assignableRoleIds.includes('moderator'));
+    await adminConsole.adminConsoleRoute(admin, ['admin', 'console', 'roles', secondAdmin.id, 'assignment'], 'PUT', new URLSearchParams(), async () => ({ roleId: 'finance', reason: 'Finance operations assignment.' }));
+    const roleEvents = await store.read(r => r.find<{ reason: string }>('adminRoleEvents', { userId: secondAdmin.id }, 10));
+    assert.equal(roleEvents[0]?.reason, 'Finance operations assignment.');
+    await assert.rejects(adminConsole.listAdminUsers(secondAdmin, new URLSearchParams()), { code: 'ADMIN_PERMISSION_REQUIRED' });
+    assert.equal((await adminConsole.listAdminPayments(secondAdmin, new URLSearchParams())).items.length, 1);
+    await assert.rejects(adminConsole.adminConsoleRoute(admin, ['admin', 'console', 'roles', admin.id, 'assignment'], 'PUT', new URLSearchParams(), async () => ({ roleId: 'analyst', reason: 'Self escalation test.' })), { code: 'SELF_ROLE_CHANGE_FORBIDDEN' });
   } finally {
     await store.closeStore(); await replica.stop();
     delete process.env.MONGODB_URI; delete process.env.MONGODB_DATABASE;

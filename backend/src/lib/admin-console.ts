@@ -10,6 +10,7 @@ import { updateJobSource } from './job-source-strategy.js';
 import { read, transaction, type Repository, type Row } from './store.js';
 import { ApiError, audit, safeUser } from './security.js';
 import { revokeSessions } from './auth-lifecycle.js';
+import { assignAdminRole, listAdminRoles, requireAdminPermission, resolveAdminAccess, type AdminPermission } from './admin-rbac.js';
 
 type AdminList = { items: unknown[]; nextCursor: string | null };
 type AuditRecord = Row & { actorId?: string; action?: string; entityId?: string; createdAt?: string };
@@ -26,11 +27,10 @@ const verificationSchema = z.object({ status: z.enum(['verified', 'rejected', 'p
 const moderationSchema = z.object({ action: z.enum(['publish', 'review', 'close', 'remove']), reason: z.string().trim().min(3).max(500) }).strict();
 const fraudReviewSchema = z.object({ status: z.enum(['resolved', 'rejected']), note: z.string().trim().min(3).max(1000) }).strict();
 
-async function requireAdmin(r: Repository, actor: User) {
-  const current = await r.get<User>('users', actor.id);
-  if (!current || current.disabled || current.role !== 'admin')
-    throw new ApiError(403, 'FORBIDDEN', 'Administrator access required.');
-  return current;
+const collectionPermission: Record<string, AdminPermission> = { users:'users.read', employers:'employers.read', jobs:'jobs.read', jobSources:'sources.read', applications:'applications.read', fraudReports:'fraud.read', payments:'payments.read', auditLogs:'audit.read' };
+async function requireAdmin(r: Repository, actor: User, permission?: AdminPermission) {
+  if (permission) await requireAdminPermission(r, actor, permission); else await resolveAdminAccess(r, actor);
+  return (await r.get<User>('users', actor.id))!;
 }
 
 function page<T extends { id: string }>(rows: T[], input: z.infer<typeof pageSchema>): { items: T[]; nextCursor: string | null } {
@@ -53,7 +53,7 @@ function safePayment(row: Row) {
 async function listRows(actor: User, collection: string, params: URLSearchParams, transform: (row: any) => unknown = row => row): Promise<AdminList> {
   const input = pageSchema.parse(Object.fromEntries(params));
   return read(async r => {
-    await requireAdmin(r, actor);
+    await requireAdmin(r, actor, collectionPermission[collection] ?? 'system.read');
     let rows = await r.find<Row>(collection, {}, 1000);
     if (input.status) rows = rows.filter(row => row.status === input.status);
     if (input.role) rows = rows.filter(row => row.role === input.role);
@@ -83,7 +83,7 @@ export const listAdminUsers = (actor: User, params: URLSearchParams) => listRows
 
 export async function adminUser(actor: User, userId: string) {
   return read(async r => {
-    await requireAdmin(r, actor);
+    await requireAdmin(r, actor, 'users.read');
     const user = await r.get<User>('users', userId);
     if (!user) throw new ApiError(404, 'USER_NOT_FOUND', 'User not found.');
     const sessions = await r.count('sessions', { userId });
@@ -95,7 +95,7 @@ export async function setAdminUserState(actor: User, userId: string, input: unkn
   const value = userStateSchema.parse(input);
   if (actor.id === userId && value.disabled) throw new ApiError(409, 'SELF_DISABLE_FORBIDDEN', 'Administrators cannot disable their own account.');
   return transaction(async r => {
-    await requireAdmin(r, actor);
+    await requireAdmin(r, actor, value.disabled ? 'users.disable' : 'users.enable');
     const user = await r.get<User>('users', userId);
     if (!user) throw new ApiError(404, 'USER_NOT_FOUND', 'User not found.');
     if (user.role === 'admin' && value.disabled) {
@@ -112,7 +112,7 @@ export async function setAdminUserState(actor: User, userId: string, input: unkn
 export const listAdminEmployers = (actor: User, params: URLSearchParams) => listRows(actor, 'employers', params);
 export async function adminEmployer(actor: User, employerId: string) {
   return read(async r => {
-    await requireAdmin(r, actor);
+    await requireAdmin(r, actor, 'employers.read');
     const employer = await r.get<EmployerRecord>('employers', employerId);
     if (!employer) throw new ApiError(404, 'EMPLOYER_NOT_FOUND', 'Employer not found.');
     return { employer, verification: await r.get<EmployerVerification>('employerVerifications', employerId), risk: await r.get('entityRiskAssessments', `employer:${employerId}`) };
@@ -121,7 +121,7 @@ export async function adminEmployer(actor: User, employerId: string) {
 export async function verifyAdminEmployer(actor: User, employerId: string, input: unknown) {
   const value = verificationSchema.parse(input);
   return transaction(async r => {
-    await requireAdmin(r, actor);
+    await requireAdmin(r, actor, value.status === 'rejected' ? 'employers.reject' : 'employers.verify');
     return recordEmployerVerificationDecision(r, employerId, actor.id, value.status, value.note);
   });
 }
@@ -130,7 +130,7 @@ export const listAdminJobs = (actor: User, params: URLSearchParams) => listRows(
 export async function moderateAdminJob(actor: User, jobId: string, input: unknown) {
   const value = moderationSchema.parse(input);
   return transaction(async r => {
-    await requireAdmin(r, actor);
+    await requireAdmin(r, actor, value.action === 'publish' ? 'jobs.publish' : 'jobs.moderate');
     const job = await r.get<Job>('jobs', jobId);
     if (!job) throw new ApiError(404, 'JOB_NOT_FOUND', 'Job not found.');
     if (value.action === 'publish') {
@@ -151,7 +151,7 @@ export async function moderateAdminJob(actor: User, jobId: string, input: unknow
 
 export const listAdminSources = (actor: User, params: URLSearchParams) => listRows(actor, 'jobSources', params);
 export async function updateAdminSource(actor: User, sourceId: string, input: unknown) {
-  await read(r => requireAdmin(r, actor));
+  await read(r => requireAdmin(r, actor, 'sources.update'));
   return updateJobSource(actor.id, sourceId, input);
 }
 
@@ -159,7 +159,7 @@ export const listAdminFraud = (actor: User, params: URLSearchParams) => listRows
 export async function reviewAdminFraud(actor: User, reportId: string, input: unknown) {
   const value = fraudReviewSchema.parse(input);
   return transaction(async r => {
-    await requireAdmin(r, actor);
+    await requireAdmin(r, actor, 'fraud.resolve');
     const report = await r.get<Row>('fraudReports', reportId);
     if (!report) throw new ApiError(404, 'FRAUD_REPORT_NOT_FOUND', 'Fraud report not found.');
     if (report.status !== 'pending') throw new ApiError(409, 'FRAUD_REPORT_FINAL', 'This fraud report is already final.');
@@ -177,7 +177,7 @@ export const listAdminAudit = (actor: User, params: URLSearchParams) => listRows
 export async function adminConfiguration(actor: User) {
   const allowed = ['plans', 'application-policy', 'fraud-policy', 'matching-ranking-policy', 'job-lifecycle-policy', 'job-discovery-policy', 'job-ingestion-policy'];
   return read(async r => {
-    await requireAdmin(r, actor);
+    await requireAdmin(r, actor, 'configuration.read');
     const items = (await Promise.all(allowed.map(id => r.get<{ id: string; revision?: number }>('systemConfig', id))))
       .map((row, index) => ({ id: allowed[index], configured: !!row, revision: row?.revision ?? 0 }));
     return { items };
@@ -188,6 +188,9 @@ export async function adminConsoleRoute(actor: User, parts: string[], method: st
   if (parts[1] !== 'console') return null;
   const resource = parts[2], id = parts[3], action = parts[4];
   if (resource === 'overview' && method === 'GET') return adminOverview(actor);
+  if (resource === 'access' && method === 'GET') return read(r => resolveAdminAccess(r, actor));
+  if (resource === 'roles' && !id && method === 'GET') return read(r => listAdminRoles(r, actor));
+  if (resource === 'roles' && id && action === 'assignment' && method === 'PUT') { const input = await body(); return transaction(r => assignAdminRole(r, actor, id, input)); }
   if (resource === 'users' && !id && method === 'GET') return listAdminUsers(actor, params);
   if (resource === 'users' && id && !action && method === 'GET') return adminUser(actor, id);
   if (resource === 'users' && id && action === 'state' && method === 'PUT') return setAdminUserState(actor, id, await body());

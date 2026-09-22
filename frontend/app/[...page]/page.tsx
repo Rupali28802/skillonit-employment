@@ -74,7 +74,12 @@ export default async function Page({
       'admin/content',
       'admin/flags',
       'admin/queues',
+      'admin/notifications',
+      'admin/health',
+      'admin/matching',
       'admin/audit',
+      'admin/roles',
+      'admin/settings',
       'admin/privacy',
     ].includes(page)
   )

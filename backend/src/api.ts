@@ -73,6 +73,8 @@ import { activateStudentSubscription, cancelStudentSubscription, expireStudentSu
 import { billingHistory, createPaymentOrder, processRazorpayWebhook, reconcilePayment, requestRefund, verifyCheckout } from './lib/payment-billing.js';
 import { addApplicantNote, closeEmployerJob, createEmployerProfile, getEmployerApplicant, getEmployerJob, getEmployerProfile, getEmployerVerification, listApplicantNotes, listEmployerApplicants, recordEmployerVerificationDecision, submitEmployerVerification, updateApplicantStatus, updateEmployerJob, updateEmployerProfile } from './lib/employer-portal.js';
 import { adminConsoleRoute } from './lib/admin-console.js';
+import { runSupportChat } from './lib/support-chatbot.js';
+import { publicWhatsAppSupportConfig } from './lib/direct-whatsapp-support.js';
 export async function handle(
   request: Request,
   { params }: { params: Promise<{ path: string[] }> },
@@ -114,6 +116,12 @@ export async function handle(
     if (p === "session" && method === "GET") {
       const user = await currentUser();
       return ok({ user: user ? safeUser(user) : null, demo: demoMode() });
+    }
+    if (p === 'support/chat' && method === 'POST') {
+      return ok(await runSupportChat(await body(), requester));
+    }
+    if (p === 'support/config' && method === 'GET') {
+      return ok(publicWhatsAppSupportConfig());
     }
     if (p === "me/dashboard" && method === "GET") {
       const user = await requireUser("student");

@@ -10,6 +10,8 @@ import { ConsentManager, CvManager, GmailConnection, OnboardingActions, type Mai
 import { AssistantPanel, NotificationCenter, SavedSearchManager, TaxonomyLookup } from './candidate-extras';
 import { CandidateDashboard } from './candidate-dashboard';
 import { ProfileDashboard } from './profile-dashboard';
+import { AdminConsolePanel } from './admin-console-panel';
+import { AdminRolesPanel } from './admin-roles-panel';
 type RecordRow = { id: string; [key: string]: unknown };
 const candidateLinks = [
   ['dashboard', 'Overview'],
@@ -42,23 +44,33 @@ const employerLinks = [
 ];
 const adminLinks = [
   ['admin', 'Overview'],
-  ...[
-    'users',
-    'employers',
-    'jobs',
-    'sources',
-    'applications',
-    'fraud',
-    'plans',
-    'payments',
-    'leads',
-    'content',
-    'flags',
-    'queues',
-    'audit',
-    'privacy',
-  ].map((s) => ['admin/' + s, s[0].toUpperCase() + s.slice(1)]),
+  ['admin/users', 'Users'],
+  ['admin/employers', 'Employers'],
+  ['admin/jobs', 'Jobs'],
+  ['admin/sources', 'Job Sources'],
+  ['admin/applications', 'Applications'],
+  ['admin/fraud', 'Fraud & risk'],
+  ['admin/plans', 'Plans & entitlements'],
+  ['admin/payments', 'Payments'],
+  ['admin/leads', 'Leads'],
+  ['admin/content', 'Content & SEO'],
+  ['admin/flags', 'Feature flags'],
+  ['admin/queues', 'Queues & workers'],
+  ['admin/notifications', 'Notifications'],
+  ['admin/health', 'System health'],
+  ['admin/matching', 'Matching policy'],
+  ['admin/audit', 'Audit logs'],
+  ['admin/privacy', 'Privacy requests'],
+  ['admin/roles', 'Roles & permissions'],
+  ['admin/settings', 'Settings'],
 ];
+const adminLinkPermission: Record<string, string> = {
+  'admin/users':'users.read','admin/employers':'employers.read','admin/jobs':'jobs.read','admin/sources':'sources.read',
+  'admin/applications':'applications.read','admin/fraud':'fraud.read','admin/plans':'plans.read','admin/payments':'payments.read',
+  'admin/queues':'system.read','admin/notifications':'notifications.read','admin/health':'system.read','admin/matching':'configuration.read',
+  'admin/leads':'configuration.read','admin/content':'configuration.read','admin/flags':'configuration.read',
+  'admin/audit':'audit.read','admin/privacy':'privacy.read','admin/roles':'admin.roles.manage','admin/settings':'configuration.read',
+};
 export async function Workspace({ section }: { section: string }) {
   const user = await currentUser();
   if (!user) redirect('/login');
@@ -80,12 +92,17 @@ export async function Workspace({ section }: { section: string }) {
         </Link>
       </div>
     );
-  const links =
+  let links =
     group === 'admin'
       ? adminLinks
       : group === 'employer'
         ? employerLinks
         : candidateLinks;
+  let adminAccess: { permissions:string[]; roleName:string } | null = null;
+  if (group === 'admin') {
+    adminAccess = await api<{ permissions: string[]; roleName:string }>('admin/console/access');
+    links = adminLinks.filter(([path]) => !adminLinkPermission[path] || adminAccess?.permissions.includes(adminLinkPermission[path]));
+  }
   return (
     <div className="page-wrap">
       <div className="section-line">
@@ -658,48 +675,27 @@ async function Admin({
 }) {
   const segment = section.split('/')[1];
   if (!segment) {
-    const overview = await api<{
-      counts: Record<string, number>;
-      providers: { name: string; status: string }[];
-    }>('admin/overview');
-    const counts = {
-      users: overview.counts.users,
-      jobs: overview.counts.jobs,
-      applications: overview.counts.applications,
-    };
-    return (
-      <>
-        <div className="stat-grid">
-          {Object.entries(counts).map(([k, v]) => (
-            <div className="panel" key={k}>
-              <strong>{v}</strong>
-              <span>{k} (bounded overview)</span>
-            </div>
-          ))}
-        </div>
-        <div className="panel">
-          <h2>Service readiness</h2>
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Service</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {overview.providers.map((p) => (
-                  <tr key={p.name}>
-                    <td>{p.name}</td>
-                    <td>{p.status}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </>
-    );
+    return <AdminConsolePanel section="overview" />;
+  }
+  if (segment === 'roles') return <AdminRolesPanel />;
+  if (['users', 'employers', 'jobs', 'sources', 'applications', 'fraud', 'payments', 'audit'].includes(segment))
+    return <AdminConsolePanel section={segment} />;
+  const operational: Record<string, { endpoint: string; title: string; description: string }> = {
+    queues: { endpoint: 'admin/queue/status', title: 'Queue and worker health', description: 'Live queue state from the existing worker infrastructure.' },
+    health: { endpoint: 'admin/observability', title: 'System health', description: 'Provider-safe operational status. Credentials and raw provider responses are never displayed.' },
+    matching: { endpoint: 'admin/matching-policy', title: 'Matching policy', description: 'Current revision and matching configuration from the backend source of truth.' },
+    notifications: { endpoint: 'admin/notification-templates', title: 'Notification operations', description: 'Approved notification templates and delivery configuration.' },
+    settings: { endpoint: 'admin/console/configuration', title: 'Platform configuration', description: 'Revision status for administrator-controlled platform policies.' },
+  };
+  if (operational[segment]) {
+    const item = operational[segment];
+    let value: unknown;
+    try {
+      value = await api<unknown>(item.endpoint);
+    } catch {
+      return <Empty title={`${item.title} unavailable`} text="The backend service is unavailable or not configured. No synthetic operational data is shown." />;
+    }
+    return <div className="admin-card"><div className="admin-card-head"><div><div className="eyebrow">ADMIN OPERATIONS</div><h2>{item.title}</h2><p>{item.description}</p></div></div><pre className="admin-safe-json">{JSON.stringify(value, null, 2)}</pre></div>;
   }
   if (segment === 'plans') {
     const p = await configuredPlans();
@@ -737,13 +733,6 @@ async function Admin({
     );
   }
   const collections: Record<string, string> = {
-    users: 'users',
-    employers: 'employers',
-    jobs: 'jobs',
-    sources: 'jobSources',
-    applications: 'applications',
-    fraud: 'fraudReports',
-    payments: 'payments',
     leads: 'leads',
     content: 'content',
     flags: 'systemConfig',
