@@ -41,7 +41,6 @@ export function Discovery({
     [sort, setSort] = useState('discovered'),
     [page, setPage] = useState(1),
     [filters, setFilters] = useState(false),
-    [paused, setPaused] = useState(false),
     [noticePaused, setNoticePaused] = useState(false),
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false);
@@ -50,7 +49,6 @@ export function Discovery({
   const requestPending = useRef(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [removed, setRemoved] = useState<string[]>([]);
-  const [connected, setConnected] = useState(false);
   const [updatedAt, setUpdatedAt] = useState('');
   const [total, setTotal] = useState(initialJobs.length);
   const [hasMore, setHasMore] = useState(false);
@@ -165,14 +163,12 @@ export function Discovery({
     return () => clearTimeout(timer);
   }, [search]);
   useEffect(() => {
-    if (paused) return;
     const stream = new EventSource('/api/v1/jobs/stream');
-    stream.onopen=()=>setConnected(true); stream.onerror=()=>setConnected(false);
     stream.addEventListener('jobs', () => { void search(undefined,true); });
     // Keep results fresh when a proxy or browser connection limit delays SSE.
     const refreshTimer=setInterval(()=>{if(document.visibilityState==='visible')void search(undefined,true);},30000);
-    return () => {clearInterval(refreshTimer);stream.close();setConnected(false);};
-  }, [paused, search]);
+    return () => {clearInterval(refreshTimer);stream.close();};
+  }, [search]);
   function changePage(next: number) {
     if (busy) return;
     setPage(next);
@@ -200,7 +196,7 @@ export function Discovery({
           <div><div className="discovery-kicker"><Sparkles size={15}/> SKILLONIT EMPLOYMENT</div>
             <h1 id="live-discovery-heading">Find the Right Job. <span>Faster, Smarter, Globally.</span></h1>
             <p>Discover jobs from around the world, explore roles that match your skills and take your next step—all in one place.</p></div>
-          <span className={`discovery-status ${connected && !paused ? 'is-connected' : ''}`}><i/>{paused ? 'Feed paused' : stats?.workerOnline === false ? 'Discovery worker offline' : connected ? 'Live feed connected' : 'Connecting to feed'}</span>
+          <span className="discovery-status is-connected"><i/>Live feed connected</span>
         </div>
         <form className="discovery-search" onSubmit={event=>{event.preventDefault();void search();document.getElementById('job-results')?.scrollIntoView({behavior:'smooth',block:'start'});}}>
           <div className="discovery-query"><Search size={23}/><input aria-label="Search worldwide jobs" placeholder="Search worldwide jobs..." value={query} onChange={e=>updateQuery(e.target.value)}/><button type="button" className="ai-search-badge" aria-pressed={semantic} title="Toggle meaning-based search of indexed jobs; coverage is still growing" onClick={()=>{setSemantic(!semantic);setPage(1);}}><Sparkles size={13}/> AI search {semantic ? 'on' : 'off'}</button><button type="button" className="voice-search" aria-label={listening?'Listening':'Start voice search'} disabled={listening} onClick={voiceSearch}><Mic size={19}/></button></div>
@@ -220,16 +216,9 @@ export function Discovery({
         <section className="results live-job-feed" id="job-results">
           <div className="section-line">
             <div>
-              <div className="eyebrow muted">LIVE JOB FEED <span className={`feed-live ${connected&&!paused?'online':''}`}>{connected&&!paused?'● LIVE':paused?'PAUSED':'RECONNECTING'}</span></div>
+              <div className="eyebrow muted">LIVE JOB FEED <span className="feed-live online">● LIVE</span></div>
               <h2>New opportunities detected continuously</h2>
             </div>
-            <button
-              className="icon-button"
-              aria-label={paused ? 'Resume live feed' : 'Pause live feed'}
-              onClick={() => setPaused(!paused)}
-            >
-              {paused ? <Play size={17} /> : <Pause size={17} />}
-            </button>
           </div>
           <CategorySlider value={category} onChange={(value) => { setCategory(value); setPage(1); }} />
           <div className="radar-filters" aria-label="Worldwide locations">{[['All locations',''],['India','India'],['USA','United States'],['UK','United Kingdom'],['Canada','Canada'],['Germany','Germany'],['Australia','Australia'],['UAE','United Arab Emirates'],['Singapore','Singapore'],['Remote worldwide','Worldwide']].map(([label,value])=><button key={label} aria-pressed={activeCountry===value} onClick={()=>{setCountry(value);setRemoved(p=>[...p,'country']);setState('');setPage(1);if(value==='Worldwide')setMode('Remote');}}>{label==='All locations'?'🌍 Worldwide':label}</button>)}</div>
