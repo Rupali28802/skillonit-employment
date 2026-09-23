@@ -22,18 +22,25 @@ export async function checkApplicationEngine() {
   });
   const previousDemo = process.env.DEMO_MODE; process.env.DEMO_MODE = 'false';
   try {
-    const created = await createApplication(user.id, { jobId: job.id }, false, now);
+    await assert.rejects(createApplication(user.id, { jobId: job.id }, false, now), /Review and confirm/);
+    const created = await createApplication(user.id, { jobId: job.id, confirmed: true }, false, now);
     assert.equal(created.created, true); assert.equal(created.application.status, 'QUEUED');
-    assert.equal((await createApplication(user.id, { jobId: job.id }, false, now)).created, false, 'idempotent duplicate');
+    assert.equal((await createApplication(user.id, { jobId: job.id, confirmed: true }, false, now)).created, false, 'idempotent duplicate');
     assert.equal('snapshot' in publicApplication(created.application), false);
     await processDueEmailApplications('application-engine-test-worker', 10, new Date(now.getTime() + 1000));
     const submitted = await read(r => r.get<{ status: string; events: unknown[] }>('applications', created.application.id));
     assert.equal(submitted?.status, 'DIRECT_SUBMITTED'); assert.ok((submitted?.events.length ?? 0) >= 3);
-    const external = { ...job, id: 'application-external-job', method: 'external' as const, employerId: '', url: 'https://ats.example.test/jobs/1', source: 'verified-ats' };
-    await transaction(r => r.put('jobs', external));
-    const opened = await createApplication(user.id, { jobId: external.id }, false, now);
+    const external = { ...job, id: 'application-external-job', method: 'external' as const, employerId: '', url: 'https://ats.example.com/jobs/1', source: 'verified-ats' };
+    await transaction(async r => {
+      await r.put('jobs', external);
+      const current = await r.get<User>('users', user.id);
+      await r.put('users', { ...current!, profile: { ...current!.profile, confirmed: false, skills: [] } });
+    });
+    const opened = await createApplication(user.id, { jobId: external.id, confirmed: true }, false, now);
     assert.equal(opened.application.status, 'EXTERNAL_STARTED'); assert.equal(opened.externalUrl, external.url);
-    await transaction(async r => { const current = await r.get<User>('users', user.id); await r.put('users', { ...current!, activeCvVersionId: null }); await r.put('jobs', { ...job, id: 'application-missing-cv-job' }); });
-    await assert.rejects(createApplication(user.id, { jobId: 'application-missing-cv-job' }), /CONFIRMED_CV_REQUIRED/);
+    const reopened = await createApplication(user.id, { jobId: external.id, confirmed: true }, false, now);
+    assert.equal(reopened.created, false); assert.equal(reopened.externalUrl, external.url, 'repeat Apply reopens the source form');
+    await transaction(async r => { const current = await r.get<User>('users', user.id); await r.put('users', { ...current!, activeCvVersionId: null, profile: user.profile }); await r.put('jobs', { ...job, id: 'application-missing-cv-job' }); });
+    await assert.rejects(createApplication(user.id, { jobId: 'application-missing-cv-job', confirmed: true }), /CONFIRMED_CV_REQUIRED/);
   } finally { process.env.DEMO_MODE = previousDemo; }
 }

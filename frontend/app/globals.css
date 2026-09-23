@@ -2150,3 +2150,11 @@ body:has(.auth-page) > footer { display: none; }
     border-radius: 0 0 19px 19px;
   }
 }
+
+.application-review { display:grid; gap:10px; max-height:min(58vh,560px); overflow:auto; padding-right:4px; }
+.application-review > * { margin:0; }
+.application-review-details { display:grid; gap:6px; padding:14px; border:1px solid #dfe8ee; border-radius:12px; background:#f8fbfc; }
+.application-review-details h3 { margin:0; font-size:1rem; }
+.application-message-preview { display:grid; gap:6px; margin-top:4px; }
+.application-message-preview pre { max-height:180px; overflow:auto; margin:0; padding:12px; border-radius:10px; white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; font-size:.86rem; line-height:1.55; color:#173754; background:#fff; border:1px solid #dfe8ee; }
+.application-review .notice ul { margin:8px 0 0; padding-left:20px; }

@@ -70,16 +70,18 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
   }));
   if (clauses.length) filter.$and = clauses;
   const page = Math.max(1, Math.min(100000, Math.floor(Number(params.get('page')) || 1)));
+  const requestedLimit = Math.floor(Number(params.get('limit')) || 12);
+  const limit = Math.max(10, Math.min(25, requestedLimit));
   const sort: Record<string, 1 | -1> = params.get('sort') === 'salary'
     ? { currency: 1, salaryMin: -1, id: 1 } : params.get('sort') === 'discovered' ? {discoveredAt:-1,id:1} : { sourcePostedAt: -1, discoveredAt: -1, id: 1 };
-  const result = await read(async r => ({ jobs: await r.page<Job>('jobs', filter, sort, (page - 1) * 12, 12), total: await r.count('jobs', filter) }));
+  const result = await read(async r => ({ jobs: await r.page<Job>('jobs', filter, sort, (page - 1) * limit, limit), total: await r.count('jobs', filter) }));
   const plans = await configuredPlans();
   if (semantic) {
     // Apply every eligibility/facet filter before ranking or pagination.
     const jobs = await read(r => r.find<Job>('jobs',filter,10000));
     const scores = new Map(semantic.map(m=>[m.id,m.score]));
     jobs.sort((a,b)=>(scores.get(b.id)||0)-(scores.get(a.id)||0)||a.id.localeCompare(b.id));
-    return {jobs:jobs.slice((page-1)*12,page*12).map(j=>({...publicJob(j,user,plans),semanticScore:scores.get(j.id)})),total:jobs.length,page,hasMore:page*12<jobs.length,searchMode:'semantic',indexScope:'public indexed vacancies'};
+    return {jobs:jobs.slice((page-1)*limit,page*limit).map(j=>({...publicJob(j,user,plans),semanticScore:scores.get(j.id)})),total:jobs.length,page,limit,hasMore:page*limit<jobs.length,searchMode:'semantic',indexScope:'public indexed vacancies'};
   }
-  return { jobs: result.jobs.map(j => publicJob(j, user, plans)), total: result.total, page, hasMore: page * 12 < result.total };
+  return { jobs: result.jobs.map(j => publicJob(j, user, plans)), total: result.total, page, limit, hasMore: page * limit < result.total };
 }

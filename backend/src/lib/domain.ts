@@ -47,7 +47,7 @@ export type Job = {
     sourceCategory: string | null; sourceTags: string[];
     normalizedAt: string; method: 'source-fields';
   };
-  feed?: { sourceId: string; externalId: string; publicListing: boolean; attributionUrl: string; lastSeenAt: string; closedByEngine?: boolean };
+  feed?: { sourceId: string; externalId: string; publicListing: boolean; attributionUrl: string; lastSeenAt: string; applicationTarget?: 'direct-form' | 'source-job-page' | 'source-redirect'; closedByEngine?: boolean };
   matching?: JobMatching;
   lifecycle?: { schemaVersion: 1; state: 'publishing' | 'active' | 'expired' | 'closed' | 'removed' | 'reposted'; revision: number; changedAt: string; reasonCode: string; declaredExpiresAt?: string; effectiveExpiresAt?: string };
 };
@@ -56,6 +56,7 @@ export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company' | 'feed
   identityVisible: boolean;
   sourceLink?: string;
   publicApplicationLink?: string;
+  applicationTarget?: 'direct-form' | 'source-job-page' | 'source-redirect';
   sourceJobId?: string;
 };
 export type Profile = {
@@ -310,7 +311,7 @@ export function publicJob(
     source: scrub(safe.source),
     company: identityVisible ? company : 'Company identity protected',
     identityVisible,
-    ...(feed?.publicListing ? { sourceLink: feed.attributionUrl, publicApplicationLink: job.url, sourceJobId: feed.externalId } : {}),
+    ...(feed?.publicListing ? { sourceLink: feed.attributionUrl, publicApplicationLink: job.url, applicationTarget: feed.applicationTarget, sourceJobId: feed.externalId } : {}),
   };
 }
 export function isRecent(job: Job, days = 90, now = Date.now()) {

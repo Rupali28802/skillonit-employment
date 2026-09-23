@@ -96,11 +96,11 @@ await visitor('jobs/' + job.id);
 const application = await student(
   'applications',
   'POST',
-  { jobId: job.id },
+  { jobId: job.id, confirmed: true },
   201,
 );
 assert.equal(application.status, 'DIRECT_SUBMITTED');
-const duplicate = await student('applications', 'POST', { jobId: job.id }, 201);
+const duplicate = await student('applications', 'POST', { jobId: job.id, confirmed: true }, 201);
 assert.equal(duplicate.id, application.id);
 const applicants = await employer('employer/applicants');
 assert.ok(applicants.some((a) => a.id === application.id));

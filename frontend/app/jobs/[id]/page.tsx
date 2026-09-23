@@ -67,13 +67,11 @@ export default async function JobPage({
             <p>
               {j.method === 'direct'
                 ? 'Apply through SkillonIT'
-                : j.method === 'external'
-                  ? 'Continue on the employer website'
+                 : j.method === 'external'
+                  ? 'Open the source application'
                   : 'Apply by authorized email'}
             </p>
-            {job.acceptingApplications && j.sourceLink ? (
-              <a className="primary full" href={j.publicApplicationLink || j.sourceLink} target="_blank" rel="noopener noreferrer">View original job from {j.source} ↗</a>
-            ) : job.acceptingApplications ? (
+            {job.acceptingApplications ? (
               <JobActions jobId={j.id} sample={j.sample} />
             ) : (
               <p className="notice">

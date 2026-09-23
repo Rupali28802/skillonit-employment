@@ -6,6 +6,14 @@ import { normalizeCountry } from '../lib/countries.js';
 
 export type Candidate = {
   externalId: string; title: string; company: string; url: string; description: string;
+  /** Source-owned job details page, when distinct from the application form. */
+  listingUrl?: string;
+  /** Source-owned application form supplied by the authorized feed/API. */
+  applicationUrl?: string;
+  /** Recruitment mailbox explicitly supplied by the authorized feed/API. */
+  applicationEmail?: string;
+  /** Describes exactly what the source-authorized URL opens. */
+  applicationTarget?: 'direct-form' | 'source-job-page' | 'source-redirect';
   location: string; country?: string; countryCodes?: string[]; category?: string; tags?: string[];
   mode?: 'Remote' | 'Hybrid' | 'On-site'; employmentType?: string;
   postedAt?: string; closesAt?: string; salaryText?: string;
@@ -65,8 +73,10 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
         // The national taxonomy is not ISO. Only the explicit Swedish name is mapped here.
         const country = address.country === 'Sverige' ? 'Sweden' : text(address.country);
         const hours = text(j.working_hours_type?.label);
+        const listingUrl = text(j.webpage_url), directApplicationUrl = text(j.application_details?.url);
+        const applicationEmail = text(j.application_details?.email);
         jobs.push({ externalId: text(j.id), title: text(j.headline), company: text(j.employer?.name),
-          url: text(j.webpage_url), description: text(j.description?.text),
+          url: listingUrl, listingUrl, applicationUrl: directApplicationUrl || listingUrl, applicationEmail, applicationTarget: directApplicationUrl ? 'direct-form' : 'source-job-page', description: text(j.description?.text),
           location: [text(address.city) || text(address.municipality), text(address.region), country].filter(Boolean).join(', '), country,
           // Close at the start of the reported deadline day (UTC), conservatively before a local end-of-day deadline.
           closesAt: /^\d{4}-\d{2}-\d{2}T/.test(text(j.application_deadline)) ? text(j.application_deadline).slice(0, 10) + 'T00:00:00.000Z' : undefined,
@@ -91,8 +101,11 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
       catch (error) { if (error instanceof FeedError) throw error; throw new FeedError('REED_REQUEST_FAILED'); }
       requests++;
       if (!Array.isArray(payload.results)) throw new FeedError('INVALID_FEED');
-      for (const j of payload.results) jobs.push({ externalId: String(j.jobId ?? ''), title: text(j.jobTitle), company: text(j.employerName),
-        url: text(j.jobUrl), description: text(j.jobDescription), location: text(j.locationName) });
+      for (const j of payload.results) {
+        const listingUrl = text(j.jobUrl);
+        jobs.push({ externalId: String(j.jobId ?? ''), title: text(j.jobTitle), company: text(j.employerName),
+          url: listingUrl, listingUrl, applicationUrl: listingUrl, applicationTarget: 'source-job-page', description: text(j.jobDescription), location: text(j.locationName) });
+      }
       if (payload.results.length < 100 || (typeof payload.totalResults === 'number' && (page + 1) * 100 >= payload.totalResults)) { complete = true; break; }
     }
     return { jobs, complete, snapshot: false, requests };
@@ -113,8 +126,9 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
     if (!payload || !Array.isArray(payload.jobs) || !Number.isSafeInteger(payload.totalCount) || payload.totalCount < 0) throw new FeedError('INVALID_FEED');
     for (const j of payload.jobs) {
       if (!j || typeof j !== 'object') continue;
+      const redirectUrl = text(j.link);
       jobs.push({ externalId: String(j.id ?? ''), title: text(j.title), company: text(j.company),
-        url: text(j.link), description: text(j.snippet), location: text(j.location), salaryText: text(j.salary), employmentType: text(j.type), updatedAt: iso(j.updated) });
+        url: redirectUrl, listingUrl: redirectUrl, applicationUrl: redirectUrl, applicationTarget: 'source-redirect', description: text(j.snippet), location: text(j.location), salaryText: text(j.salary), employmentType: text(j.type), updatedAt: iso(j.updated) });
       // `updated` is an update timestamp, not a publication date. Regional query != applicant eligibility.
     }
     return { jobs, requests: 1, snapshot: false, complete: payload.totalCount <= payload.jobs.length };
@@ -124,8 +138,9 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
     if (!Array.isArray(payload)) throw new FeedError('INVALID_FEED');
     for (const j of payload) {
       if (!j.id && j.legal) continue; // First feed row contains attribution terms, not a vacancy.
+      const listingUrl = text(j.url);
       jobs.push({ externalId: String(j.id ?? ''), title: text(j.position), company: text(j.company),
-        url: text(j.url), description: text(j.description), location: text(j.location), tags: list(j.tags), mode: 'Remote', postedAt: iso(j.date) });
+        url: listingUrl, listingUrl, applicationUrl: listingUrl, applicationTarget: 'source-job-page', description: text(j.description), location: text(j.location), tags: list(j.tags), mode: 'Remote', postedAt: iso(j.date) });
     }
     return { jobs, complete: false, snapshot: false, requests: 1 };
   }
@@ -145,8 +160,9 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
         const timezones = list(j.timezoneRestrictions);
         // Live search currently returns seconds although OpenAPI describes milliseconds. Accept both.
         const sourceDate = (value: unknown) => typeof value === 'number' && Math.abs(value) > 100000000000 ? iso(value / 1000) : iso(value);
+        const applicationUrl = text(j.applicationLink);
         jobs.push({ externalId: text(j.guid), title: text(j.title), company: text(j.companyName),
-          url: text(j.applicationLink), location,
+          url: applicationUrl, listingUrl: applicationUrl, applicationUrl, applicationTarget: 'direct-form', location,
           countryCodes: locations?.map((c: Json | string) => typeof c === 'string' ? c : text(c.alpha2) || text(c.name)).filter(Boolean),
           description: text(j.description) + `\nReported location eligibility: ${location}` + (timezones.length ? `\nRequired timezone overlap: ${timezones.join(', ')}` : ''),
           category: list(j.parentCategories).join(', '), tags: [...list(j.categories), ...list(j.parentCategories)], mode: 'Remote',
@@ -162,12 +178,15 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
   if (source.type === 'jobicy') {
     const payload = await get('https://jobicy.com/api/v2/remote-jobs?count=200') as Json;
     if (!Array.isArray(payload.jobs)) throw new FeedError('INVALID_FEED');
-    for (const j of payload.jobs) jobs.push({ externalId: String(j.id ?? ''), title: text(j.jobTitle), company: text(j.companyName),
-      url: text(j.url), description: text(j.jobDescription), location: text(j.jobGeo), category: list(j.jobIndustry).join(', '),
+    for (const j of payload.jobs) {
+      const listingUrl = text(j.url);
+      jobs.push({ externalId: String(j.id ?? ''), title: text(j.jobTitle), company: text(j.companyName),
+      url: listingUrl, listingUrl, applicationUrl: listingUrl, applicationTarget: 'source-job-page', description: text(j.jobDescription), location: text(j.jobGeo), category: list(j.jobIndustry).join(', '),
       tags: list(j.jobIndustry), employmentType: list(j.jobType).join(', '), mode: 'Remote', postedAt: iso(j.pubDate),
       salary: { min: j.salaryMin, max: j.salaryMax, currency: text(j.salaryCurrency), period: text(j.salaryPeriod) },
       salaryText: j.salaryCurrency && j.salaryPeriod && Number.isFinite(j.salaryMin) && Number.isFinite(j.salaryMax)
         ? `${j.salaryCurrency} ${j.salaryMin}–${j.salaryMax} ${j.salaryPeriod}` : undefined });
+    }
     // Latest N is a rolling feed, never a full inventory snapshot.
     return { jobs, complete: jobs.length < 200, snapshot: false, requests: 1 };
   }
@@ -180,10 +199,13 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
         results_per_page: '50', sort_by: 'date', max_days_old: '30', ...(source.keywords ? { what: source.keywords } : {}) });
       const payload = await get(`https://api.adzuna.com/v1/api/jobs/${source.countryCode}/search/${page}?${query}`) as Json; requests++;
       if (!Array.isArray(payload.results)) throw new FeedError('INVALID_FEED');
-      for (const j of payload.results) jobs.push({ externalId: String(j.id ?? ''), title: text(j.title), company: text(j.company?.display_name),
-        url: text(j.redirect_url), description: text(j.description), location: text(j.location?.display_name),
+      for (const j of payload.results) {
+        const redirectUrl = text(j.redirect_url);
+        jobs.push({ externalId: String(j.id ?? ''), title: text(j.title), company: text(j.company?.display_name),
+        url: redirectUrl, listingUrl: redirectUrl, applicationUrl: redirectUrl, applicationTarget: 'source-redirect', description: text(j.description), location: text(j.location?.display_name),
         country: text(j.location?.area?.[0]), category: text(j.category?.label), tags: [text(j.category?.label)].filter(Boolean),
         employmentType: [text(j.contract_time), text(j.contract_type)].filter(Boolean).join(', '), postedAt: iso(j.created) });
+      }
       if (payload.results.length < 50 || (typeof payload.count === 'number' && page * 50 >= payload.count)) { complete = true; break; }
     }
     return { jobs, complete, snapshot: false, requests };
@@ -202,8 +224,9 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
         const locations: Json[] = Array.isArray(j?.PositionLocation) ? j.PositionLocation : [];
         const pay = j?.PositionRemuneration?.[0];
         const numeric = (v: unknown) => typeof v === 'number' ? v : typeof v === 'string' && v.trim() && Number.isFinite(Number(v)) ? Number(v) : undefined;
+        const listingUrl = text(j?.PositionURI), directApplicationUrl = text(j?.ApplyURI?.[0]), applicationUrl = directApplicationUrl || listingUrl;
         jobs.push({ externalId: String(item.MatchedObjectId ?? ''), title: text(j?.PositionTitle), company: text(j?.OrganizationName),
-          url: text(j?.ApplyURI?.[0]) || text(j?.PositionURI), location: text(j?.PositionLocationDisplay),
+          url: listingUrl || applicationUrl, listingUrl: listingUrl || applicationUrl, applicationUrl, applicationTarget: directApplicationUrl ? 'direct-form' : 'source-job-page', location: text(j?.PositionLocationDisplay),
           city: locations.length === 1 ? text(locations[0].CityName) : undefined,
           state: locations.length === 1 ? text(locations[0].CountrySubDivisionCode) : undefined,
           salaryText: pay ? [pay.MinimumRange, pay.MaximumRange, pay.RateIntervalCode].filter(v => v !== undefined).join(' / ') : undefined,
@@ -225,11 +248,14 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
       if (page > 1) await pause(2000);
       const payload = await get(`https://${host}/api/job-board-api?page=${page}`) as Json; requests++;
       if (!Array.isArray(payload.data)) throw new FeedError('INVALID_FEED');
-      for (const j of payload.data) jobs.push({ externalId: text(j.slug), title: text(j.title), company: text(j.company_name),
-        url: text(j.url), description: text(j.description), location: text(j.location),
+      for (const j of payload.data) {
+        const listingUrl = text(j.url);
+        jobs.push({ externalId: text(j.slug), title: text(j.title), company: text(j.company_name),
+        url: listingUrl, listingUrl, applicationUrl: listingUrl, applicationTarget: 'source-job-page', description: text(j.description), location: text(j.location),
         // These regional feeds do not explicitly supply each job's country; do not infer it from the feed host.
         tags: list(j.tags), mode: j.remote === true ? 'Remote' : j.remote === false ? 'On-site' : undefined,
         employmentType: list(j.job_types).join(', '), postedAt: iso(j.created_at) });
+      }
       if (!payload.links?.next || !payload.data.length) { complete = true; break; }
     }
     return { jobs, complete, snapshot: false, requests };
@@ -237,10 +263,13 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
   if (source.type === 'remotive') {
     const payload = await get('https://remotive.com/api/remote-jobs') as Json;
     if (!Array.isArray(payload.jobs)) throw new FeedError('INVALID_FEED');
-    for (const j of payload.jobs) jobs.push({ externalId: String(j.id ?? ''), title: text(j.title), company: text(j.company_name),
-      url: text(j.url), description: text(j.description), location: text(j.candidate_required_location),
+    for (const j of payload.jobs) {
+      const listingUrl = text(j.url);
+      jobs.push({ externalId: String(j.id ?? ''), title: text(j.title), company: text(j.company_name),
+      url: listingUrl, listingUrl, applicationUrl: listingUrl, applicationTarget: 'source-job-page', description: text(j.description), location: text(j.candidate_required_location),
       category: text(j.category), tags: list(j.tags), mode: 'Remote', employmentType: text(j.job_type),
       postedAt: iso(j.publication_date), salaryText: text(j.salary) });
+    }
     return { jobs, complete: !payload['total-job-count'] || payload['total-job-count'] <= jobs.length, snapshot: false, requests: 1 };
   }
   if (!source.board || !/^[a-zA-Z0-9_-]{1,80}$/.test(source.board)) throw new FeedError('INVALID_BOARD');
@@ -260,7 +289,9 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
         const j = await get(root + '/' + encodeURIComponent(id)) as Json; requests++;
         if (j.active !== true) continue;
         const sections = j.jobAd?.sections || {};
-        jobs.push({ externalId: id, title: text(j.name), company: source.company!, url: text(j.postingUrl),
+        const listingUrl = text(j.postingUrl), directApplicationUrl = text(j.applyUrl), applicationUrl = directApplicationUrl || listingUrl;
+        jobs.push({ externalId: id, title: text(j.name), company: source.company!, url: listingUrl,
+          listingUrl, applicationUrl, applicationTarget: directApplicationUrl ? 'direct-form' : 'source-job-page',
           description: ['jobDescription', 'qualifications', 'additionalInformation'].map(k => text(sections[k]?.text)).filter(Boolean).join('\n'),
           location: [text(j.location?.city), text(j.location?.region), text(j.location?.country)].filter(Boolean).join(', '), country: text(j.location?.country), city: text(j.location?.city), state: text(j.location?.region),
           category: text(j.function?.label), tags: [text(j.industry?.label)].filter(Boolean), employmentType: text(j.typeOfEmployment?.label),
@@ -275,8 +306,9 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
     if (!Array.isArray(payload.jobs)) throw new FeedError('INVALID_FEED');
     for (const j of payload.jobs) {
       if (j.isListed === false) continue;
-      jobs.push({ externalId: text(j.id) || text(j.jobUrl), title: text(j.title), company: source.company!,
-        url: text(j.jobUrl), description: text(j.descriptionPlain) || text(j.descriptionHtml),
+      const listingUrl = text(j.jobUrl), directApplicationUrl = text(j.applyUrl), applicationUrl = directApplicationUrl || listingUrl;
+      jobs.push({ externalId: text(j.id) || listingUrl, title: text(j.title), company: source.company!,
+        url: listingUrl, listingUrl, applicationUrl, applicationTarget: directApplicationUrl ? 'direct-form' : 'source-job-page', description: text(j.descriptionPlain) || text(j.descriptionHtml),
         location: text(j.location), country: text(j.address?.postalAddress?.addressCountry), category: text(j.department),
         city: text(j.address?.postalAddress?.addressLocality), state: text(j.address?.postalAddress?.addressRegion),
         mode: j.isRemote === true ? 'Remote' : ['Remote', 'Hybrid', 'On-site'].includes(j.workplaceType) ? j.workplaceType : undefined,
@@ -287,9 +319,12 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
   if (source.type === 'greenhouse') {
     const payload = await get(`https://boards-api.greenhouse.io/v1/boards/${board}/jobs?content=true`) as Json;
     if (!Array.isArray(payload.jobs)) throw new FeedError('INVALID_FEED');
-    for (const j of payload.jobs) jobs.push({ externalId: String(j.id ?? ''), title: text(j.title), company: source.company!,
-      url: text(j.absolute_url), description: text(j.content), location: text(j.location?.name),
-      category: text(j.departments?.[0]?.name), updatedAt: iso(j.updated_at) }); // updated_at is not an original posting date.
+    for (const j of payload.jobs) {
+      const listingUrl = text(j.absolute_url);
+      jobs.push({ externalId: String(j.id ?? ''), title: text(j.title), company: source.company!,
+        url: listingUrl, listingUrl, applicationUrl: listingUrl, applicationTarget: 'source-job-page', description: text(j.content), location: text(j.location?.name),
+        category: text(j.departments?.[0]?.name), updatedAt: iso(j.updated_at) }); // updated_at is not an original posting date.
+    }
     return { jobs, complete: true, snapshot: true, requests: 1 };
   }
   let complete = false;
@@ -297,10 +332,13 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
     if (page) await pause(2000);
     const payload = await get(`https://api.lever.co/v0/postings/${board}?mode=json&limit=100&skip=${page * 100}`); requests++;
     if (!Array.isArray(payload)) throw new FeedError('INVALID_FEED');
-    for (const j of payload) jobs.push({ externalId: text(j.id), title: text(j.text), company: source.company!,
-      url: text(j.hostedUrl), description: [text(j.descriptionPlain), ...(Array.isArray(j.lists) ? j.lists.map((x: Json) => `${text(x.text)} ${text(x.content)}`) : []), text(j.additionalPlain)].join('\n'),
+    for (const j of payload) {
+      const listingUrl = text(j.hostedUrl), directApplicationUrl = text(j.applyUrl), applicationUrl = directApplicationUrl || listingUrl;
+      jobs.push({ externalId: text(j.id), title: text(j.text), company: source.company!,
+      url: listingUrl, listingUrl, applicationUrl, applicationTarget: directApplicationUrl ? 'direct-form' : 'source-job-page', description: [text(j.descriptionPlain), ...(Array.isArray(j.lists) ? j.lists.map((x: Json) => `${text(x.text)} ${text(x.content)}`) : []), text(j.additionalPlain)].join('\n'),
       location: text(j.categories?.location), country: text(j.country), category: text(j.categories?.team),
       employmentType: text(j.categories?.commitment), mode: j.workplaceType === 'remote' ? 'Remote' : j.workplaceType === 'hybrid' ? 'Hybrid' : j.workplaceType === 'on-site' ? 'On-site' : undefined });
+    }
     if (payload.length < 100) { complete = true; break; }
   }
   return { jobs, complete, snapshot: true, requests };

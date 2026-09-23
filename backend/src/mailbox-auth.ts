@@ -70,6 +70,37 @@ type MailConnectionProof = {
   expiresAtDate: Date;
 };
 
+type MailboxConsent = {
+  id: string;
+  userId: string;
+  purpose: 'mailbox';
+  granted: boolean;
+  policyVersion: string;
+  consentType: 'mailbox';
+  version: string;
+  status: 'granted' | 'revoked';
+  grantedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  source: 'settings';
+  context: 'mailbox_preferences';
+};
+
+export async function recordMailboxConsent(repository: Repository, userId: string, granted: boolean, now = new Date().toISOString()) {
+  const id = `${userId}:mailbox`;
+  const previous = await repository.get<MailboxConsent>('candidateConsents', id);
+  const consent: MailboxConsent = {
+    id, userId, purpose: 'mailbox', granted, policyVersion: 'privacy-v1', consentType: 'mailbox', version: 'privacy-v1',
+    status: granted ? 'granted' : 'revoked', grantedAt: granted ? now : previous?.grantedAt ?? null,
+    revokedAt: granted ? null : now, createdAt: previous?.createdAt ?? now, updatedAt: now,
+    source: 'settings', context: 'mailbox_preferences',
+  };
+  await repository.put('candidateConsents', consent);
+  await repository.put('candidateConsentEvents', { ...consent, id: randomBytes(16).toString('hex') });
+  return consent;
+}
+
 const outboundMessageSchema = z
   .object({
     to: z.email(),
@@ -77,7 +108,7 @@ const outboundMessageSchema = z
     text: z.string().min(1).max(100_000),
     attachment: z.object({
       filename: z.string().min(1).max(180).refine(value => !/[\r\n"\\]/.test(value)),
-      contentType: z.enum(['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']),
+      contentType: z.enum(['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain']),
       base64: z.string().min(1).max(8_000_000),
     }).strict().optional(),
   })
@@ -425,6 +456,7 @@ export async function disconnectMailbox(user: User) {
     }
     await transaction(async (repository) => {
       await repository.remove('mailboxConnections', user.id);
+      await recordMailboxConsent(repository, user.id, false);
       await audit(repository, user.id, 'mail.disconnected', user.id);
     });
   }
@@ -551,6 +583,7 @@ mailboxAuth.get('/google/callback', async (request, response) => {
     stage = 'connection_persistence';
     await transaction(async (repository) => {
       await repository.put('mailboxConnections', connection);
+      await recordMailboxConsent(repository, user.id, true, now);
       await audit(repository, user.id, 'mail.connected', user.id);
     });
     response.redirect(303, new URL('/profile?mail=connected', appUrl).href);

@@ -44,6 +44,7 @@ export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company'> & {
   identityVisible: boolean;
   sourceLink?: string;
   publicApplicationLink?: string;
+  applicationTarget?: 'direct-form' | 'source-job-page' | 'source-redirect';
 };
 export type Profile = {
   avatarVersion?: string;

@@ -19,6 +19,7 @@ import {
 import type { PublicJob, User } from '@/lib/domain';
 import { CategorySlider } from './category-slider';
 import { ProfileSidebar } from './profile-sidebar';
+import { JobActions } from './job-actions';
 import { countries, states } from '@/lib/domain';
 import { searchIntent } from '@/lib/search-intent';
 import { SupportChatbot } from './support-chatbot';
@@ -142,6 +143,7 @@ export function Discovery({
           state,
           sort: intent.highSalary&&!removed.includes('salary')?'salary':sort,
           page: String(live ? 1 : page),
+          limit: String(pageSize),
           searchMode: semantic || (sort === 'relevant' && !!roleQuery) ? 'semantic' : 'keyword',
         });
         const range:Record<string,string[]>={'0–2 years':['0','2'],'2–5 years':['2','5'],'5+ years':['5','100']};
@@ -152,23 +154,10 @@ export function Discovery({
           filterKey.current = key;
           if (page !== 1) { setPage(1); return; }
         }
-        const visiblePage = live ? 1 : page;
-        const apiPages = pageSize === 24
-          ? [visiblePage * 2 - 1, visiblePage * 2]
-          : [visiblePage];
-        const results = await Promise.all(apiPages.map(async apiPage => {
-          const params = new URLSearchParams(p);
-          params.set('page', String(apiPage));
-          const response = await fetch(`/api/v1/jobs?${params}`);
-          const payload = await response.json();
-          if (!response.ok) throw Error(payload.error?.message || 'Search unavailable');
-          return payload.data;
-        }));
-        const j = {data: {
-          jobs: results.flatMap(result => result.jobs),
-          total: results[0].total,
-          hasMore: results.at(-1)?.hasMore ?? false,
-        }};
+        const response = await fetch(`/api/v1/jobs?${p}`);
+        const payload = await response.json();
+        if (!response.ok) throw Error(payload.error?.message || 'Search unavailable');
+        const j = payload;
         if (requestId === sequence.current) {
           if(live && sort==='discovered') {const known=new Set(previousJobs.current.map(job=>job.id));const arrivals=j.data.jobs.filter((job:PublicJob)=>!known.has(job.id)).map((job:PublicJob)=>job.id);setNewIds(prev=>[...new Set([...prev,...arrivals])]);}
           if(!live){setNewIds([]);}
@@ -474,7 +463,7 @@ export function Discovery({
                     >
                       View Job <ArrowUpRight size={17} />
                     </Link>
-                    {job.publicApplicationLink && /^https?:\/\//i.test(job.publicApplicationLink) ? <a className="primary job-apply" href={job.publicApplicationLink} target="_blank" rel="noopener noreferrer" aria-label={`Apply for ${job.title} on original source`}>Apply <ArrowUpRight size={17}/></a> : <Link className="primary job-apply" href={`/jobs/${job.id}`} aria-label={`Application details for ${job.title}`}>Apply <ArrowRight size={17}/></Link>}
+                    <JobActions jobId={job.id} sample={job.sample} compact />
                     </div>
                   </div>
                 </article>;

@@ -72,8 +72,8 @@ await candidate("me/preferences", "PUT", {
   dailyCap: 1,
 });
 const concurrent = await Promise.allSettled([
-  candidate("applications", "POST", { jobId: "sample-1" }, 201),
-  candidate("applications", "POST", { jobId: "sample-3" }, 201),
+  candidate("applications", "POST", { jobId: "sample-1", confirmed: true }, 201),
+  candidate("applications", "POST", { jobId: "sample-3", confirmed: true }, 201),
 ]);
 assert.equal(
   concurrent.filter((item) => item.status === "fulfilled").length,

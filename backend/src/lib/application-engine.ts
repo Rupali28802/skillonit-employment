@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { isIP } from 'node:net';
 import { z } from 'zod';
 import type { ApplicationStatus, Job, Plan, User } from './domain.js';
 import { isRecent, publicJob } from './domain.js';
@@ -12,6 +13,7 @@ import { configuredCvProviders } from './cv-providers.js';
 import { downloadCv } from './cv-service.js';
 import type { AutomationPreferences } from './student-preferences.js';
 import { consumeEntitlement, entitlementUsage, resolveStudentEntitlements, type StudentEntitlements } from './student-entitlements.js';
+import { renderAts } from './ats-cv.js';
 
 export type ApplicationEvent = { status: ApplicationStatus; at: string; actorId: string; reasonCode?: string };
 export type ApplicationRecord = {
@@ -23,11 +25,27 @@ export type ApplicationRecord = {
   delivery?: { destination: string };
 };
 type Template = { id: string; subject: string; body: string; signature: string; updatedAt?: string };
-type CvVersion = { id: string; userId: string; confirmed: true; documentId?: string; name: string; createdAt: string; profile: unknown };
+type CvVersion = { id: string; userId: string; confirmed: true; documentId?: string; name: string; createdAt: string; profile: User['profile']; content?: string };
 type Consent = { granted: boolean };
 type Mailbox = { status: 'connected' | 'revoked'; email: string; scopes: string[] };
 
-export const applicationRequestSchema = z.object({ jobId: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$/) }).strict();
+export const applicationRequestSchema = z.object({
+  jobId: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$/),
+  /** Required on the state-changing manual endpoint; omitted by read-only previews. */
+  confirmed: z.literal(true).optional(),
+}).strict();
+
+/** Returns only a browser-safe, source-owned HTTPS application destination. */
+export function externalApplicationUrl(job: Pick<Job, 'method' | 'url'>) {
+  if (job.method !== 'external' || !job.url) return undefined;
+  try {
+    const url = new URL(job.url);
+    if (url.protocol !== 'https:' || url.username || url.password || url.port || isIP(url.hostname) || !url.hostname.includes('.') || /(^|\.)(localhost|local|internal|invalid|test)$/.test(url.hostname)) return undefined;
+    return url.href;
+  } catch {
+    return undefined;
+  }
+}
 export const applicationPolicySchema = z.object({
   version: z.string().regex(/^[a-zA-Z0-9._-]{1,60}$/).default('application-v1'),
   delaysMinutes: z.record(z.enum(['basic', 'pro', 'premium']), z.record(z.enum(['direct', 'external', 'email']), z.number().int().min(0).max(10080))).default({
@@ -66,8 +84,12 @@ function render(template: Template, user: User, job: Job) {
 async function prerequisites(r: Repository, user: User, job: Job, entitlements: StudentEntitlements, automation: boolean) {
   const reasons: string[] = [];
   if (!user.verified) reasons.push('EMAIL_UNVERIFIED');
-  if (!user.profile.confirmed || !user.profile.skills.length) reasons.push('PROFILE_UNCONFIRMED');
-  if (!isRecent(job) || job.trust !== 'verified') reasons.push('JOB_UNAVAILABLE');
+  // A source-owned external form receives no candidate data from SkillOnIT, so
+  // opening it must not depend on profile completion. Native/email delivery still
+  // requires reviewed candidate facts.
+  if (job.method !== 'external' && (!user.profile.confirmed || !user.profile.skills.length)) reasons.push('PROFILE_UNCONFIRMED');
+  const approvedPublicExternal = job.method === 'external' && job.feed?.publicListing === true;
+  if (!isRecent(job) || (job.trust !== 'verified' && !approvedPublicExternal)) reasons.push('JOB_UNAVAILABLE');
   const fraud = await assessJob(r, job);
   if (fraud.riskLevel === 'high' || fraud.riskLevel === 'blocked' || (automation && !fraud.automationAllowed)) reasons.push('FRAUD_RISK');
   if (job.sample && process.env.DEMO_MODE !== 'true') reasons.push('SAMPLE_JOB');
@@ -76,7 +98,9 @@ async function prerequisites(r: Repository, user: User, job: Job, entitlements: 
   if (automation && automationConsent?.granted !== true) reasons.push('AUTOMATION_CONSENT_REQUIRED');
   if (automation && (!user.preferences.automation || user.preferences.automationConstraints?.enabled === false)) reasons.push('AUTOMATION_PAUSED');
   const cv = user.activeCvVersionId ? await r.get<CvVersion>('cvVersions', user.activeCvVersionId) : null;
-  const productionAssetsRequired = automation || process.env.DEMO_MODE !== 'true';
+  // Opening a source-owned external form shares no profile, CV or template with that
+  // source. Those assets are required only when SkillonIT will deliver an application.
+  const productionAssetsRequired = automation || (process.env.DEMO_MODE !== 'true' && job.method !== 'external');
   if (productionAssetsRequired && (!cv || cv.userId !== user.id || cv.confirmed !== true)) reasons.push('CONFIRMED_CV_REQUIRED');
   const template = await r.get<Template>('applicationTemplates', user.id);
   if (productionAssetsRequired && !template) reasons.push('APPROVED_TEMPLATE_REQUIRED');
@@ -86,14 +110,14 @@ async function prerequisites(r: Repository, user: User, job: Job, entitlements: 
     const mailConsent = await r.get<Consent>('candidateConsents', user.id + ':mailbox');
     mailboxConnected = !!mailbox && mailbox.status === 'connected' && mailbox.email === user.email.toLowerCase() && mailbox.scopes.length === 1 && mailbox.scopes[0] === 'https://www.googleapis.com/auth/gmail.send';
     if (!mailboxConnected) reasons.push('MAILBOX_REQUIRED');
-    if (mailConsent?.granted !== true) reasons.push('MAILBOX_CONSENT_REQUIRED');
+    // A connected send-only mailbox is itself an explicit Google authorization.
+    // A later explicit platform-level revocation still blocks delivery.
+    if (mailConsent?.granted === false) reasons.push('MAILBOX_CONSENT_REQUIRED');
     const destinationRisk = await assessDestination(r, job);
     if (!job.email || destinationRisk.riskLevel !== 'low') reasons.push('DESTINATION_UNVERIFIED');
-    if (!cv?.documentId || !configuredCvProviders()) reasons.push('CV_ATTACHMENT_UNAVAILABLE');
+    if (!cv?.documentId && !cv?.content && !cv?.profile) reasons.push('CV_ATTACHMENT_UNAVAILABLE');
   }
-  let canonicalExternal = false;
-  try { canonicalExternal = !!job.url && new URL(job.url).protocol === 'https:'; } catch { /* invalid stored URL */ }
-  if (job.method === 'external' && !canonicalExternal) reasons.push('CANONICAL_ATS_URL_REQUIRED');
+  if (job.method === 'external' && !externalApplicationUrl(job)) reasons.push('CANONICAL_ATS_URL_REQUIRED');
   if (job.method === 'direct' && process.env.DEMO_MODE !== 'true') {
     const employer = job.employerId ? await r.get<{ status: string }>('employers', job.employerId) : null;
     if (!employer || employer.status !== 'verified') reasons.push('DIRECT_EMPLOYER_REQUIRED');
@@ -142,13 +166,16 @@ export async function applicationEligibility(userId: string, input: unknown, aut
 }
 
 export async function createApplication(userId: string, input: unknown, automation = false, now = new Date()) {
-  const { jobId } = applicationRequestSchema.parse(input), plans = await configuredPlans();
+  const { jobId, confirmed } = applicationRequestSchema.parse(input), plans = await configuredPlans();
+  if (!automation && confirmed !== true)
+    throw new ApiError(400, 'APPLICATION_CONFIRMATION_REQUIRED', 'Review and confirm this application before continuing.');
   return transaction(async r => {
     const user = await r.get<User>('users', userId);
     if (!user || user.disabled || user.role !== 'student') throw new ApiError(401, 'AUTH_REQUIRED', 'Please sign in again.');
-    const existing = (await r.find<ApplicationRecord>('applications', { userId, jobId }, 1))[0];
-    if (existing) return { application: existing, created: false };
     const job = await r.get<Job>('jobs', jobId); if (!job) throw new ApiError(404, 'NOT_FOUND', 'Job not found.');
+    const externalUrl = externalApplicationUrl(job);
+    const existing = (await r.find<ApplicationRecord>('applications', { userId, jobId }, 1))[0];
+    if (existing) return { application: existing, created: false, externalUrl };
     const entitlements = await resolveStudentEntitlements(r, user, plans, now), plan = entitlements.plan;
     const required = await prerequisites(r, user, job, entitlements, automation), usage = await entitlementUsage(r, user, entitlements, automation ? 'auto_apply' : 'applications', now);
     if (usage.used >= usage.cap) required.reasons.push('DAILY_CAP_REACHED');
@@ -163,7 +190,8 @@ export async function createApplication(userId: string, input: unknown, automati
     const currentPolicy = (await policy(r)).value, delay = currentPolicy.delaysMinutes[plan.code][job.method];
     const eligibleAt = new Date(Math.max(now.getTime(), Date.parse(job.discoveredAt))), scheduledAt = new Date(eligibleAt.getTime() + delay * 60000).toISOString();
     const production = process.env.DEMO_MODE !== 'true';
-    const status: ApplicationStatus = job.method === 'external' ? (automation ? 'NEEDS_REVIEW' : 'EXTERNAL_STARTED') : production ? 'QUEUED' : 'DIRECT_SUBMITTED';
+    // Discovery automation may prepare a record, but never opens or submits it.
+    const status: ApplicationStatus = automation ? 'NEEDS_REVIEW' : job.method === 'external' ? 'EXTERNAL_STARTED' : production ? 'QUEUED' : 'DIRECT_SUBMITTED';
     const message = required.template ? render(required.template, user, job) : { subject: '', text: '' }, application: ApplicationRecord = {
       id: randomUUID(), userId, jobId, employerId: job.employerId, method: job.method, status,
       priority: currentPolicy.priorities[plan.code], createdAt: now.toISOString(), scheduledAt, jobVerifiedAt: eligibleAt.toISOString(), attempts: 0, maxAttempts: currentPolicy.maxSendAttempts, automated: automation,
@@ -175,7 +203,7 @@ export async function createApplication(userId: string, input: unknown, automati
     await consumeEntitlement(r, user, entitlements, 'applications', now);
     if (automation) await consumeEntitlement(r, user, entitlements, 'auto_apply', now);
     await audit(r, userId, 'application.' + status.toLowerCase(), application.id);
-    return { application, created: true, externalUrl: job.method === 'external' ? job.url : undefined };
+    return { application, created: true, externalUrl };
   });
 }
 
@@ -197,9 +225,67 @@ export async function previewApplication(userId: string, input: unknown) {
   return read(async r => {
     const user = await r.get<User>('users', userId), job = await r.get<Job>('jobs', jobId), template = await r.get<Template>('applicationTemplates', userId);
     if (!user || user.disabled || user.role !== 'student') throw new ApiError(401, 'AUTH_REQUIRED', 'Please sign in again.');
-    if (!job) throw new ApiError(404, 'NOT_FOUND', 'Job not found.'); if (!template) throw new ApiError(409, 'APPROVED_TEMPLATE_REQUIRED', 'Save an application template first.');
-    return { jobId, cvVersionId: user.activeCvVersionId ?? null, ...render(template, user, job) };
+    if (!job) throw new ApiError(404, 'NOT_FOUND', 'Job not found.');
+    const mailbox = await r.get<Mailbox>('mailboxConnections', user.id);
+    const mailboxConsent = await r.get<Consent>('candidateConsents', user.id + ':mailbox');
+    const cv = user.activeCvVersionId ? await r.get<CvVersion>('cvVersions', user.activeCvVersionId) : null;
+    const externalUrl = externalApplicationUrl(job);
+    if (job.method === 'external' && !externalUrl) throw new ApiError(409, 'CANONICAL_ATS_URL_REQUIRED', 'A verified source application destination is required.');
+    const destinationHost = externalUrl ? new URL(externalUrl).hostname : null;
+    const mailboxConnected = !!mailbox && mailbox.status === 'connected' && mailbox.email === user.email.toLowerCase() && mailbox.scopes.length === 1 && mailbox.scopes[0] === 'https://www.googleapis.com/auth/gmail.send';
+    const missingRequirements: { code: string; label: string; href: string }[] = [];
+    if (job.method !== 'external') {
+      if (!user.profile.confirmed || !user.profile.skills.length) missingRequirements.push({ code: 'PROFILE_UNCONFIRMED', label: 'Complete and confirm your profile', href: '/profile' });
+      if (!cv || cv.userId !== user.id || cv.confirmed !== true) missingRequirements.push({ code: 'CONFIRMED_CV_REQUIRED', label: 'Select a confirmed CV', href: '/cvs' });
+      if (!template) missingRequirements.push({ code: 'APPROVED_TEMPLATE_REQUIRED', label: 'Save your application message', href: '/templates' });
+    }
+    if (job.method === 'email') {
+      if (!mailboxConnected) missingRequirements.push({ code: 'MAILBOX_REQUIRED', label: 'Connect your Gmail account', href: '/mail' });
+      if (mailboxConsent?.granted === false) missingRequirements.push({ code: 'MAILBOX_CONSENT_REQUIRED', label: 'Allow Gmail applications', href: '/settings' });
+      if (!job.email) missingRequirements.push({ code: 'DESTINATION_UNVERIFIED', label: 'A verified application email is required', href: `/jobs/${job.id}` });
+    }
+    const rendered = template ? render(template, user, job) : null;
+    return {
+      jobId,
+      job: { title: job.title, company: job.company, source: job.source, method: job.method },
+      action: job.method === 'external' ? 'open_source_form' : job.method === 'email' ? 'send_authorized_email' : 'submit_to_employer',
+      destinationHost,
+      destinationKind: job.method === 'external' ? job.feed?.applicationTarget || 'source-job-page' : null,
+      requiresConfirmation: true,
+      readyToConfirm: missingRequirements.length === 0,
+      missingRequirements,
+      dataShared: job.method === 'external' ? [] : ['confirmed candidate profile', ...(user.activeCvVersionId ? ['confirmed CV'] : []), ...(template ? ['approved application message'] : [])],
+      email: {
+        address: user.email,
+        used: job.method === 'email',
+        connected: mailboxConnected,
+        destination: job.method === 'email' ? job.email ?? null : null,
+      },
+      cvVersionId: user.activeCvVersionId ?? null,
+      review: job.method === 'external' ? null : {
+        profile: {
+          name: user.profile.name || user.name,
+          email: user.email,
+          headline: user.profile.headline,
+          location: [user.profile.city, user.profile.country].filter(Boolean).join(', '),
+          skills: user.profile.skills,
+          experience: user.profile.experience,
+          education: user.profile.education,
+          contactInfo: user.profile.contactInfo || '',
+        },
+        cv: cv ? { id: cv.id, name: cv.documentId && configuredCvProviders() ? cv.name : `${cv.name}.txt`, attached: true } : null,
+        message: rendered,
+      },
+      ...(rendered || {}),
+    };
   });
+}
+
+export function profileResumeAttachment(cv: Pick<CvVersion, 'name' | 'content' | 'profile'>) {
+  const filename = `${cv.name.replace(/[^\p{L}\p{N}._ -]/gu, '').trim() || 'resume'}.txt`;
+  const text = cv.content?.trim() || renderAts(cv.profile);
+  if (!text.trim()) throw new ApiError(409, 'CV_ATTACHMENT_UNAVAILABLE', 'The confirmed CV has no reusable content.');
+  return { filename, contentType: 'text/plain' as const, base64: Buffer.from(text, 'utf8').toString('base64') };
 }
 
 export async function scheduleAutomaticApplications(userId: string) {
@@ -258,12 +344,14 @@ export async function processDueEmailApplications(owner: string = randomUUID(), 
       const destination = item.delivery?.destination; if (!destination) throw new Error();
       const job = await read(r => r.get<Job>('jobs', item.jobId)); if (!job) throw new Error();
       const destinationRisk = await read(r => assessDestination(r, job)); if (destinationRisk.riskLevel !== 'low') throw new ApiError(409, 'FRAUD_RISK', 'Application destination requires review.');
-      const providers = configuredCvProviders(); if (!providers || !snapshot.cvVersion.documentId) throw new Error();
-      const attachment = await downloadCv(user.id, snapshot.cvVersion.documentId, providers);
-      if (!['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(attachment.contentType)) throw new Error();
+      const providers = configuredCvProviders();
+      const attachment = snapshot.cvVersion.documentId && providers
+        ? await downloadCv(user.id, snapshot.cvVersion.documentId, providers)
+        : profileResumeAttachment(snapshot.cvVersion);
+      if (!['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'].includes(attachment.contentType)) throw new Error();
       const currentPolicy = await read(async r => (await policy(r)).value);
       await rateLimit('application-provider:gmail', currentPolicy.providerPerMinute);
-      const result = await sendMailboxMessage(user, { to: destination, subject: snapshot.rendered.subject, text: snapshot.rendered.text, attachment: { ...attachment, contentType: attachment.contentType as 'application/pdf' | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' } });
+      const result = await sendMailboxMessage(user, { to: destination, subject: snapshot.rendered.subject, text: snapshot.rendered.text, attachment: { ...attachment, contentType: attachment.contentType as 'application/pdf' | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' | 'text/plain' } });
       await transaction(async r => { const current = await r.get<ApplicationRecord>('applications', item.id); if (current?.leaseOwner !== owner) return; const at = new Date().toISOString(); await r.put('applications', { ...current, status: 'SENT', providerMessageId: result.providerMessageId, leaseOwner: undefined, leaseUntil: undefined, events: [...current.events, { status: 'SENT', at, actorId: 'application-sender' }] }); await audit(r, item.userId, 'application.sent', item.id); });
     } catch (error) {
       await transaction(async r => { const current = await r.get<ApplicationRecord>('applications', item.id); if (current?.leaseOwner !== owner) return; const currentPolicy = (await policy(r)).value, review = error instanceof ApiError && ['FRAUD_RISK', 'ENTITLEMENT_EXPIRED'].includes(error.code), terminal = current.attempts >= current.maxAttempts, at = new Date().toISOString(); const status: ApplicationStatus = review ? 'NEEDS_REVIEW' : terminal ? 'FAILED' : 'QUEUED', reasonCode = error instanceof ApiError && error.code === 'ENTITLEMENT_EXPIRED' ? 'ENTITLEMENT_EXPIRED' : review ? 'FRAUD_RISK' : 'MAIL_SEND_FAILED'; await r.put('applications', { ...current, status, scheduledAt: new Date(Date.now()+currentPolicy.retryMinutes*60000).toISOString(), lastErrorCode: reasonCode, leaseOwner: undefined, leaseUntil: undefined, events: [...current.events, { status, at, actorId: 'application-sender', reasonCode }] }); await audit(r, item.userId, review ? 'application.needs_review' : terminal ? 'application.failed' : 'application.retry_scheduled', item.id); });

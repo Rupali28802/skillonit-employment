@@ -10,6 +10,7 @@ import {
   consumeMailboxConnectionVerification,
   storeMailboxConnectionVerification,
   verifyMailboxConnectionToken,
+  recordMailboxConsent,
 } from '../src/mailbox-auth.js';
 import type { User } from '../src/lib/domain.js';
 import type { Repository, Row } from '../src/lib/store.js';
@@ -61,6 +62,23 @@ test('mailbox refresh credentials are authenticated and encrypted at rest', () =
       key,
     ),
   );
+});
+
+test('connecting and disconnecting Gmail records the corresponding mailbox permission', async () => {
+  const rows = new Map<string, Map<string, Row>>();
+  const bucket = (name: string) => { let value = rows.get(name); if (!value) { value = new Map(); rows.set(name, value); } return value; };
+  const repository: Repository = {
+    async putMany(name, values) { for (const value of values) bucket(name).set(value.id, value); },
+    async page() { return []; }, async count() { return 0; }, async scan() { return []; }, async find() { return []; },
+    async get<T>(name, id) { return (bucket(name).get(id) as T | undefined) ?? null; },
+    async put(name, row) { bucket(name).set(row.id, row); }, async remove(name, id) { bucket(name).delete(id); },
+  };
+  const granted = await recordMailboxConsent(repository, 'candidate', true, '2026-01-01T00:00:00.000Z');
+  assert.equal(granted.status, 'granted');
+  const revoked = await recordMailboxConsent(repository, 'candidate', false, '2026-01-02T00:00:00.000Z');
+  assert.equal(revoked.status, 'revoked');
+  assert.equal(revoked.grantedAt, granted.grantedAt);
+  assert.equal(bucket('candidateConsentEvents').size, 2);
 });
 
 test('mailbox callback fails closed without browser-bound state', async () => {

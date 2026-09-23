@@ -153,16 +153,25 @@ test('paginated adapters never follow arbitrary next URLs and report truncation'
   }, async () => undefined);
   assert.equal(result.jobs.length, 2); assert.equal(result.complete, false);
   assert.deepEqual(urls, ['https://www.arbeitnow.com/api/job-board-api?page=1', 'https://www.arbeitnow.com/api/job-board-api?page=2']);
+  assert.equal(result.jobs[0].applicationTarget, 'source-job-page');
 });
 test('Ashby, Greenhouse, Lever and Remotive adapters preserve supplied dates and pagination semantics', async () => {
-  const ashby = await fetchFeed(source, async () => ({ jobs: [{ id: '1', title: 'Role', isListed: true, jobUrl: 'https://jobs.ashbyhq.com/example/1', publishedAt: '2026-09-01T00:00:00Z', descriptionPlain: 'Role facts', address: { postalAddress: { addressCountry: 'USA' } } }] }));
+  const ashby = await fetchFeed(source, async () => ({ jobs: [{ id: '1', title: 'Role', isListed: true, jobUrl: 'https://jobs.ashbyhq.com/example/1', applyUrl: 'https://jobs.ashbyhq.com/example/1/application', publishedAt: '2026-09-01T00:00:00Z', descriptionPlain: 'Role facts', address: { postalAddress: { addressCountry: 'USA' } } }] }));
   assert.equal(ashby.jobs[0].country, 'USA'); assert.ok(ashby.snapshot);
+  assert.equal(ashby.jobs[0].applicationTarget, 'direct-form');
   const gh = await fetchFeed({ ...source, type: 'greenhouse' }, async () => ({ jobs: [{ id: 1, updated_at: '2026-09-01', title: 'Role', absolute_url: 'https://job-boards.greenhouse.io/example/jobs/1', content: 'Role facts', location: { name: 'London' } }] }));
   assert.equal(gh.jobs[0].postedAt, undefined);
-  const lever = await fetchFeed({ ...source, type: 'lever' }, async () => [{ id: '1', text: 'Role', hostedUrl: 'https://jobs.lever.co/example/1', categories: { location: 'Remote' }, descriptionPlain: 'Role facts' }]);
+  assert.equal(gh.jobs[0].applicationTarget, 'source-job-page');
+  const lever = await fetchFeed({ ...source, type: 'lever' }, async () => [{ id: '1', text: 'Role', hostedUrl: 'https://jobs.lever.co/example/1', applyUrl: 'https://jobs.lever.co/example/1/apply', categories: { location: 'Remote' }, descriptionPlain: 'A complete role description supplied by the employer.' }]);
   assert.equal(lever.jobs.length, 1); assert.equal(lever.complete, true);
+  const leverJob = normalize(lever.jobs[0], { ...source, type: 'lever' });
+  assert.equal(leverJob.url, 'https://jobs.lever.co/example/1/apply');
+  assert.equal(publicJob(leverJob).sourceLink, 'https://jobs.lever.co/example/1');
+  assert.equal(publicJob(leverJob).publicApplicationLink, 'https://jobs.lever.co/example/1/apply');
+  assert.equal(publicJob(leverJob).applicationTarget, 'direct-form');
   const remote = await fetchFeed(publicSources.find(s => s.type === 'remotive')!, async () => ({ jobs: [{ id: 1, title: 'Role', url: 'https://remotive.com/jobs/role', company_name: 'Employer', publication_date: '2026-09-01T10:00:00', candidate_required_location: 'Worldwide' }] }));
   assert.equal(remote.jobs[0].postedAt, '2026-09-01T10:00:00.000Z'); assert.equal(remote.snapshot, false);
+  assert.equal(remote.jobs[0].applicationTarget, 'source-job-page');
 });
 test('repeated syncs are idempotent, keep first discovery date and respect schedule', async () => {
   await upsertSource(source);
@@ -255,7 +264,7 @@ test('Jobicy keeps attribution, geography and salary period; snapshots are never
   assert.equal(j.country, 'Australia'); assert.equal(j.mode, 'Remote'); assert.equal(j.type, 'part-time');
   assert.equal(j.salaryText, 'AUD 25–35 hourly'); assert.equal(b.snapshot, false);
   assert.equal(publicJob(j).sourceLink, 'https://jobicy.com/jobs/1');
-  assert.throws(() => normalize({ ...b.jobs[0], url: 'https://other.example.com/job' }, s));
+  assert.throws(() => normalize({ ...b.jobs[0], url: 'https://other.example.com/job', listingUrl: 'https://other.example.com/job', applicationUrl: 'https://other.example.com/job' }, s));
 });
 
 test('gated providers fail before network without credentials; invalid Adzuna countries fail validation', async () => {
@@ -292,11 +301,14 @@ test('USAJOBS preserves overseas locations, eligibility text and closing date', 
     const b = await fetchFeed({ ...source, type: 'usajobs' }, async (_url, headers) => {
       assert.equal(headers?.['Authorization-Key'], 'fixture-key');
       return { SearchResult: { SearchResultCountAll: 1, SearchResultItems: [{ MatchedObjectId: 1, MatchedObjectDescriptor: {
-        PositionTitle: 'Librarian', OrganizationName: 'Agency', PositionURI: 'https://www.usajobs.gov/job/1', PositionLocationDisplay: 'Tokyo, Japan', PositionLocation: [{ CountryCode: 'Japan' }], PublicationStartDate: new Date().toISOString(), ApplicationCloseDate: closesAt,
+        PositionTitle: 'Librarian', OrganizationName: 'Agency', PositionURI: 'https://www.usajobs.gov/job/1', ApplyURI: ['https://www.usajobs.gov/job/1/apply'], PositionLocationDisplay: 'Tokyo, Japan', PositionLocation: [{ CountryCode: 'Japan' }], PublicationStartDate: new Date().toISOString(), ApplicationCloseDate: closesAt,
         UserArea: { Details: { JobSummary: 'Manage a research library and its information services.', WhoMayApply: { Name: 'United States Citizens' } } }, PositionSchedule: [{ Name: 'Full Time' }], JobCategory: [{ Name: 'Library Science' }] } }] } };
     });
     const j = normalize(b.jobs[0], { ...source, type: 'usajobs' });
     assert.equal(j.country, 'Japan'); assert.equal(j.expiresAt, closesAt); assert.ok(j.description.includes('United States Citizens'));
+    assert.equal(j.url, 'https://www.usajobs.gov/job/1/apply');
+    assert.equal(publicJob(j).sourceLink, 'https://www.usajobs.gov/job/1');
+    assert.equal(publicJob(j).applicationTarget, 'direct-form');
     assert.throws(() => normalize({ ...b.jobs[0], closesAt: '2000-01-01' }, source));
   } finally { if (oldKey === undefined) delete process.env.USAJOBS_API_KEY; else process.env.USAJOBS_API_KEY = oldKey; if (oldUa === undefined) delete process.env.USAJOBS_USER_AGENT; else process.env.USAJOBS_USER_AGENT = oldUa; }
 });
@@ -332,6 +344,7 @@ test('country rollout covers every directory entry and queries explicit eligibil
   assert.ok(j.description.includes('UTC+5:30'));
   assert.equal(publicJob(j).sourceLink, 'https://himalayas.app');
   assert.equal(publicJob(j).publicApplicationLink, 'https://careers.example.com/india-role');
+  assert.equal(publicJob(j).applicationTarget, 'direct-form');
 });
 
 test('missing Himalayas geography is never treated as worldwide and empty feed is a valid result', async () => {
@@ -375,7 +388,7 @@ test('JobSearch paginates, preserves occupations, maps only explicit Sweden and 
     const parsed = new URL(url); assert.equal(parsed.origin, 'https://jobsearch.api.jobtechdev.se');
     assert.equal(parsed.searchParams.get('sort'), 'pubdate-desc');
     assert.equal(parsed.searchParams.get('offset'), String(calls++ * 100));
-    const ad = { id: 'a', headline: 'Lärare', employer: { name: 'School' }, webpage_url: 'https://arbetsformedlingen.se/platsbanken/annonser/a',
+    const ad = { id: 'a', headline: 'Lärare', employer: { name: 'School' }, webpage_url: 'https://arbetsformedlingen.se/platsbanken/annonser/a', application_details: { url: 'https://school.example.com/jobs/a/apply', email: 'careers@school.example.com' },
       description: { text: 'Teaching children in a supportive school environment.' }, workplace_address: { country: 'Sverige', municipality: 'Stockholm' },
       working_hours_type: { label: 'Heltid' }, occupation: { label: 'Lärare' }, publication_date: '2026-09-11T09:00:00', application_deadline: '2026-12-31T23:59:59' };
     return { total: { value: 101 }, hits: calls === 1 ? Array.from({ length: 100 }, () => ad) : [{ ...ad, removed: true }] };
@@ -383,6 +396,11 @@ test('JobSearch paginates, preserves occupations, maps only explicit Sweden and 
   assert.equal(calls, 2); assert.equal(result.jobs.length, 100); assert.equal(result.complete, true); assert.equal(result.snapshot, false);
   assert.equal(result.jobs[0].country, 'Sweden'); assert.equal(result.jobs[0].employmentType, 'Full-time');
   assert.equal(result.jobs[0].postedAt, undefined); assert.equal(result.jobs[0].closesAt, '2026-12-31T00:00:00.000Z');
+  assert.equal(result.jobs[0].listingUrl, 'https://arbetsformedlingen.se/platsbanken/annonser/a');
+  assert.equal(result.jobs[0].applicationUrl, 'https://school.example.com/jobs/a/apply');
+  assert.equal(result.jobs[0].applicationEmail, 'careers@school.example.com');
+  assert.equal(result.jobs[0].applicationTarget, 'direct-form');
+  assert.equal(normalize(result.jobs[0], config).method, 'external', 'the direct application form takes precedence over email');
   assert.deepEqual(result.jobs[0].tags, ['Lärare']);
   const partial = await fetchFeed({ ...config, maxPages: 1 }, async () => ({ hits: Array(100).fill({}), total: { value: 900 } }));
   assert.equal(partial.complete, false);
@@ -431,9 +449,10 @@ test('SmartRecruiters only retrieves public active postings from a fixed company
   const result = await fetchFeed(config, async url => {
     urls.push(url);
     if (url.includes('?')) return { totalFound: 2, content: [{ id: 'one', ref: 'https://evil.invalid/private' }, { id: 'two' }] };
-    return { active: url.endsWith('/one'), name: 'Teacher', postingUrl: 'https://jobs.smartrecruiters.com/example/one', jobAd: { sections: { jobDescription: { text: 'Teach and support students in a welcoming classroom.' } } }, location: { country: 'in' } };
+    return { active: url.endsWith('/one'), name: 'Teacher', postingUrl: 'https://jobs.smartrecruiters.com/example/one', applyUrl: 'https://jobs.smartrecruiters.com/example/one?oga=true', jobAd: { sections: { jobDescription: { text: 'Teach and support students in a welcoming classroom.' } } }, location: { country: 'in' } };
   }, async () => undefined);
   assert.equal(result.jobs.length, 1); assert.equal(result.requests, 3); assert.equal(result.complete, true);
+  assert.equal(result.jobs[0].applicationTarget, 'direct-form');
   assert.ok(urls.every(url => url.startsWith('https://api.smartrecruiters.com/v1/companies/example/postings')));
   await assert.rejects(fetchFeed(config, async () => ({ content: [{ id: '../private' }] })), /INVALID_POSTING_ID/);
   assert.equal(sourceSchema.safeParse({ ...config, board: undefined }).success, false);
@@ -534,4 +553,31 @@ test('live discovery sorts by discovery and filters overlapping disclosed experi
   assert.equal((await searchJobs(new URLSearchParams('experienceMin=0&experienceMax=2'))).total,1);
   assert.equal((await searchJobs(new URLSearchParams('experienceMin=5&experienceMax=100'))).total,1);
   assert.equal((await searchJobs(new URLSearchParams('experienceMin=bad'))).total,0);
+});
+
+test('JobSearch email-only applications use the verified Gmail delivery flow', async () => {
+  const config = sourceSchema.parse({ ...source, type: 'jobtech', intervalMinutes: 360, maxPages: 1 });
+  const base = { id: 'email-role', headline: 'Support specialist', employer: { name: 'School' }, webpage_url: 'https://arbetsformedlingen.se/platsbanken/annonser/email-role',
+    description: { text: 'Support candidates and customers through a verified recruitment process.' }, workplace_address: { country: 'Sverige', municipality: 'Stockholm' },
+    application_details: { email: 'Careers@School.Example.com' }, application_deadline: '2026-12-31T23:59:59' };
+  const result = await fetchFeed(config, async () => ({ total: { value: 1 }, hits: [base] }), async () => undefined);
+  const job = normalize(result.jobs[0], config);
+  assert.equal(job.method, 'email');
+  assert.equal(job.email, 'careers@school.example.com');
+  assert.equal(job.url, base.webpage_url);
+
+  const invalid = await fetchFeed(config, async () => ({ total: { value: 1 }, hits: [{ ...base, application_details: { email: 'not-an-email' } }] }), async () => undefined);
+  assert.equal(normalize(invalid.jobs[0], config).method, 'external', 'unverified email text never becomes a delivery destination');
+});
+
+test('job search supports responsive page sizes for infinite loading', async () => {
+  const base={...sampleJobs()[0],sample:false};
+  const now=Date.now();
+  await transaction(async r=>{for(let i=0;i<30;i++)await r.put('jobs',{...base,id:`pagination-${String(i).padStart(2,'0')}`,title:`Pagination Engineer ${i}`,discoveredAt:new Date(now-i*1000).toISOString(),expiresAt:new Date(now+86400000).toISOString()});});
+  const desktop=await searchJobs(new URLSearchParams('q=pagination&sort=discovered&limit=24&page=1'));
+  const remainder=await searchJobs(new URLSearchParams('q=pagination&sort=discovered&limit=24&page=2'));
+  const mobile=await searchJobs(new URLSearchParams('q=pagination&sort=discovered&limit=12&page=1'));
+  assert.equal(desktop.jobs.length,24); assert.equal(desktop.hasMore,true);
+  assert.equal(remainder.jobs.length,6); assert.equal(remainder.hasMore,false);
+  assert.equal(mobile.jobs.length,12); assert.equal(mobile.limit,12);
 });

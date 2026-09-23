@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
 import he from 'he';
+import { z } from 'zod';
 import type { Job } from '../lib/domain.js';
 import type { Candidate } from './adapters.js';
 import type { FeedSource } from './sources.js';
@@ -56,8 +57,14 @@ export function categoryFor(c: Candidate) {
 export function normalize(c: Candidate, source: FeedSource, now = Date.now()): Job {
   const title = plain(c.title, 240), company = plain(c.company, 150), description = plain(c.description);
   if (!c.externalId || c.externalId.length > 2000 || !title || !company || description.length < 30) throw Error('MISSING_JOB_FACTS');
-  const canonical = canonicalUrl(c.url);
-  const url = ['adzuna', 'jooble'].includes(source.type) ? new URL(c.url).href : canonical;
+  const canonical = canonicalUrl(c.listingUrl || c.url);
+  const rawApplicationUrl = c.applicationUrl || c.url;
+  const url = ['adzuna', 'jooble'].includes(source.type) ? new URL(rawApplicationUrl).href : canonicalUrl(rawApplicationUrl);
+  const applicationTarget = c.applicationTarget || (['adzuna', 'jooble'].includes(source.type) ? 'source-redirect' : rawApplicationUrl === (c.listingUrl || c.url) ? 'source-job-page' : 'direct-form');
+  const parsedApplicationEmail = z.email().safeParse(c.applicationEmail?.trim().toLowerCase());
+  // A direct form takes precedence. Email delivery is used only when an approved
+  // feed explicitly supplies a valid recruitment mailbox and no form is available.
+  const applicationEmail = applicationTarget !== 'direct-form' && parsedApplicationEmail.success ? parsedApplicationEmail.data : undefined;
   if (source.type === 'remoteok' && new URL(url).hostname !== 'remoteok.com') throw Error('INVALID_ATTRIBUTION');
   if (source.type === 'jobicy' && new URL(url).hostname !== 'jobicy.com') throw Error('INVALID_ATTRIBUTION');
   if (source.type === 'usajobs' && !['www.usajobs.gov', 'usajobs.gov'].includes(new URL(url).hostname)) throw Error('INVALID_ATTRIBUTION');
@@ -101,7 +108,8 @@ export function normalize(c: Candidate, source: FeedSource, now = Date.now()): J
     normalizedFacts: facts, risk,
     ...(updatedAt ? { sourceUpdatedAt: updatedAt } : {}),
     ...(facts.expiresAt ? { sourceExpiresAt: facts.expiresAt } : {}),
-    description, requirements: 'See the original listing for the complete requirements.', method: 'external', url,
+    description, requirements: 'See the original listing for the complete requirements.', method: applicationEmail ? 'email' : 'external', url,
+    ...(applicationEmail ? { email: applicationEmail } : {}),
     status: source.publish && !suspicious ? 'published' : 'review', trust: suspicious ? 'flagged' : 'pending',
     employerId: '', source: source.name, discoveredAt: stamp,
     // Keep a vacancy active for at most 90 days from its source posting date.
@@ -109,8 +117,8 @@ export function normalize(c: Candidate, source: FeedSource, now = Date.now()): J
     // An explicit employer closing date always wins when it is earlier.
     expiresAt: new Date(Math.min((posted ?? now) + 90 * 86400000, closing ?? Infinity)).toISOString(),
     ...(posted !== undefined ? { sourcePostedAt: new Date(posted).toISOString() } : {}),
-    feed: { sourceId: source.id, externalId: c.externalId, publicListing: source.publicListing,
-      attributionUrl: source.type === 'himalayas' ? 'https://himalayas.app' : url, lastSeenAt: stamp },
+    feed: { sourceId: source.id, externalId: c.externalId, publicListing: source.publicListing, applicationTarget,
+      attributionUrl: source.type === 'himalayas' ? 'https://himalayas.app' : canonical, lastSeenAt: stamp },
   };
 }
 export const duplicateKey = (j: Job) => hash([j.title, j.company, j.city, j.country, j.description].join('|').toLowerCase().replace(/\s+/g, ' ').trim());

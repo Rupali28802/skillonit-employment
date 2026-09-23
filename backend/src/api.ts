@@ -63,6 +63,7 @@ import {
   createApplication,
   getApplicationPolicy,
   employerApplication,
+  externalApplicationUrl,
   previewApplication,
   publicApplication,
   type ApplicationRecord as App,
@@ -604,24 +605,31 @@ export async function handle(
     if (
       parts[0] === "applications" &&
       parts.length === 3 &&
-      ["cancel", "open-external", "confirm-external", "withdraw"].includes(parts[2]) &&
+      ["cancel", "approve", "open-external", "confirm-external", "withdraw"].includes(parts[2]) &&
       method === "POST"
     ) {
       const u = await requireUser("student");
+      if (parts[2] === 'approve') {
+        const approval = z.object({ confirmed: z.literal(true) }).strict().parse(await body());
+        if (!approval.confirmed) throw new ApiError(400, 'APPLICATION_CONFIRMATION_REQUIRED', 'Review and confirm this application before continuing.');
+      }
       let openedExternalUrl: string | undefined;
       if (parts[2] === 'open-external') {
         const application = await read(r => r.get<App>('applications', parts[1]));
         if (!application || application.userId !== u.id || application.method !== 'external') throw new ApiError(404, 'NOT_FOUND', 'Application not found.');
         const job = await read(r => r.get<Job>('jobs', application.jobId));
-        try { if (!job?.url || new URL(job.url).protocol !== 'https:') throw new Error(); openedExternalUrl = job.url; }
-        catch { throw new ApiError(409, 'CANONICAL_ATS_URL_REQUIRED', 'A verified ATS destination is required.'); }
+        openedExternalUrl = job ? externalApplicationUrl(job) : undefined;
+        if (!openedExternalUrl) throw new ApiError(409, 'CANONICAL_ATS_URL_REQUIRED', 'A verified source application destination is required.');
       }
       await transaction(async (r) => {
         const a = await r.get<App>("applications", parts[1]);
         if (!a || a.userId !== u.id) throw new ApiError(404, "NOT_FOUND", "Application not found.");
+        if (parts[2] === 'approve' && a.method === 'external') throw new ApiError(409, 'INVALID_TRANSITION', 'External applications must be opened on the source form.');
         const target: ApplicationStatus =
           parts[2] === "cancel"
             ? "CANCELLED"
+            : parts[2] === 'approve'
+              ? 'QUEUED'
             : parts[2] === 'open-external'
               ? 'EXTERNAL_STARTED'
             : parts[2] === "confirm-external"
