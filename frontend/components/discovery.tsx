@@ -1,6 +1,7 @@
 'use client';
 import '@/app/vertical-feed.css';
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo, type CSSProperties } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import {
   ArrowUpRight,
@@ -61,12 +62,15 @@ export function Discovery({
   const [clock, setClock] = useState(0);
   const [newIds, setNewIds] = useState<string[]>([]);
   const [newCount, setNewCount] = useState(0);
+  const [displayedNewJobs, setDisplayedNewJobs] = useState(0);
   const arrivalBaseline = useRef('');
   const latestMeasurement = useRef('');
-  const [stats, setStats] = useState<{sourcesOnline:number;detectedToday:number;newJobs:number;countries:number|null;workerOnline?:boolean}|null>(null);
+  const [stats, setStats] = useState<{detectedToday:number;newJobs:number;countries:number|null;workerOnline?:boolean}|null>(null);
   const previousJobs = useRef<PublicJob[]>(initialJobs.slice(0, 12));
   const feed = useRef<HTMLDivElement>(null);
   const [savedIds, setSavedIds] = useState<string[]>([]);
+  const [profileFloat, setProfileFloat] = useState({ visible: false, y: 0 });
+  const profileFloatFrame = useRef(0);
   useEffect(() => {
     const desktop = window.matchMedia('(min-width: 761px)');
     const resizePage = () => {
@@ -81,6 +85,41 @@ export function Discovery({
     desktop.addEventListener('change', resizePage);
     return () => desktop.removeEventListener('change', resizePage);
   }, []);
+  useEffect(() => {
+    if (!user) return;
+    const updateProfileFloat = () => {
+      cancelAnimationFrame(profileFloatFrame.current);
+      profileFloatFrame.current = requestAnimationFrame(() => {
+        const grid = document.querySelector<HTMLElement>('.discovery-grid');
+        if (!grid || window.innerWidth <= 1150) {
+          setProfileFloat({ visible: false, y: 0 });
+          return;
+        }
+        const gridTop = window.scrollY + grid.getBoundingClientRect().top;
+        const distance = window.scrollY - gridTop;
+        const trigger = 110;
+        const visible = distance > trigger;
+        const followDistance = Math.max(0, distance - trigger);
+        const y = Math.min(
+          grid.offsetHeight - 80,
+          Math.max(0, distance + 230 + followDistance * .1),
+        );
+        setProfileFloat(current =>
+          current.visible === visible && Math.abs(current.y - y) < 1
+            ? current
+            : { visible, y },
+        );
+      });
+    };
+    updateProfileFloat();
+    window.addEventListener('scroll', updateProfileFloat, { passive: true });
+    window.addEventListener('resize', updateProfileFloat);
+    return () => {
+      cancelAnimationFrame(profileFloatFrame.current);
+      window.removeEventListener('scroll', updateProfileFloat);
+      window.removeEventListener('resize', updateProfileFloat);
+    };
+  }, [user]);
   useEffect(()=>{const initial=setTimeout(()=>setClock(Date.now()),0);const timer=setInterval(()=>setClock(Date.now()),30000);return()=>{clearTimeout(initial);clearInterval(timer);};},[]);
   useEffect(()=>{
     let cancelled=false, loading=false;
@@ -101,12 +140,28 @@ export function Discovery({
     void refresh();const timer=setInterval(()=>void refresh(),15000);
     return()=>{cancelled=true;clearInterval(timer);};
   },[]);
+  useEffect(() => {
+    if (typeof stats?.newJobs !== 'number') return;
+    const target = Math.max(0, stats.newJobs);
+    const delay = target > 100 ? 45 : 70;
+    const timer = window.setInterval(() => {
+      setDisplayedNewJobs(current => {
+        if (current === target) {
+          window.clearInterval(timer);
+          return current;
+        }
+        return current + (current < target ? 1 : -1);
+      });
+    }, delay);
+    return () => window.clearInterval(timer);
+  }, [stats?.newJobs]);
   function discoveredTime(value:string){const age=clock-Date.parse(value);if(!clock||!Number.isFinite(age))return 'Time unavailable';const minutes=Math.max(0,Math.floor(age/60000));return minutes===0?'Just now':minutes<60?`${minutes} min ago`:minutes<1440?`${Math.floor(minutes/60)} hour${minutes>=120?'s':''} ago`:`${Math.floor(minutes/1440)} days ago`;}
   const intent = useMemo(() => searchIntent(query, countries), [query]);
   const roleQuery = removed.includes('role') ? '' : intent.role;
   const activeCountry = country || (removed.includes('country') ? '' : intent.country);
   const activeMode = mode || (removed.includes('mode') ? '' : intent.mode);
   const activeExperience = experience || (removed.includes('experience') ? '' : intent.experience);
+  const radarFilterCount = [activeCountry, activeMode, jobType, activeExperience].filter(Boolean).length;
   function updateQuery(value: string) { setQuery(value); setRemoved([]); setPage(1); }
   function removeChip(key: string) {
     setRemoved(prev => [...prev,key]); setPage(1);
@@ -217,10 +272,18 @@ export function Discovery({
         : j.error?.message || 'Could not save job.',
     );
   }
+  const profileInitials = (user?.name || 'Your profile')
+    .split(' ')
+    .slice(0, 2)
+    .map(word => word[0])
+    .join('');
+  const profileSummary = user?.profile.headline ||
+    [user?.profile.city, user?.profile.country].filter(Boolean).join(', ') ||
+    'Building my next career move';
   return (
     <>
       <section className="live-discovery" aria-labelledby="live-discovery-heading">
-        <div className="radar-metrics" aria-label="Live discovery statistics"><strong>LIVE DISCOVERY</strong><div className="radar-metric-values">{[['Sources online',stats?.sourcesOnline],['Detected today (UTC)',stats?.detectedToday],['New in 10 minutes',stats?.newJobs],['Countries / territories · includes eligibility',stats?.countries]].map(([label,value])=><span key={label}><b>{typeof value==='number'?value.toLocaleString():'—'}</b>{label}</span>)}</div></div>
+        <div className="radar-metrics" aria-label="Live discovery statistics"><strong>LIVE DISCOVERY</strong><div className="radar-metric-values">{[['Total matching opportunities',total],['Detected today (UTC)',stats?.detectedToday],['New in 10 minutes',displayedNewJobs],['Countries / territories · includes eligibility',stats?.countries]].map(([label,value])=><span className={label==='New in 10 minutes'?'radar-metric-live':undefined} key={label} aria-label={label==='New in 10 minutes'?`${value} new jobs in the last ten minutes`:undefined}><b className={label==='New in 10 minutes'?'radar-live-count':undefined} key={label==='New in 10 minutes'?displayedNewJobs:label} aria-hidden={label==='New in 10 minutes'?true:undefined}>{typeof value==='number'?value.toLocaleString():'—'}</b>{label}</span>)}</div></div>
         <div className="live-discovery-top">
           <div><div className="discovery-kicker"><Sparkles size={15}/> SKILLONIT EMPLOYMENT</div>
             <h1 id="live-discovery-heading">Find the Right Job. <span>Faster, Smarter, Globally.</span></h1>
@@ -240,8 +303,22 @@ export function Discovery({
         </div>
         <div className="discovery-footnote"><span><Globe2 size={14}/> Across connected worldwide sources</span><span>{listening?'Listening…':updatedAt?`Results updated ${updatedAt}`:'Fresh opportunities, one place'}</span></div>
       </section>
-      <div className="discovery-grid">
-        <ProfileSidebar user={user} />
+      <div className={`discovery-grid${user ? '' : ' discovery-grid-public'}`}>
+        {user && <div className="discovery-left-column">
+          <ProfileSidebar user={user} />
+          <div className={`profile-scroll-float${profileFloat.visible ? ' is-visible' : ''}`} style={{ '--profile-scroll-y': `${profileFloat.y}px` } as CSSProperties}>
+            <Link className="moving-profile-pill" href="/profile" aria-label={`Open ${user.name || 'your'} profile`}>
+              <span className="moving-profile-avatar">
+                {user.profile.avatarVersion ? <Image src={`/api/v1/me/profile-image/avatar?v=${user.profile.avatarVersion}`} alt={`${user.name || 'Your'} profile photo`} width={46} height={46} unoptimized /> : <span>{profileInitials}</span>}
+              </span>
+              <span className="moving-profile-copy">
+                <strong>{user.name || 'Your profile'}</strong>
+                <small>{profileSummary}</small>
+              </span>
+              <i className="moving-profile-status" aria-hidden="true" />
+            </Link>
+          </div>
+        </div>}
         <section className="results live-job-feed" id="job-results">
           <div className="section-line">
             <div>
@@ -250,26 +327,42 @@ export function Discovery({
             </div>
           </div>
           <CategorySlider value={category} onChange={(value) => { setCategory(value); setPage(1); }} />
-          <div className="radar-filters" aria-label="Worldwide locations">{[['All locations',''],['India','India'],['USA','United States'],['UK','United Kingdom'],['Canada','Canada'],['Germany','Germany'],['Australia','Australia'],['UAE','United Arab Emirates'],['Singapore','Singapore'],['Remote worldwide','Worldwide']].map(([label,value])=><button key={label} aria-pressed={activeCountry===value} onClick={()=>{setCountry(value);setRemoved(p=>[...p,'country']);setState('');setPage(1);if(value==='Worldwide')setMode('Remote');}}>{label==='All locations'?'🌍 Worldwide':label}</button>)}</div>
-          <div className="radar-filters" aria-label="Job filters">{['Fresher','Internship','Full-time','Part-time','Contract','Remote','Hybrid','On-site'].map(label=><button key={label} aria-pressed={label==='Fresher'?activeExperience==='0':label.includes('years')?experience===label:jobType===label||activeMode===label} onClick={()=>{setPage(1);if(['Remote','Hybrid','On-site'].includes(label)){setMode(activeMode===label?'':label);setRemoved(p=>[...p,'mode']);}else if(label==='Fresher'||label.includes('years')){setExperience(experience===(label==='Fresher'?'0':label)?'':label==='Fresher'?'0':label);setRemoved(p=>[...p,'experience']);}else setJobType(jobType===label?'':label);}}>{label}</button>)}</div>
           <div className="results-toolbar">
-            <span>
-              {total.toLocaleString()} matching opportunities{' '}
-            </span>
-            <select
-              aria-label="Sort jobs"
-              value={sort}
-              onChange={(e) => { setSort(e.target.value); setPage(1); }}
-            >
-              <option value="discovered">Latest</option>
-              <option value="relevant">Relevant</option>
-            </select>
-            <button
-              className="mobile-filter"
-              onClick={() => setFilters(!filters)}
-            >
-              Filters
-            </button>
+            <div className="results-tools">
+              <details className="radar-filter-menu">
+                <summary>
+                  <SlidersHorizontal size={14} /> Match preferences
+                  {radarFilterCount > 0 && <span>{radarFilterCount}</span>}
+                </summary>
+                <div className="radar-filter-popover">
+                  <div className="radar-filter-group">
+                    <strong>Location</strong>
+                    <div className="radar-filters" aria-label="Worldwide locations">{[['All locations',''],['India','India'],['USA','United States'],['UK','United Kingdom'],['Canada','Canada'],['Germany','Germany'],['Australia','Australia'],['UAE','United Arab Emirates'],['Singapore','Singapore'],['Remote worldwide','Worldwide']].map(([label,value])=><button type="button" key={label} aria-pressed={activeCountry===value} onClick={()=>{setCountry(value);setRemoved(p=>[...p,'country']);setState('');setPage(1);if(value==='Worldwide')setMode('Remote');}}>{label==='All locations'?'🌍 Worldwide':label}</button>)}</div>
+                  </div>
+                  <div className="radar-filter-group">
+                    <strong>Job preferences</strong>
+                    <div className="radar-filters" aria-label="Job filters">{['Fresher','Internship','Full-time','Part-time','Contract','Remote','Hybrid','On-site'].map(label=><button type="button" key={label} aria-pressed={label==='Fresher'?activeExperience==='0':label.includes('years')?experience===label:jobType===label||activeMode===label} onClick={()=>{setPage(1);if(['Remote','Hybrid','On-site'].includes(label)){setMode(activeMode===label?'':label);setRemoved(p=>[...p,'mode']);}else if(label==='Fresher'||label.includes('years')){setExperience(experience===(label==='Fresher'?'0':label)?'':label==='Fresher'?'0':label);setRemoved(p=>[...p,'experience']);}else setJobType(jobType===label?'':label);}}>{label}</button>)}</div>
+                  </div>
+                </div>
+              </details>
+              <label className="result-sort-select">
+                <span className="sr-only">Sort jobs</span>
+                <select
+                  aria-label="Sort jobs"
+                  value={sort}
+                  onChange={(e) => { setSort(e.target.value); setPage(1); }}
+                >
+                  <option value="discovered">Latest first</option>
+                  <option value="relevant">Best match</option>
+                </select>
+              </label>
+              <button
+                className="mobile-filter"
+                onClick={() => setFilters(!filters)}
+              >
+                Advanced filters
+              </button>
+            </div>
           </div>
           {filters && (
             <div className="panel">
@@ -387,14 +480,15 @@ export function Discovery({
               {jobs.map((job) => {
                 const freshness = job.sourcePostedAt || job.discoveredAt;
                 const freshnessLabel = job.sourcePostedAt ? 'Posted' : 'Discovered';
+                const experienceLabel = job.experienceDisclosed === false ? 'Experience not specified' : job.experienceMin === 0 && job.experienceMax === 0
+                  ? 'Fresher welcome'
+                  : `${job.experienceMin}–${job.experienceMax} years`;
                 return <article className="job-card vertical-job-card" data-job-id={job.id} data-new={newIds.includes(job.id)} key={job.id}>
-                  <div className="company-heading">
-                    <div className="company-monogram" aria-label={`${job.company} initials`}>{job.company.split(/\s+/).slice(0,2).map(word=>word[0]).join('')}</div>
-                    <time className="job-freshness" data-fresh={clock > 0 && clock-Date.parse(freshness)<60000} dateTime={freshness} title={`${freshnessLabel} ${freshness}`}>{freshnessLabel} {discoveredTime(freshness)}</time>
-                  </div>
-                  <div className="job-main">
-                    <div className="job-top">
-                      <span className="job-category">{job.category}</span>
+                  <div className="job-card-hero">
+                    <div className="company-heading">
+                      <div className="company-monogram" aria-label={`${job.company} initials`}>{job.company.split(/\s+/).slice(0,2).map(word=>word[0]).join('')}</div>
+                      <div className="job-card-hero-actions">
+                        <time className="job-freshness" data-fresh={clock > 0 && clock-Date.parse(freshness)<60000} dateTime={freshness} title={`${freshnessLabel} ${freshness}`}>{freshnessLabel} {discoveredTime(freshness)}</time>
                       <button
                         className="icon-button"
                         aria-label={`${savedIds.includes(job.id) ? 'Saved' : 'Save'} ${job.title}`}
@@ -403,6 +497,11 @@ export function Discovery({
                       >
                         <Bookmark size={19} fill={savedIds.includes(job.id) ? 'currentColor' : 'none'} />
                       </button>
+                      </div>
+                    </div>
+                    <div className="job-card-badges">
+                      <span className="job-category">{job.category}</span>
+                      <span>{experienceLabel}</span>
                     </div>
                     <Link className="job-title" href={`/jobs/${job.id}`}>
                       {job.title}
@@ -410,6 +509,8 @@ export function Discovery({
                     <p className="company">
                       {job.company} {job.trust === 'verified' && <ShieldCheck size={14} />}
                     </p>
+                  </div>
+                  <div className="job-main">
                     <div className="job-facts">
                       <span>
                         <MapPin size={14} />
@@ -417,11 +518,6 @@ export function Discovery({
                       </span>
                       <span>{job.mode}</span>
                       <span>{job.type}</span>
-                      <span>
-                        {job.experienceDisclosed === false ? 'Experience not specified' : job.experienceMin === 0 && job.experienceMax === 0
-                          ? 'Fresher welcome'
-                          : `${job.experienceMin}–${job.experienceMax} years`}
-                      </span>
                     </div>
                     <div className="job-bottom">
                       <div className="skills">
@@ -429,32 +525,33 @@ export function Discovery({
                           <span key={s}>{s}</span>
                         ))}
                       </div>
-                      <strong>
-                        {job.salaryDisclosed === false ? (job.salaryText || 'Salary not specified') : <>
-                        {new Intl.NumberFormat('en', {
-                          style: 'currency',
-                          currency: job.currency,
-                          notation: 'compact',
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 1,
-                        }).format(job.salaryMin)}{' '}
-                        –{' '}
-                        {new Intl.NumberFormat('en', {
-                          style: 'currency',
-                          currency: job.currency,
-                          notation: 'compact',
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 1,
-                        }).format(job.salaryMax)}
-                        <small>{job.normalizedFacts?.salary?.period ? ` / ${job.normalizedFacts.salary.period}` : ''}</small>
-                        </>}
-                      </strong>
+                      <div className="job-card-salary"><small>Salary</small><strong>
+                          {job.salaryDisclosed === false ? (job.salaryText || 'Not specified') : <>
+                          {new Intl.NumberFormat('en', {
+                            style: 'currency',
+                            currency: job.currency,
+                            notation: 'compact',
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 1,
+                          }).format(job.salaryMin)}{' '}
+                          –{' '}
+                          {new Intl.NumberFormat('en', {
+                            style: 'currency',
+                            currency: job.currency,
+                            notation: 'compact',
+                            minimumFractionDigits: 0,
+                            maximumFractionDigits: 1,
+                          }).format(job.salaryMax)}
+                          <small>{job.normalizedFacts?.salary?.period ? ` / ${job.normalizedFacts.salary.period}` : ''}</small>
+                          </>}
+                        </strong></div>
                     </div>
-                    {job.sourceLink && <a className="small" href={job.sourceLink} target="_blank" rel="noopener noreferrer">Source: {job.source} ↗</a>}
-                    {!job.sourceLink && <span className="small">Source: {job.source}</span>}
-                    <span className={`trust-label ${job.trust}`}>{job.trust==='verified'?'✓ Verified listing':job.trust==='flagged'?'Needs review':'Verification pending'}</span>
-                    <div className="job-match-status"><Sparkles size={14}/> AI match score unavailable</div>
-                    {job.sourceUpdatedAt && <span className="job-updated">Updated {discoveredTime(job.sourceUpdatedAt)}</span>}
+                    <div className="job-card-source">
+                      {job.sourceLink && <a className="small" href={job.sourceLink} target="_blank" rel="noopener noreferrer">Source: {job.source} ↗</a>}
+                      {!job.sourceLink && <span className="small">Source: {job.source}</span>}
+                      <span className={`trust-label ${job.trust}`}>{job.trust==='verified'?'✓ Verified':job.trust==='flagged'?'Needs review':'Verification pending'}</span>
+                    </div>
+                    <span className="job-updated" aria-hidden={!job.sourceUpdatedAt}>{job.sourceUpdatedAt ? `Updated ${discoveredTime(job.sourceUpdatedAt)}` : '\u00a0'}</span>
                     <div className="feed-card-actions">
                     <Link
                       className="secondary job-apply"

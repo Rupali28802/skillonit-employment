@@ -4,7 +4,6 @@ import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
-  Bookmark,
   BriefcaseBusiness,
   Camera,
   Code2,
@@ -14,10 +13,6 @@ import {
   Landmark,
   Palette,
   Pencil,
-  Users,
-  Newspaper,
-  CalendarDays,
-  ChartNoAxesCombined,
 } from 'lucide-react';
 import type { User } from '@/lib/domain';
 
@@ -56,7 +51,6 @@ export function ProfileSidebar({
   const theme = profession(user),
     ProfessionIcon = themes[theme];
   const profile = user?.profile;
-  const editable = user?.role === 'student';
   const account = !user
     ? '/login'
     : user.role === 'student'
@@ -278,63 +272,17 @@ export function ProfileSidebar({
           <output className="profile-status">
             {busy ? 'Saving…' : message}
           </output>
+          {!editor && user && (
+            <Link href="/pricing" className="profile-premium profile-premium-inline">
+              <span>Professional profile tools</span>
+              <strong>
+                <Crown size={19} />
+                {user.plan === 'premium' ? 'Your Premium plan' : 'Explore Premium'}
+              </strong>
+            </Link>
+          )}
         </div>
       </section>
-      {!editor && (
-        <>
-          <Link href="/pricing" className="profile-box profile-premium">
-            <span>Unlock Premium tools &amp; insights</span>
-            <strong>
-              <Crown size={19} />
-              {user?.plan === 'premium'
-                ? 'Your Premium plan'
-                : 'Explore Premium'}
-            </strong>
-          </Link>
-          <section className="profile-box profile-analytics">
-            <div>
-              <span>Profile viewers</span>
-              <span title="Profile view tracking is not available yet">—</span>
-            </div>
-            <p>Profile view tracking is not available yet.</p>
-            <Link
-              href={
-                user
-                  ? user.role === 'student'
-                    ? '/dashboard'
-                    : '/' + user.role
-                  : '/login'
-              }
-            >
-              <ChartNoAxesCombined size={16} /> View your activity
-            </Link>
-          </section>
-          <nav
-            className="profile-box profile-shortcuts"
-            aria-label="Profile shortcuts"
-          >
-            <Link href={editable ? '/saved' : '/login'}>
-              <Bookmark size={18} fill="currentColor" /> Saved items
-            </Link>
-            {[
-              { title: 'Groups', icon: Users },
-              { title: 'Newsletters', icon: Newspaper },
-              { title: 'Events', icon: CalendarDays },
-            ].map(({ title, icon: Icon }) => (
-              <details key={title}>
-                <summary>
-                  <Icon size={18} />
-                  {title}
-                </summary>
-                <p>
-                  {title} are not available yet. You can explore jobs and saved
-                  opportunities now.
-                </p>
-              </details>
-            ))}
-          </nav>
-        </>
-      )}
     </aside>
   );
 }

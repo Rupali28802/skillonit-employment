@@ -5,6 +5,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 type Row = { id: string; [key: string]: unknown };
 type Page = { items: Row[]; nextCursor: string | null };
 type Overview = { counts: Record<string, number>; pending: Record<string, number> };
+type JobEngineStatus = {
+  sources: { id: string; enabled?: boolean; approved?: boolean; intervalMinutes?: number }[];
+  states: { id: string; lastSuccessAt?: string; failures?: number }[];
+};
+type SourceHealth = { online: number; configured: number };
 
 const resourceBySection: Record<string, string> = {
   users: 'users', employers: 'employers', jobs: 'jobs', sources: 'sources',
@@ -102,6 +107,7 @@ export function AdminConsolePanel({ section }: { section: string }) {
   const [cursor, setCursor] = useState('');
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
+  const [sourceHealth, setSourceHealth] = useState<SourceHealth | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -116,12 +122,26 @@ export function AdminConsolePanel({ section }: { section: string }) {
         if (cursor) params.set('cursor', cursor);
         if (query.trim()) params.set('query', query.trim());
         if (status) params.set('status', status);
-        const page = await request(`admin/console/${resource}?${params}`) as Page;
+        const pageRequest = request(`admin/console/${resource}?${params}`) as Promise<Page>;
+        const [page, engine] = section === 'sources'
+          ? await Promise.all([pageRequest, request('admin/job-engine') as Promise<JobEngineStatus>])
+          : [await pageRequest, null];
         setRows(page.items); setNextCursor(page.nextCursor);
+        if (engine) {
+          const now = Date.now();
+          const states = new Map(engine.states.map(item => [item.id, item]));
+          const configured = engine.sources.filter(item => item.enabled && item.approved);
+          const online = configured.filter(item => {
+            const state = states.get(item.id);
+            const lastSuccess = state?.lastSuccessAt ? Date.parse(state.lastSuccessAt) : Number.NaN;
+            return Number.isFinite(lastSuccess) && !state?.failures && now - lastSuccess < (item.intervalMinutes ?? 0) * 120_000;
+          }).length;
+          setSourceHealth({ online, configured: configured.length });
+        } else setSourceHealth(null);
       }
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Admin data is unavailable.'); }
     finally { setLoading(false); }
-  }, [cursor, query, resource, status]);
+  }, [cursor, query, resource, section, status]);
 
   useEffect(() => { queueMicrotask(() => void load()); }, [load]);
   const columns = useMemo(() => headings[section] ?? [], [section]);
@@ -135,7 +155,11 @@ export function AdminConsolePanel({ section }: { section: string }) {
       <div className="admin-review-grid">{Object.entries(overview.pending).map(([name, value]) => <div key={name}><strong>{value}</strong><span>{label(name)}</span></div>)}</div>
     </section>
   </>;
-  return <section className="admin-card">
+  return <>
+    {section === 'sources' && sourceHealth && <div className="admin-kpis">
+      <article><span>Sources online</span><strong>{sourceHealth.online.toLocaleString()}</strong><small>{sourceHealth.online} of {sourceHealth.configured} approved feeds reporting normally</small></article>
+    </div>}
+    <section className="admin-card">
     <div className="admin-card-head"><div><p className="eyebrow">SECURE OPERATIONS</p><h2>{label(section)}</h2></div><button onClick={() => void load()}>Refresh</button></div>
     <form className="admin-filters" onSubmit={event => { event.preventDefault(); setCursor(''); setHistory([]); void load(); }}>
       <label>Search<input value={query} onChange={event => setQuery(event.target.value)} placeholder={`Search ${section}`} /></label>
@@ -146,5 +170,6 @@ export function AdminConsolePanel({ section }: { section: string }) {
       {rows.map(row => <tr key={row.id}>{columns.map(column => <td key={column}>{['status', 'role', 'trust', 'riskLevel'].includes(column) ? <span className={`admin-badge ${tone(row[column])}`}>{text(row[column])}</span> : text(row[column])}</td>)}<td><AdminAction section={section} row={row} onDone={() => void load()} /></td></tr>)}
     </tbody></table></div>}
     <div className="admin-pagination"><button disabled={!history.length} onClick={() => { const prior = [...history]; setCursor(prior.pop() ?? ''); setHistory(prior); }}>Previous</button><span>{rows.length} records on this page</span><button disabled={!nextCursor} onClick={() => { setHistory(current => [...current, cursor]); setCursor(nextCursor ?? ''); }}>Next</button></div>
-  </section>;
+    </section>
+  </>;
 }

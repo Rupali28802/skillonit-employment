@@ -88,12 +88,13 @@ export default async function Page({
     const [plans, user] = await Promise.all([configuredPlans(), currentUser()]);
     return (
       <div className="page-wrap">
-        <div className="eyebrow">A PLAN FOR YOUR NEXT CHAPTER</div>
-        <h1 style={{ marginTop: 15 }}>Move forward at your pace.</h1>
-        <p>
-          Compare candidate plans. Paid subscriptions open after final pricing
-          and payment verification are configured.
-        </p>
+        <div className="pricing-intro">
+          <div className="eyebrow">A PLAN FOR YOUR NEXT CHAPTER</div>
+          <h1>Move forward at your pace.</h1>
+          <p className="pricing-intro-copy">
+            Choose the plan that fits your goals and move your career forward with confidence.
+          </p>
+        </div>
         <PlansCarousel plans={plans} currentPlan={user?.role === 'student' ? user.plan : null} />
         <p className="small">
           Displayed quotas are configurable development defaults, not a final
