@@ -142,7 +142,6 @@ export function Discovery({
           state,
           sort: intent.highSalary&&!removed.includes('salary')?'salary':sort,
           page: String(live ? 1 : page),
-          limit: String(pageSize),
           searchMode: semantic || (sort === 'relevant' && !!roleQuery) ? 'semantic' : 'keyword',
         });
         const range:Record<string,string[]>={'0–2 years':['0','2'],'2–5 years':['2','5'],'5+ years':['5','100']};
@@ -153,10 +152,23 @@ export function Discovery({
           filterKey.current = key;
           if (page !== 1) { setPage(1); return; }
         }
-        const response = await fetch(`/api/v1/jobs?${p}`);
-        const payload = await response.json();
-        if (!response.ok) throw Error(payload.error?.message || 'Search unavailable');
-        const j = payload;
+        const visiblePage = live ? 1 : page;
+        const apiPages = pageSize === 24
+          ? [visiblePage * 2 - 1, visiblePage * 2]
+          : [visiblePage];
+        const results = await Promise.all(apiPages.map(async apiPage => {
+          const params = new URLSearchParams(p);
+          params.set('page', String(apiPage));
+          const response = await fetch(`/api/v1/jobs?${params}`);
+          const payload = await response.json();
+          if (!response.ok) throw Error(payload.error?.message || 'Search unavailable');
+          return payload.data;
+        }));
+        const j = {data: {
+          jobs: results.flatMap(result => result.jobs),
+          total: results[0].total,
+          hasMore: results.at(-1)?.hasMore ?? false,
+        }};
         if (requestId === sequence.current) {
           if(live && sort==='discovered') {const known=new Set(previousJobs.current.map(job=>job.id));const arrivals=j.data.jobs.filter((job:PublicJob)=>!known.has(job.id)).map((job:PublicJob)=>job.id);setNewIds(prev=>[...new Set([...prev,...arrivals])]);}
           if(!live){setNewIds([]);}
