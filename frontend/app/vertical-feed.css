@@ -1,6 +1,7 @@
 .vertical-job-feed{width:100%;max-width:920px;margin:26px auto}
 .vertical-job-list{display:flex;flex-direction:column;gap:20px}
 .feed-load-more{max-width:920px;margin:24px auto;text-align:center;display:grid;justify-items:center;gap:12px;color:#61756a;font-size:13px;padding:20px}.feed-load-more p{margin:0}
+.feed-sentinel{width:100%;height:1px;pointer-events:none}
 .live-job-feed .vertical-job-card{width:100%;min-height:0;padding:28px;background:linear-gradient(120deg,#fff 55%,#f5faf7);border:1px solid #dbe6df;border-radius:20px;box-shadow:0 6px 24px #163b2810}
 .vertical-job-card .company-heading{margin-bottom:10px}
 .vertical-job-card .company-monogram{width:48px;height:48px;border:1px solid #dbe8e0}
