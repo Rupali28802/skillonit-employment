@@ -11,6 +11,9 @@ import {
   ShieldCheck,
   ArrowRight,
   Globe2,
+  BriefcaseBusiness,
+  CalendarDays,
+  Clock3,
 
   Sparkles,
   Pause,
@@ -25,6 +28,29 @@ import { countries, states } from '@/lib/domain';
 import { searchIntent } from '@/lib/search-intent';
 import { SupportChatbot } from './support-chatbot';
 import { WhatsAppSupport } from './whatsapp-support';
+
+type VoiceResult = {
+  readonly isFinal: boolean;
+  readonly length: number;
+  readonly [index: number]: { transcript: string; confidence: number };
+};
+
+type VoiceRecognition = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+  onstart: (() => void) | null;
+  onresult: ((event: { resultIndex: number; results: ArrayLike<VoiceResult> }) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+};
+
+type VoiceRecognitionConstructor = new () => VoiceRecognition;
+
 export function Discovery({
   initialJobs,
   user,
@@ -58,11 +84,16 @@ export function Discovery({
   const [total, setTotal] = useState(initialJobs.length);
   const [hasMore, setHasMore] = useState(initialJobs.length >= 12);
   const [listening, setListening] = useState(false);
+  const [voiceMessage, setVoiceMessage] = useState('');
+  const recognitionRef = useRef<VoiceRecognition | null>(null);
   const [semantic, setSemantic] = useState(false);
   const [clock, setClock] = useState(0);
   const [newIds, setNewIds] = useState<string[]>([]);
   const [newCount, setNewCount] = useState(0);
   const [displayedNewJobs, setDisplayedNewJobs] = useState(0);
+  const [newJobsTarget, setNewJobsTarget] = useState(0);
+  const confirmedNewJobsTarget = useRef(0);
+  const zeroNewJobsMeasurements = useRef(0);
   const arrivalBaseline = useRef('');
   const latestMeasurement = useRef('');
   const [stats, setStats] = useState<{detectedToday:number;newJobs:number;countries:number|null;workerOnline?:boolean}|null>(null);
@@ -142,19 +173,36 @@ export function Discovery({
   },[]);
   useEffect(() => {
     if (typeof stats?.newJobs !== 'number') return;
-    const target = Math.max(0, stats.newJobs);
-    const delay = target > 100 ? 45 : 70;
-    const timer = window.setInterval(() => {
-      setDisplayedNewJobs(current => {
-        if (current === target) {
-          window.clearInterval(timer);
-          return current;
-        }
-        return current + (current < target ? 1 : -1);
-      });
-    }, delay);
-    return () => window.clearInterval(timer);
+    const measuredTarget = Math.max(0, Math.floor(stats.newJobs));
+
+    // Ignore one isolated zero reading so a temporary status refresh cannot
+    // make a real live count appear to reset. A confirmed zero still becomes
+    // the accurate target on the following measurement.
+    if (measuredTarget === 0 && confirmedNewJobsTarget.current > 0) {
+      zeroNewJobsMeasurements.current += 1;
+      if (zeroNewJobsMeasurements.current < 2) return;
+    } else {
+      zeroNewJobsMeasurements.current = 0;
+    }
+
+    confirmedNewJobsTarget.current = measuredTarget;
+    setNewJobsTarget(measuredTarget);
   }, [stats?.newJobs]);
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setDisplayedNewJobs(newJobsTarget);
+      return;
+    }
+    if (displayedNewJobs === newJobsTarget) return;
+
+    const timer = window.setTimeout(() => {
+      setDisplayedNewJobs(current => {
+        if (current === newJobsTarget) return current;
+        return current + (current < newJobsTarget ? 1 : -1);
+      });
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [displayedNewJobs, newJobsTarget]);
   function discoveredTime(value:string){const age=clock-Date.parse(value);if(!clock||!Number.isFinite(age))return 'Time unavailable';const minutes=Math.max(0,Math.floor(age/60000));return minutes===0?'Just now':minutes<60?`${minutes} min ago`:minutes<1440?`${Math.floor(minutes/60)} hour${minutes>=120?'s':''} ago`:`${Math.floor(minutes/1440)} days ago`;}
   const intent = useMemo(() => searchIntent(query, countries), [query]);
   const roleQuery = removed.includes('role') ? '' : intent.role;
@@ -167,17 +215,88 @@ export function Discovery({
     setRemoved(prev => [...prev,key]); setPage(1);
     if(key==='country') {setCountry('');setState('');} if(key==='mode') setMode(''); if(key==='experience') setExperience('');
   }
-  function voiceSearch() {
-    type Recognition = {lang:string;start:()=>void;onresult:(e:{results:{transcript:string}[][]})=>void;onend:()=>void;onerror:()=>void};
-    const voiceWindow = window as unknown as {SpeechRecognition?:new()=>Recognition;webkitSpeechRecognition?:new()=>Recognition};
+  async function voiceSearch() {
+    if (listening) {
+      recognitionRef.current?.stop();
+      setVoiceMessage('Voice input stopped.');
+      return;
+    }
+
+    const voiceWindow = window as unknown as {
+      SpeechRecognition?: VoiceRecognitionConstructor;
+      webkitSpeechRecognition?: VoiceRecognitionConstructor;
+    };
     const Voice = voiceWindow.SpeechRecognition || voiceWindow.webkitSpeechRecognition;
-    if(!Voice) {setMessage('Voice search is not supported in this browser. Please type your search.');return;}
-    const recognition = new Voice(); recognition.lang='en-IN';
-    recognition.onresult=e=>updateQuery(e.results[0][0].transcript);
-    recognition.onend=()=>setListening(false);
-    recognition.onerror=()=>{setListening(false);setMessage('Microphone unavailable. Check browser permission or type your search.');};
-    try {recognition.start();setListening(true);} catch {setListening(false);}
+    if (!Voice) {
+      setVoiceMessage('Voice search is not supported in this browser. Please type your search.');
+      return;
+    }
+
+    const recognition = new Voice();
+    recognitionRef.current = recognition;
+    recognition.lang = navigator.language || 'en-IN';
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+    let finalTranscript = '';
+    let recognitionFailed = false;
+
+    recognition.onstart = () => {
+      setListening(true);
+      setVoiceMessage('Listening… Say the job, skill, or location you want.');
+    };
+    recognition.onresult = event => {
+      let interimTranscript = '';
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const transcript = event.results[index][0]?.transcript || '';
+        if (event.results[index].isFinal) finalTranscript += transcript;
+        else interimTranscript += transcript;
+      }
+      const spokenQuery = `${finalTranscript} ${interimTranscript}`.trim();
+      if (spokenQuery) updateQuery(spokenQuery);
+      if (finalTranscript.trim()) {
+        setListening(false);
+        setVoiceMessage(`Searching for “${finalTranscript.trim()}”…`);
+        window.setTimeout(() => {
+          document.getElementById('job-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 450);
+      } else if (spokenQuery) {
+        setVoiceMessage(`Hearing: “${spokenQuery}”`);
+      }
+    };
+    recognition.onerror = event => {
+      recognitionFailed = true;
+      setListening(false);
+      recognitionRef.current = null;
+      const errors: Record<string, string> = {
+        'not-allowed': 'Microphone permission is blocked. Allow microphone access in your browser and try again.',
+        'service-not-allowed': 'Voice recognition permission is blocked in this browser.',
+        'audio-capture': 'No working microphone was found. Check your device and try again.',
+        'no-speech': 'No speech was heard. Select the microphone and try again.',
+        network: 'Voice recognition is temporarily unavailable. Check your connection and try again.',
+      };
+      if (event.error !== 'aborted') {
+        setVoiceMessage(errors[event.error] || 'Voice search could not start. Please try again or type your search.');
+      }
+    };
+    recognition.onend = () => {
+      setListening(false);
+      recognitionRef.current = null;
+      if (!recognitionFailed && !finalTranscript.trim()) {
+        setVoiceMessage('Listening ended without a query. Select the microphone to try again.');
+      }
+    };
+
+    try {
+      setVoiceMessage('Starting microphone…');
+      recognition.start();
+    } catch {
+      recognitionRef.current = null;
+      setListening(false);
+      setVoiceMessage('Voice search is already active or unavailable. Please try again.');
+    }
   }
+  useEffect(() => () => recognitionRef.current?.abort(), []);
   const search = useCallback(
     async (e?: { preventDefault: () => void }, live = false) => {
       e?.preventDefault();
@@ -280,10 +399,34 @@ export function Discovery({
   const profileSummary = user?.profile.headline ||
     [user?.profile.city, user?.profile.country].filter(Boolean).join(', ') ||
     'Building my next career move';
+  const radarMetrics = [
+    { label: 'Total matching opportunities', value: total, Icon: BriefcaseBusiness, tone: 'opportunities' },
+    { label: 'Detected today (UTC)', value: stats?.detectedToday, Icon: CalendarDays, tone: 'today' },
+    { label: 'New in 10 minutes', value: displayedNewJobs, Icon: Clock3, tone: 'live' },
+    { label: 'Countries / territories · includes eligibility', value: stats?.countries, Icon: Globe2, tone: 'coverage' },
+  ];
   return (
     <>
       <section className="live-discovery" aria-labelledby="live-discovery-heading">
-        <div className="radar-metrics" aria-label="Live discovery statistics"><strong>LIVE DISCOVERY</strong><div className="radar-metric-values">{[['Total matching opportunities',total],['Detected today (UTC)',stats?.detectedToday],['New in 10 minutes',displayedNewJobs],['Countries / territories · includes eligibility',stats?.countries]].map(([label,value])=><span className={label==='New in 10 minutes'?'radar-metric-live':undefined} key={label} aria-label={label==='New in 10 minutes'?`${value} new jobs in the last ten minutes`:undefined}><b className={label==='New in 10 minutes'?'radar-live-count':undefined} key={label==='New in 10 minutes'?displayedNewJobs:label} aria-hidden={label==='New in 10 minutes'?true:undefined}>{typeof value==='number'?value.toLocaleString():'—'}</b>{label}</span>)}</div></div>
+        <div className="radar-metrics" aria-label="Live discovery statistics">
+          <strong>LIVE DISCOVERY</strong>
+          <div className="radar-metric-values">
+            {radarMetrics.map(({ label, value, Icon, tone }) => (
+              <span
+                className={`radar-metric-card radar-metric-${tone}${tone === 'live' ? ' radar-metric-live' : ''}`}
+                data-tone={tone}
+                key={label}
+                aria-label={tone === 'live' ? `${value} new jobs in the last ten minutes` : undefined}
+              >
+                <span className="radar-metric-icon" aria-hidden="true"><Icon size={17}/></span>
+                <span className="radar-metric-copy">
+                  <b className={tone === 'live' ? 'radar-live-count' : undefined} key={tone === 'live' ? displayedNewJobs : label} aria-hidden={tone === 'live' ? true : undefined}>{typeof value === 'number' ? value.toLocaleString() : '—'}</b>
+                  <small>{label}</small>
+                </span>
+              </span>
+            ))}
+          </div>
+        </div>
         <div className="live-discovery-top">
           <div><div className="discovery-kicker"><Sparkles size={15}/> SKILLONIT EMPLOYMENT</div>
             <h1 id="live-discovery-heading">Find the Right Job. <span>Faster, Smarter, Globally.</span></h1>
@@ -291,11 +434,12 @@ export function Discovery({
           <span className="discovery-status is-connected"><i/>Live feed connected</span>
         </div>
         <form className="discovery-search" onSubmit={event=>{event.preventDefault();void search();document.getElementById('job-results')?.scrollIntoView({behavior:'smooth',block:'start'});}}>
-          <div className="discovery-query"><Search size={23}/><input aria-label="Search worldwide jobs" placeholder="Search worldwide jobs..." value={query} onChange={e=>updateQuery(e.target.value)}/><button type="button" className="ai-search-badge" aria-pressed={semantic} title="Toggle meaning-based search of indexed jobs; coverage is still growing" onClick={()=>{setSemantic(!semantic);setPage(1);}}><Sparkles size={13}/> AI search {semantic ? 'on' : 'off'}</button><button type="button" className="voice-search" aria-label={listening?'Listening':'Start voice search'} disabled={listening} onClick={voiceSearch}><Mic size={19}/></button></div>
+          <div className="discovery-query"><Search size={23}/><input aria-label="Search worldwide jobs" aria-describedby={voiceMessage?'voice-search-status':undefined} placeholder="Search worldwide jobs..." value={query} onChange={e=>{updateQuery(e.target.value);setVoiceMessage('');}}/><button type="button" className="ai-search-badge" aria-pressed={semantic} title="Toggle meaning-based search of indexed jobs; coverage is still growing" onClick={()=>{setSemantic(!semantic);setPage(1);}}><Sparkles size={13}/> AI search {semantic ? 'on' : 'off'}</button><button type="button" className={`voice-search${listening?' is-listening':''}`} aria-label={listening?'Stop voice search':'Start voice search'} aria-pressed={listening} title={listening?'Listening — select to stop':'Search with your voice'} onClick={()=>void voiceSearch()}><Mic size={19}/></button></div>
           <label className="discovery-location"><MapPin size={19}/><select aria-label="Search location" value={activeCountry} onChange={e=>{setCountry(e.target.value);setRemoved(prev=>[...prev,'country']);setState('');setPage(1);}}><option value="">Worldwide</option>{countries.map(c=><option key={c}>{c}</option>)}</select></label>
           <button type="button" className="discovery-filter" aria-expanded={filters} onClick={()=>{setFilters(!filters);document.getElementById('job-results')?.scrollIntoView({behavior:'smooth',block:'start'});}}><SlidersHorizontal size={18}/> Filters</button>
           <button className="primary discovery-submit" disabled={busy}>{busy?'Searching…':'Search jobs'}<ArrowRight size={18}/></button>
         </form>
+        {voiceMessage && <div id="voice-search-status" className={`voice-search-status${listening?' is-listening':''}`} role="status" aria-live="polite"><span aria-hidden="true"/><p>{voiceMessage}</p></div>}
         <div className="intent-summary" aria-live="polite">
           {query ? <><span className="intent-label"><Sparkles size={14}/> Search interpreted as</span>{[
             ['role','Role',roleQuery],['experience','Experience',activeExperience==='0'?'Fresher':activeExperience.includes('years')?activeExperience:activeExperience?`${activeExperience} years`:''],['country','Location',activeCountry],['mode','Work mode',activeMode],['salary','Salary preference',intent.highSalary&&!removed.includes('salary')?'Higher salary (by currency)':'']
