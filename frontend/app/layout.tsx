@@ -26,7 +26,9 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const user = await currentUser();
+  const sessionResult = await Promise.allSettled([currentUser()]);
+  const sessionUnavailable = sessionResult[0].status === 'rejected';
+  const user = sessionResult[0].status === 'fulfilled' ? sessionResult[0].value : null;
   const workspace =
     user?.role === 'admin'
       ? '/admin'
@@ -73,7 +75,10 @@ export default async function RootLayout({
             </Link>
           </div>
         </header>
-        <main id="main">{children}</main>
+        <main id="main">
+          {sessionUnavailable && <p className="notice" role="status">The service is temporarily unavailable. Jobs and account details may not load. Please try reloading shortly.</p>}
+          {children}
+        </main>
         <footer className="site-footer">
           <div className="footer-main">
             <section className="footer-intro" aria-labelledby="footer-brand-name">
