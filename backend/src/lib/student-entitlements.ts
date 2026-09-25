@@ -5,7 +5,7 @@ import type { Repository } from './store.js';
 import { configuredPlans, read, transaction } from './store.js';
 import { ApiError, audit } from './security.js';
 
-export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'cancelled' | 'expired';
+export type SubscriptionStatus = 'created'|'authenticated'|'trialing' | 'active' | 'pending'|'past_due'|'halted'|'cancelled'|'completed'|'expired';
 export type StudentSubscription = {
   id: string;
   userId: string;
@@ -18,6 +18,10 @@ export type StudentSubscription = {
   revision: number;
   source: 'admin' | 'razorpay' | 'migration';
   providerPaymentId?: string;
+  providerSubscriptionId?: string;
+  providerCustomerId?: string;
+  nextBillingAt?: string;
+  lastChargeId?: string;
   planSnapshot: Plan;
   createdAt: string;
   updatedAt: string;
@@ -40,7 +44,7 @@ export type StudentEntitlements = {
   limits: { applicationsPerDay: number; autoApplyPerDay: number; cvVersions: number };
 };
 
-const planCode = z.enum(['basic', 'pro', 'premium']);
+const planCode = z.string().trim().regex(/^[a-z][a-z0-9-]{1,39}$/);
 export const subscriptionChangeSchema = z.object({
   planCode,
   status: z.enum(['trialing', 'active']).default('active'),

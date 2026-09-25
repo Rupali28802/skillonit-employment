@@ -189,10 +189,6 @@ export function Discovery({
     setNewJobsTarget(measuredTarget);
   }, [stats?.newJobs]);
   useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setDisplayedNewJobs(newJobsTarget);
-      return;
-    }
     if (displayedNewJobs === newJobsTarget) return;
 
     const timer = window.setTimeout(() => {
@@ -200,7 +196,7 @@ export function Discovery({
         if (current === newJobsTarget) return current;
         return current + (current < newJobsTarget ? 1 : -1);
       });
-    }, 350);
+    }, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 350);
     return () => window.clearTimeout(timer);
   }, [displayedNewJobs, newJobsTarget]);
   function discoveredTime(value:string){const age=clock-Date.parse(value);if(!clock||!Number.isFinite(age))return 'Time unavailable';const minutes=Math.max(0,Math.floor(age/60000));return minutes===0?'Just now':minutes<60?`${minutes} min ago`:minutes<1440?`${Math.floor(minutes/60)} hour${minutes>=120?'s':''} ago`:`${Math.floor(minutes/1440)} days ago`;}
@@ -439,7 +435,7 @@ export function Discovery({
           <button type="button" className="discovery-filter" aria-expanded={filters} onClick={()=>{setFilters(!filters);document.getElementById('job-results')?.scrollIntoView({behavior:'smooth',block:'start'});}}><SlidersHorizontal size={18}/> Filters</button>
           <button className="primary discovery-submit" disabled={busy}>{busy?'Searching…':'Search jobs'}<ArrowRight size={18}/></button>
         </form>
-        {voiceMessage && <div id="voice-search-status" className={`voice-search-status${listening?' is-listening':''}`} role="status" aria-live="polite"><span aria-hidden="true"/><p>{voiceMessage}</p></div>}
+        {voiceMessage && <output id="voice-search-status" className={`voice-search-status${listening?' is-listening':''}`} aria-live="polite"><span aria-hidden="true"/><p>{voiceMessage}</p></output>}
         <div className="intent-summary" aria-live="polite">
           {query ? <><span className="intent-label"><Sparkles size={14}/> Search interpreted as</span>{[
             ['role','Role',roleQuery],['experience','Experience',activeExperience==='0'?'Fresher':activeExperience.includes('years')?activeExperience:activeExperience?`${activeExperience} years`:''],['country','Location',activeCountry],['mode','Work mode',activeMode],['salary','Salary preference',intent.highSalary&&!removed.includes('salary')?'Higher salary (by currency)':'']

@@ -19,11 +19,19 @@ import {
 } from 'lucide-react';
 import type { Preferences, User } from '@/lib/domain';
 import { GmailConnection, type MailboxStatus } from './candidate-tools';
-import { ProfileSetup } from './profile-setup';
+import { ProfileSetup, type ProfileEditSection } from './profile-setup';
 
 type Completion = { percentage: number; missingFields: string[]; readinessStatus: string };
 type CvDocument = { id: string; originalName?: string; name?: string; status?: string; createdAt?: string; size?: number };
 type Consent = { purpose: string; granted: boolean; policyVersion: string; updatedAt: string };
+type ProfileSection = 'about' | 'skills' | 'experience' | 'education' | 'occupation' | 'job-preferences' | 'documents' | 'gmail' | 'privacy';
+const profileSections: { key: ProfileSection; label: string }[] = [
+  { key: 'about', label: 'About' }, { key: 'skills', label: 'Skills' },
+  { key: 'experience', label: 'Experience' }, { key: 'education', label: 'Education' },
+  { key: 'occupation', label: 'Occupation' }, { key: 'job-preferences', label: 'Job Preferences' },
+  { key: 'documents', label: 'CV / Resume' }, { key: 'gmail', label: 'Gmail' },
+  { key: 'privacy', label: 'Privacy' },
+];
 
 const humanize = (value: string) => value.replaceAll('_', ' ').replaceAll('-', ' ');
 
@@ -39,7 +47,8 @@ export function ProfileDashboard({ user, completion, preferences, mailbox, docum
   documents: CvDocument[];
   consents: Consent[];
 }) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState<ProfileEditSection | null>(null);
+  const [activeSection, setActiveSection] = useState<ProfileSection>('about');
   const [imageEditor, setImageEditor] = useState<'avatar' | 'cover' | null>(null);
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState('');
@@ -53,6 +62,19 @@ export function ProfileDashboard({ user, completion, preferences, mailbox, docum
   const confirmedCvs = documents.filter((document) => document.status === 'confirmed');
   const image = (kind: 'avatar' | 'cover') => `/api/v1/me/profile-image/${kind}?v=${profile[`${kind}Version`] || ''}`;
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
+  useEffect(() => {
+    const syncHash = () => {
+      const value = window.location.hash.replace('#profile-', '') as ProfileSection;
+      if (profileSections.some(section => section.key === value)) setActiveSection(value);
+    };
+    syncHash(); window.addEventListener('hashchange', syncHash);
+    return () => window.removeEventListener('hashchange', syncHash);
+  }, []);
+
+  function openEditor(section: ProfileEditSection) {
+    setEditing(section);
+    window.requestAnimationFrame(() => document.querySelector('.profile-dash-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }
 
   function closeImageEditor() {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -117,7 +139,7 @@ export function ProfileDashboard({ user, completion, preferences, mailbox, docum
             <div>{location && <span><MapPin size={14} />{location}</span>}<span><Mail size={14} />{user.email.replace(/^(.{2}).+(@.*)$/, '$1******$2')}</span></div>
             <small>{user.role === 'student' ? 'Student / candidate' : user.role}</small>
           </div>
-          <button className="secondary profile-dash-edit" type="button" onClick={() => setEditing((value) => !value)}><Pencil size={15} /> {editing ? 'Close Editor' : 'Edit Profile'}</button>
+          <button className="secondary profile-dash-edit" type="button" onClick={() => setEditing((value) => value ? null : 'all')}><Pencil size={15} /> {editing ? 'Close Editor' : 'Edit Profile'}</button>
         </div>
       </section>
 
@@ -149,28 +171,28 @@ export function ProfileDashboard({ user, completion, preferences, mailbox, docum
     </div>}
 
     {editing && <section className="profile-dash-editor">
-      <div className="profile-dash-card-head"><div><span>EDIT PROFILE</span><h2>Update your professional information</h2></div><button className="secondary" type="button" onClick={() => setEditing(false)}>Cancel</button></div>
-      <ProfileSetup user={user} completion={completion} editingOnly />
+      <div className="profile-dash-card-head"><div><span>EDIT PROFILE</span><h2>Update your professional information</h2></div><button className="secondary" type="button" onClick={() => setEditing(null)}>Cancel</button></div>
+      <ProfileSetup key={editing} user={user} completion={completion} editingOnly section={editing} />
     </section>}
 
     <nav className="profile-dash-tabs" aria-label="Profile sections">
-      {['About','Experience','Education','Skills','Preferences','Occupation','Documents'].map((item, index) => <a className={index === 0 ? 'active' : ''} href={`#profile-${item.toLowerCase()}`} key={item}>{item}</a>)}
+      {profileSections.map(section => <a className={activeSection === section.key ? 'active' : ''} aria-current={activeSection === section.key ? 'location' : undefined} href={`#profile-${section.key}`} onClick={() => setActiveSection(section.key)} key={section.key}>{section.label}</a>)}
     </nav>
 
     <div className="profile-dash-grid">
       <div className="profile-dash-main">
         <section className="profile-dash-card" id="profile-about">
-          <div className="profile-dash-card-head"><div><UserRound size={20}/><h2>About Me</h2></div><button type="button" onClick={() => setEditing(true)}><Pencil size={13}/> Edit</button></div>
+          <div className="profile-dash-card-head"><div><UserRound size={20}/><h2>About Me</h2></div><button type="button" onClick={() => openEditor('about')}><Pencil size={13}/> Edit</button></div>
           {profile.headline || profile.industry || profile.availability ? <p className="profile-dash-copy">{[profile.headline, profile.industry, profile.availability].filter(Boolean).join(' · ')}</p> : <p className="profile-dash-muted">Add a confirmed professional headline, industry and availability to introduce yourself.</p>}
         </section>
 
         <section className="profile-dash-card" id="profile-skills">
-          <div className="profile-dash-card-head"><div><Target size={20}/><h2>Skills</h2></div><button type="button" onClick={() => setEditing(true)}><Pencil size={13}/> Edit</button></div>
+          <div className="profile-dash-card-head"><div><Target size={20}/><h2>Skills</h2></div><button type="button" onClick={() => openEditor('skills')}><Pencil size={13}/> Edit</button></div>
           {profile.skills.length ? <div className="profile-dash-tags">{profile.skills.map((skill) => <span key={skill}>{skill}</span>)}</div> : <p className="profile-dash-muted">No confirmed skills added yet.</p>}
         </section>
 
         <section className="profile-dash-card" id="profile-experience">
-          <div className="profile-dash-card-head"><div><BriefcaseBusiness size={20}/><h2>Work Experience</h2></div><button type="button" onClick={() => setEditing(true)}><Pencil size={13}/> Edit</button></div>
+          <div className="profile-dash-card-head"><div><BriefcaseBusiness size={20}/><h2>Work Experience</h2></div><button type="button" onClick={() => openEditor('experience')}><Pencil size={13}/> Edit</button></div>
           {profile.employmentHistory?.length ? <div className="profile-dash-timeline">{profile.employmentHistory.map((item, index) => <article key={`${item.employer}-${index}`}><i/><div><h3>{item.title}</h3><strong>{item.employer}</strong><small>{[item.start,item.end].filter(Boolean).join(' – ')}</small>{item.description && <p>{item.description}</p>}</div></article>)}</div> : <Empty icon={BriefcaseBusiness} title="No work experience added yet" text="Add confirmed experience to showcase your skills and past roles." />}
         </section>
 
@@ -180,7 +202,7 @@ export function ProfileDashboard({ user, completion, preferences, mailbox, docum
           {confirmedCvs.length > 0 && <p className="profile-cv-ready"><Check size={14}/> A confirmed CV is ready for eligible applications.</p>}
         </section>
 
-        <section className="profile-dash-card profile-dash-gmail"><div className="profile-dash-card-head"><div><Mail size={20}/><h2>Gmail Connection</h2></div></div><GmailConnection initial={mailbox} compact /></section>
+        <section className="profile-dash-card profile-dash-gmail" id="profile-gmail"><div className="profile-dash-card-head"><div><Mail size={20}/><h2>Gmail Connection</h2></div></div><GmailConnection initial={mailbox} compact /></section>
       </div>
 
       <aside className="profile-dash-side">
@@ -190,23 +212,23 @@ export function ProfileDashboard({ user, completion, preferences, mailbox, docum
         </section>
 
         <section className="profile-dash-card" id="profile-education">
-          <div className="profile-dash-card-head"><div><GraduationCap size={20}/><h2>Education &amp; Qualifications</h2></div><button type="button" onClick={() => setEditing(true)}><Pencil size={13}/> Edit</button></div>
+          <div className="profile-dash-card-head"><div><GraduationCap size={20}/><h2>Education &amp; Qualifications</h2></div><button type="button" onClick={() => openEditor('education')}><Pencil size={13}/> Edit</button></div>
           {profile.education ? <p className="profile-dash-copy">{profile.education}</p> : <p className="profile-dash-muted">No confirmed education added yet.</p>}
           {!!profile.certifications?.length && <div className="profile-dash-tags">{profile.certifications.map((item) => <span key={item}>{item}</span>)}</div>}
         </section>
 
         <section className="profile-dash-card" id="profile-occupation">
-          <div className="profile-dash-card-head"><div><BriefcaseBusiness size={20}/><h2>Occupation</h2></div><button type="button" onClick={() => setEditing(true)}><Pencil size={13}/> Edit</button></div>
+          <div className="profile-dash-card-head"><div><BriefcaseBusiness size={20}/><h2>Occupation</h2></div><button type="button" onClick={() => openEditor('occupation')}><Pencil size={13}/> Edit</button></div>
           <dl className="profile-dash-facts"><div><dt>Target role</dt><dd>{profile.targetRole || 'Not set'}</dd></div><div><dt>Industry</dt><dd>{profile.industry || 'Not set'}</dd></div><div><dt>Experience</dt><dd>{profile.experience === null ? 'Not set' : `${profile.experience} years`}</dd></div></dl>
         </section>
 
-        <section className="profile-dash-card">
+        <section className="profile-dash-card" id="profile-job-preferences">
           <div className="profile-dash-card-head"><div><Target size={20}/><h2>Job Preferences</h2></div><Link href="/preferences"><Pencil size={13}/> Edit</Link></div>
           <div className="profile-dash-tags">{preferences.roles.map((role) => <span key={role}>{role}</span>)}{preferences.modes.map((mode) => <span key={mode}>{mode}</span>)}</div>
           {!preferences.roles.length && !preferences.modes.length && <p className="profile-dash-muted">No job preferences saved yet.</p>}
         </section>
 
-        <section className="profile-dash-card">
+        <section className="profile-dash-card" id="profile-privacy">
           <div className="profile-dash-card-head"><div><ShieldCheck size={20}/><h2>Privacy &amp; Consent</h2></div><Link href="/settings"><Pencil size={13}/> Edit</Link></div>
           <div className="profile-dash-consents">{consents.length ? consents.slice(0,5).map((consent) => <span key={consent.purpose} className={consent.granted ? 'granted' : ''}><i>{consent.granted && <Check size={12}/>}</i>{humanize(consent.purpose)}</span>) : <p className="profile-dash-muted">Review privacy and consent settings.</p>}</div>
         </section>

@@ -67,7 +67,7 @@ export function PlansCarousel({ plans, currentPlan }: { plans: Plan[]; currentPl
         <div className="plan-focus-content">
           <div className="plan-heading"><div><span className="plan-overline">SkillOnIT candidate plan</span><h2>{plan.name}</h2><p>{planMessage(plan.code)}</p></div><p className="plan-price">{price(plan)}</p></div>
           <ul>{features.map(feature => <li key={feature}><Check size={17} /> {feature}</li>)}</ul>
-          {active ? <button className="current-plan-button" disabled>Current Plan</button> : <Action endpoint="billing/checkout" label={currentPlan === 'basic' ? `Upgrade to ${plan.name}` : `Choose ${plan.name}`} payload={{planCode:plan.code}} />}
+          {active ? <button className="current-plan-button" disabled>Current Plan</button> : plan.price === 0 ? <button className="current-plan-button" disabled>Free plan</button> : <Action endpoint="billing/subscriptions" label={currentPlan === 'basic' ? `Upgrade to ${plan.name}` : `Choose ${plan.name}`} payload={{planCode:plan.code}} />}
         </div>
       </article>
       <button className="plans-arrow plans-next" aria-label="Next plan" onClick={next}><ChevronRight /></button>

@@ -161,7 +161,9 @@ export async function applicationEligibility(userId: string, input: unknown, aut
       if (user.preferences.automationConstraints?.excludedMethods.includes(job.method)) result.reasons.push('METHOD_EXCLUDED');
     }
     const currentPolicy = (await policy(r)).value;
-    return { eligible: result.reasons.length === 0, reasons: [...new Set(result.reasons)], quota: { used: usage.used, cap: usage.cap }, planCode: plan.code, subscriptionStatus: entitlements.subscriptionStatus, scheduledAt: new Date(now.getTime() + currentPolicy.delaysMinutes[plan.code][job.method] * 60000).toISOString(), priority: currentPolicy.priorities[plan.code] };
+    const planDelays=currentPolicy.delaysMinutes[plan.code as keyof typeof currentPolicy.delaysMinutes]??currentPolicy.delaysMinutes.basic;
+    const planPriority=currentPolicy.priorities[plan.code as keyof typeof currentPolicy.priorities]??currentPolicy.priorities.basic;
+    return { eligible: result.reasons.length === 0, reasons: [...new Set(result.reasons)], quota: { used: usage.used, cap: usage.cap }, planCode: plan.code, subscriptionStatus: entitlements.subscriptionStatus, scheduledAt: new Date(now.getTime() + planDelays[job.method] * 60000).toISOString(), priority: planPriority };
   });
 }
 
@@ -187,14 +189,14 @@ export async function createApplication(userId: string, input: unknown, automati
       else required.reasons.push(...automationReasons(job, automationRecord.preferences, now));
     }
     if (required.reasons.length) throw new ApiError(409, 'NOT_ELIGIBLE', [...new Set(required.reasons)].join(' '));
-    const currentPolicy = (await policy(r)).value, delay = currentPolicy.delaysMinutes[plan.code][job.method];
+    const currentPolicy = (await policy(r)).value, planDelays=currentPolicy.delaysMinutes[plan.code as keyof typeof currentPolicy.delaysMinutes]??currentPolicy.delaysMinutes.basic, delay = planDelays[job.method], planPriority=currentPolicy.priorities[plan.code as keyof typeof currentPolicy.priorities]??currentPolicy.priorities.basic;
     const eligibleAt = new Date(Math.max(now.getTime(), Date.parse(job.discoveredAt))), scheduledAt = new Date(eligibleAt.getTime() + delay * 60000).toISOString();
     const production = process.env.DEMO_MODE !== 'true';
     // Discovery automation may prepare a record, but never opens or submits it.
     const status: ApplicationStatus = automation ? 'NEEDS_REVIEW' : job.method === 'external' ? 'EXTERNAL_STARTED' : production ? 'QUEUED' : 'DIRECT_SUBMITTED';
     const message = required.template ? render(required.template, user, job) : { subject: '', text: '' }, application: ApplicationRecord = {
       id: randomUUID(), userId, jobId, employerId: job.employerId, method: job.method, status,
-      priority: currentPolicy.priorities[plan.code], createdAt: now.toISOString(), scheduledAt, jobVerifiedAt: eligibleAt.toISOString(), attempts: 0, maxAttempts: currentPolicy.maxSendAttempts, automated: automation,
+      priority: planPriority, createdAt: now.toISOString(), scheduledAt, jobVerifiedAt: eligibleAt.toISOString(), attempts: 0, maxAttempts: currentPolicy.maxSendAttempts, automated: automation,
       job: { title: job.title, country: job.country, city: job.city }, events: [{ status, at: now.toISOString(), actorId: userId }],
       ...(job.method === 'email' ? { delivery: { destination: job.email! } } : {}),
       snapshot: { version: 'application-v3', profileRevision: user.profileRevision ?? 0, profile: user.profile, cvVersion: required.cv, template: required.template, rendered: message, job: publicJob(job, user, [plan]), policyVersion: currentPolicy.version, entitlement: { planCode: plan.code, subscriptionId: entitlements.subscription?.id, subscriptionRevision: entitlements.subscription?.revision ?? 0 } },

@@ -19,12 +19,13 @@ export function googleConfig(env = process.env) {
     throw new ApiError(503, 'GOOGLE_UNAVAILABLE', 'Google sign-in configuration is invalid.');
   return c;
 }
-type State = { id: string; nonce: string; verifier: string; expiresAtDate: Date; linkUserId?: string; linkCredential?: string; returnTo?: string };
+type AccountRole = 'student' | 'employer';
+type State = { id: string; nonce: string; verifier: string; expiresAtDate: Date; linkUserId?: string; linkCredential?: string; returnTo?: string; registrationRole?: AccountRole };
 type Identity = { sub: string; email: string; name: string; emailVerified: boolean; hostedDomain?: string };
 
 // Called only with a server-validated Google ID token. Google is authoritative
 // for Gmail and verified Workspace identities, not arbitrary third-party emails.
-export async function resolveGoogleUser(identity: Identity, linking?: User) {
+export async function resolveGoogleUser(identity: Identity, linking?: User, registrationRole: AccountRole = 'student') {
   if (identity.emailVerified !== true || !identity.sub)
     throw new ApiError(400, 'GOOGLE_REJECTED', 'Google sign-in could not be completed.');
   const authoritativeEmail = identity.email.endsWith('@gmail.com') || !!identity.hostedDomain;
@@ -49,7 +50,7 @@ export async function resolveGoogleUser(identity: Identity, linking?: User) {
     const user: User = {
       id: id(), email: identity.email, name: identity.name, googleId: identity.sub,
       authProvider: 'google', passwordHash: null, verified: true, isVerified: true,
-      role: 'student', plan: 'basic', createdAt: new Date().toISOString(),
+      role: registrationRole, plan: 'basic', createdAt: new Date().toISOString(),
       profile: { name: identity.name, headline: '', skills: [], experience: null, education: '', country: '', city: '', confirmed: false },
       preferences: { roles: [], relatedRoles: [], countries: [], modes: [], exclusions: [], automation: false, dailyCap: 5 },
     };
@@ -74,6 +75,7 @@ googleAuth.get('/google', async (req, res) => {
     const { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
     const state = randomBytes(32).toString('base64url'), nonce = randomBytes(32).toString('base64url');
     const returnTo = req.query.next === '/connect-email' ? '/connect-email' : undefined;
+    const registrationRole = z.enum(['student', 'employer']).catch('student').parse(req.query.role);
     const user = await currentUser();
     safeLog('info', 'google_oauth.start_session', {
       cookiePresent: !!cookies().get('skillonit_session'),
@@ -82,6 +84,7 @@ googleAuth.get('/google', async (req, res) => {
     await transaction(r => r.put('oauthStates', {
       id: digest(state), nonce, verifier: codeVerifier, expiresAtDate: new Date(Date.now() + 600000),
       ...(returnTo ? { returnTo } : {}),
+      registrationRole,
       ...(user ? { linkUserId: user.id, linkCredential: digest(user.passwordHash ?? ('google:' + user.googleId)) } : {}),
     }));
     res.cookie(cookieName, state, { httpOnly: true, secure: true, sameSite: 'lax', path: '/api/v1/auth/google', maxAge: 600000 });
@@ -131,7 +134,7 @@ googleAuth.get('/google/callback', async (req, res) => {
       credentialUnchanged: !!allowed,
       googleEmailMatches: !!linking && linking.email === email,
     });
-    const user = await resolveGoogleUser({ sub: payload.sub, email, name: (payload.name || email.split('@')[0]).slice(0, 200), emailVerified: payload.email_verified === true, hostedDomain: payload.hd }, allowed);
+    const user = await resolveGoogleUser({ sub: payload.sub, email, name: (payload.name || email.split('@')[0]).slice(0, 200), emailVerified: payload.email_verified === true, hostedDomain: payload.hd }, allowed, saved.registrationRole);
     stage = 'session_creation';
     await signIn(user);
     stage = 'login_audit';

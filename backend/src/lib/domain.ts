@@ -1,6 +1,6 @@
 import type { CandidateMatching, JobMatching } from './matching-contracts.js';
 export type Role = 'student' | 'employer' | 'admin';
-export type PlanCode = 'basic' | 'pro' | 'premium';
+export type PlanCode = string;
 export type Job = {
   id: string;
   title: string;
@@ -141,12 +141,23 @@ export type Plan = {
   autoApplyDailyCap?: number;
   /** Billing period used only after a verified payment or administrator grant. */
   billingPeriodDays?: number;
+  billingPeriod?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
+  billingInterval?: number;
+  razorpayPlanId?: string;
+  status?: 'active' | 'inactive' | 'archived';
+  description?: string;
+  /** Public presentation order. Lower values are shown first. */
+  displayOrder?: number;
+  /** Optional public label such as "Most popular". */
+  badge?: string;
+  /** Visually emphasize this plan on the public pricing page. */
+  highlighted?: boolean;
 };
 export const plans: Plan[] = [
   {
     code: 'basic',
-    name: 'Basic',
-    price: null,
+    name: 'Free',
+    price: 0,
     currency: 'INR',
     dailyCap: 5,
     delayMinutes: 1440,
@@ -155,11 +166,12 @@ export const plans: Plan[] = [
     cvs: 1,
     autoApplyDailyCap: 0,
     billingPeriodDays: 30,
+    billingPeriod: 'monthly', billingInterval: 1, status: 'active', displayOrder: 0,
   },
   {
     code: 'pro',
-    name: 'Pro',
-    price: null,
+    name: 'Basic',
+    price: 299,
     currency: 'INR',
     dailyCap: 25,
     delayMinutes: 60,
@@ -168,11 +180,12 @@ export const plans: Plan[] = [
     cvs: 3,
     autoApplyDailyCap: 10,
     billingPeriodDays: 30,
+    billingPeriod: 'monthly', billingInterval: 1, status: 'active', displayOrder: 1,
   },
   {
     code: 'premium',
-    name: 'Premium',
-    price: null,
+    name: 'Pro',
+    price: 699,
     currency: 'INR',
     dailyCap: 50,
     delayMinutes: 0,
@@ -181,6 +194,7 @@ export const plans: Plan[] = [
     cvs: 5,
     autoApplyDailyCap: 50,
     billingPeriodDays: 30,
+    billingPeriod: 'monthly', billingInterval: 1, status: 'active', displayOrder: 2, badge: 'Most popular', highlighted: true,
   },
 ];
 export const categories = [

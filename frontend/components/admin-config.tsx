@@ -1,113 +1,49 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { CalendarDays, Search } from 'lucide-react';
+import { format } from 'date-fns';
+import type { DateRange } from 'react-day-picker';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { Plan } from '@/lib/domain';
-export function PlanEditor({ initial }: { initial: Plan[] }) {
-  const [plans, setPlans] = useState(initial),
-    [message, setMessage] = useState(''),
-    [busy, setBusy] = useState(false);
-  function update(index: number, key: keyof Plan, value: unknown) {
-    setPlans(plans.map((p, i) => (i === index ? { ...p, [key]: value } : p)));
-  }
-  return (
-    <form
-      onSubmit={async (e) => {
-        e.preventDefault();
-        setBusy(true);
-        try {
-          const r = await fetch('/api/v1/admin/plans', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(plans),
-          });
-          const j = await r.json();
-          setMessage(
-            r.ok ? 'Plan configuration saved and audited.' : j.error.message,
-          );
-        } catch {
-          setMessage('Could not save plan configuration.');
-        } finally {
-          setBusy(false);
-        }
-      }}
-    >
-      {plans.map((p, i) => (
-        <fieldset className="panel" key={p.code}>
-          <legend>{p.name}</legend>
-          <div className="form-grid">
-            <label>
-              Daily application cap
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={p.dailyCap}
-                onChange={(e) => update(i, 'dailyCap', Number(e.target.value))}
-              />
-            </label>
-            <label>
-              Automation delay (minutes)
-              <input
-                type="number"
-                min="0"
-                max="10080"
-                value={p.delayMinutes}
-                onChange={(e) =>
-                  update(i, 'delayMinutes', Number(e.target.value))
-                }
-              />
-            </label>
-            <label>
-              Price (leave blank until approved)
-              <input
-                type="number"
-                min="0"
-                value={p.price ?? ''}
-                onChange={(e) =>
-                  update(
-                    i,
-                    'price',
-                    e.target.value === '' ? null : Number(e.target.value),
-                  )
-                }
-              />
-            </label>
-            <label>
-              CV versions
-              <input
-                type="number"
-                min="1"
-                max="20"
-                value={p.cvs}
-                onChange={(e) => update(i, 'cvs', Number(e.target.value))}
-              />
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={p.identity}
-                onChange={(e) => update(i, 'identity', e.target.checked)}
-              />
-              Reveal employer identity
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={p.autoApply}
-                onChange={(e) => update(i, 'autoApply', e.target.checked)}
-              />
-              Permit automation when eligible
-            </label>
-          </div>
-        </fieldset>
-      ))}
-      {message && (
-        <p className="notice" aria-live="polite">
-          {message}
-        </p>
-      )}
-      <button className="primary" disabled={busy}>
-        {busy ? 'Saving…' : 'Save plan configuration'}
-      </button>
-    </form>
-  );
+
+type Summary={code:string;subscriberCount:number;razorpayPlanId:string|null;status:string;billingPeriod:string;billingInterval:number;updatedAt?:string|null};
+const price=(p:Plan)=>p.price===null?'Not priced':new Intl.NumberFormat('en-IN',{style:'currency',currency:p.currency,maximumFractionDigits:0}).format(p.price);
+const billingLabel=(period:string|undefined)=>({daily:'day',weekly:'week',monthly:'month',quarterly:'quarter',yearly:'year'}[period??'monthly']??period??'month');
+function PlanIcon({code}:{code:string}){if(code==='basic')return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 20h2v-6.1c1.2.7 2.6 1.1 4 1.1 4.4 0 8-3.6 8-8V3h-4c-4.4 0-8 3.6-8 8v.2A8.9 8.9 0 0 0 5.3 8H3c0 4 1.6 7.1 4 8.8V20Zm4-8.3V11c0-3.3 2.7-6 6-6h2v2c0 3.3-2.7 6-6 6-.7 0-1.4-.1-2-.3v-1Z"/></svg>;if(code==='pro')return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16-2-9 5 4 4-7 4 7 5-4-2 9H5Zm0 2h14v2H5v-2Z"/></svg>;return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2.5 2.9 5.9 6.6 1-4.8 4.6 1.1 6.5-5.8-3.1-5.8 3.1 1.1-6.5-4.8-4.6 6.6-1L12 2.5Z"/></svg>;}
+
+export function PlanEditor({initial,summary,canUpdate}:{initial:Plan[];summary:Summary[];canUpdate:boolean}){
+ const [plans,setPlans]=useState(initial),[summaries]=useState(summary),[tablePlans,setTablePlans]=useState<Plan[]>(initial),[query,setQuery]=useState(''),[status,setStatus]=useState('all'),[period,setPeriod]=useState('all'),[draftRange,setDraftRange]=useState<DateRange|undefined>(),[range,setRange]=useState<DateRange|undefined>(),[rangeOpen,setRangeOpen]=useState(false),[page,setPage]=useState(1),[pagination,setPagination]=useState({page:1,limit:5,total:initial.length,totalPages:Math.max(1,Math.ceil(initial.length/5))}),[statusOptions,setStatusOptions]=useState(['active','inactive','archived']),[periodOptions,setPeriodOptions]=useState(['daily','weekly','monthly','quarterly','yearly']),[filterLoading,setFilterLoading]=useState(false),[filterError,setFilterError]=useState(''),[retry,setRetry]=useState(0),[creating,setCreating]=useState(false),[draft,setDraft]=useState<Plan>({code:'',name:'',price:0,currency:'INR',dailyCap:10,delayMinutes:60,identity:true,autoApply:false,cvs:1,autoApplyDailyCap:0,billingPeriodDays:30,billingPeriod:'monthly',billingInterval:1,status:'active',description:'',displayOrder:initial.length,badge:'',highlighted:false}),[selected,setSelected]=useState<number|null>(null),[editing,setEditing]=useState<number|null>(null),[message,setMessage]=useState(''),[busy,setBusy]=useState(false);
+ const rows=plans.map((plan,index)=>({plan,index,meta:summaries.find(x=>x.code===plan.code)}));
+ const visible=tablePlans.map(plan=>({plan,index:plans.findIndex(item=>item.code===plan.code),meta:summaries.find(x=>x.code===plan.code)}));
+ useEffect(()=>{const controller=new AbortController(),timer=setTimeout(async()=>{setFilterLoading(true);setFilterError('');try{const params=new URLSearchParams({page:String(page),limit:'5'});if(query.trim())params.set('search',query.trim());if(status!=='all')params.set('status',status);if(period!=='all')params.set('billingPeriod',period);if(range?.from)params.set('dateFrom',format(range.from,'yyyy-MM-dd'));if(range?.to)params.set('dateTo',format(range.to,'yyyy-MM-dd'));const response=await fetch(`/api/v1/admin/plans?${params}`,{credentials:'include',cache:'no-store',signal:controller.signal}),payload=await response.json();if(!response.ok)throw new Error(payload.error?.message||'Unable to load plans. Please try again.');setTablePlans(payload.data.items);setPagination(payload.data.pagination);setStatusOptions(payload.data.filterOptions.statuses);setPeriodOptions(payload.data.filterOptions.billingPeriods);}catch(error){if((error as Error).name!=='AbortError')setFilterError(error instanceof Error?error.message:'Unable to load plans. Please try again.');}finally{if(!controller.signal.aborted)setFilterLoading(false);}},query?350:0);return()=>{clearTimeout(timer);controller.abort();};},[page,period,query,range,retry,status]);
+ const update=(i:number,key:keyof Plan,value:unknown)=>setPlans(v=>v.map((p,n)=>n===i?{...p,[key]:value}:p));
+ async function save(){setBusy(true);setMessage('');try{const r=await fetch('/api/v1/admin/plans',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(plans)}),j=await r.json();if(!r.ok)throw new Error(j.error?.message||'Could not save plans.');setPlans(j.data as Plan[]);setMessage('Plan configuration saved successfully.');setEditing(null);setRetry(value=>value+1);}catch(e){setMessage(e instanceof Error?e.message:'Could not save plans.');}finally{setBusy(false);}}
+ async function createPlan(){setBusy(true);setMessage('');try{const response=await fetch('/api/v1/admin/plans',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(draft)}),payload=await response.json();if(!response.ok)throw new Error(payload.error?.message||'Could not create the plan.');const created=payload.data as Plan;setPlans(current=>[...current,created]);setCreating(false);setMessage('Plan created successfully.');setDraft({code:'',name:'',price:0,currency:'INR',dailyCap:10,delayMinutes:60,identity:true,autoApply:false,cvs:1,autoApplyDailyCap:0,billingPeriodDays:30,billingPeriod:'monthly',billingInterval:1,status:'active',description:'',displayOrder:plans.length+1,badge:'',highlighted:false});setRetry(value=>value+1);}catch(error){setMessage(error instanceof Error?error.message:'Could not create the plan.');}finally{setBusy(false);}}
+ async function sync(i:number){setBusy(true);setMessage('');try{const r=await fetch(`/api/v1/admin/plans/${plans[i].code}/razorpay-sync`,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}),j=await r.json();if(!r.ok)throw new Error(j.error?.message||'Plan synchronization failed.');update(i,'razorpayPlanId',j.data.planId);setMessage('Razorpay plan synchronized securely.');}catch(e){setMessage(e instanceof Error?e.message:'Plan synchronization failed.');}finally{setBusy(false);}}
+ if(selected!==null){const plan=plans[selected],meta=summary.find(x=>x.code===plan.code),active=(meta?.status??plan.status??'active')==='active',billing=meta?.billingPeriod??plan.billingPeriod??'monthly';return <section className="admin-plan-detail-page"><header className="admin-mobile-subhead"><button type="button" aria-label="Back to plans" onClick={()=>setSelected(null)}>←</button><h2>Plan Details</h2><span aria-hidden="true">⋮</span></header><article className={`admin-plan-detail-card is-${plan.code}`}><div className="admin-plan-detail-hero"><span className="admin-plan-icon" aria-hidden="true"><PlanIcon code={plan.code}/></span><div className="admin-plan-detail-heading"><div className="admin-plan-title-line"><h3>{plan.name}</h3>{plan.badge&&<span className="admin-popular-badge">◆ {plan.badge}</span>}</div><div className="admin-plan-price">{price(plan)} <small>/ {billingLabel(billing)}</small></div><span className={`admin-badge ${active?'is-good':''}`}>{active?'● Active':meta?.status??plan.status}</span></div></div><dl className="admin-plan-facts"><div><dt>Plan ID</dt><dd>{plan.code}</dd></div><div><dt>Razorpay Plan ID</dt><dd>{meta?.razorpayPlanId??plan.razorpayPlanId??'Not linked'}</dd></div><div><dt>Billing Period</dt><dd>{meta?.billingInterval??plan.billingInterval??1} {billingLabel(billing)}</dd></div></dl></article><section className="admin-plan-entitlements"><h3>Entitlements</h3><dl><div><dt><i>▧</i> Application Credits</dt><dd>{plan.dailyCap} / month</dd></div><div><dt><i>♢</i> Auto Apply Credits</dt><dd>{plan.autoApply?`${plan.autoApplyDailyCap??plan.dailyCap} / month`:'Disabled'}</dd></div><div><dt><i>⌾</i> Job Matching</dt><dd>Enabled</dd></div><div><dt><i>◉</i> Semantic Matching</dt><dd>Enabled</dd></div><div><dt><i>▣</i> CV Versions</dt><dd>{plan.cvs}</dd></div><div><dt><i>◈</i> Employer Identity</dt><dd>{plan.identity?'Visible':'Protected'}</dd></div></dl></section><button className="primary admin-plan-detail-edit" type="button" disabled={!canUpdate} title={canUpdate?'Edit this plan':'You do not have permission to update plans.'} onClick={()=>{setSelected(null);setEditing(selected);}}>✎ Edit Plan</button><Link className="admin-plan-subscribers" href="/admin/subscriptions"><span><b>♙ Subscribers</b><strong>{meta?.subscriberCount??0}</strong></span><span aria-hidden="true">›</span></Link>{message&&<output className="notice">{message}</output>}</section>;}
+ return <section className="admin-plans-page">
+  <header className="admin-plans-heading"><div><div className="eyebrow">ADMIN CONSOLE / PLANS &amp; ENTITLEMENTS</div><h2>Plans &amp; Entitlements</h2><p>Manage subscription plans, pricing, features and recurring billing.</p></div><button type="button" className="primary admin-create-plan" disabled={!canUpdate} title={canUpdate?'Create a new subscription plan':'You do not have permission to create plans.'} onClick={()=>setCreating(true)}>＋ Create Plan</button></header>
+  <div className="admin-plan-cards">{rows.map(({plan,index,meta})=><article className={`admin-plan-card is-${plan.code}${plan.highlighted?' is-highlighted':''}`} key={plan.code}><div className="admin-plan-card-top"><span className="admin-plan-icon"><PlanIcon code={plan.code}/></span><span className={`admin-badge ${(meta?.status??plan.status??'active')==='active'?'is-good':''}`}>{meta?.status??plan.status??'active'}</span></div><div className="admin-plan-title-line"><h3>{plan.name}</h3>{plan.badge&&<span className="admin-popular-badge">◆ {plan.badge}</span>}</div><div className="admin-plan-price">{price(plan)} <small>/ {billingLabel(meta?.billingPeriod??plan.billingPeriod)}</small></div><ul><li><span>▧ Applications</span><b>{plan.dailyCap}/month</b></li><li><span>♢ Auto Apply</span><b>{plan.autoApply?(plan.autoApplyDailyCap??plan.dailyCap)+'/month':'Disabled'}</b></li><li><span>⌾ Job Matching</span><b>Enabled</b></li><li><span>▣ CV versions</span><b>{plan.cvs}</b></li><li><span>♙ Subscribers</span><b>{meta?.subscriberCount??0}</b></li></ul><button type="button" className="admin-plan-link" onClick={()=>setSelected(index)}>View details →</button></article>)}</div>
+  <div className="admin-plan-table-card"><div className="admin-plan-filters"><label className="admin-plan-search"><Search aria-hidden="true"/><input aria-label="Search plans by name or ID" value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}} placeholder="Search plans by name or ID…"/></label><select aria-label="Filter by status" value={status} onChange={e=>{setStatus(e.target.value);setPage(1);}}><option value="all">All Status</option>{statusOptions.map(value=><option value={value} key={value}>{value[0].toUpperCase()+value.slice(1)}</option>)}</select><select aria-label="Filter by billing period" value={period} onChange={e=>{setPeriod(e.target.value);setPage(1);}}><option value="all">All Billing Periods</option>{periodOptions.map(value=><option value={value} key={value}>{value[0].toUpperCase()+value.slice(1)}</option>)}</select><div className="admin-plan-range-wrap"><Popover open={rangeOpen} onOpenChange={open=>{if(open)setDraftRange(range);setRangeOpen(open);}}><PopoverTrigger className="secondary admin-plan-range" aria-label="Select date range"><CalendarDays aria-hidden="true"/><span>{range?.from&&range?.to?`${format(range.from,'dd MMM yyyy')} – ${format(range.to,'dd MMM yyyy')}`:'Select date range'}</span></PopoverTrigger><PopoverContent className="admin-plan-calendar" align="end" side="bottom" sideOffset={7}><Calendar mode="range" selected={draftRange} onSelect={setDraftRange} numberOfMonths={1}/><div className="admin-plan-calendar-actions"><button type="button" onClick={()=>{setDraftRange(range);setRangeOpen(false);}}>Cancel</button><button type="button" onClick={()=>{setDraftRange(undefined);setRange(undefined);setPage(1);setRangeOpen(false);}}>Clear</button><button type="button" className="primary" disabled={!draftRange?.from||!draftRange?.to} onClick={()=>{setRange(draftRange);setPage(1);setRangeOpen(false);}}>Apply</button></div></PopoverContent></Popover></div><button type="button" className="secondary" onClick={()=>{setQuery('');setStatus('all');setPeriod('all');setRange(undefined);setDraftRange(undefined);setRangeOpen(false);setPage(1);}}>Reset Filters</button></div>{filterError?<div className="admin-state is-error" role="alert"><strong>Unable to load plans</strong><p>{filterError}</p><button type="button" onClick={()=>setRetry(value=>value+1)}>Retry</button></div>:filterLoading?<div className="admin-subscriber-skeleton" aria-label="Loading plans"><span/><span/><span/></div>:!visible.length?<div className="admin-empty"><strong>No plans found</strong><p>No plans match the selected filters.</p><button type="button" onClick={()=>{setQuery('');setStatus('all');setPeriod('all');setRange(undefined);setPage(1);}}>Clear filters</button></div>:<div className="table-scroll"><table className="admin-plan-table"><thead><tr><th>Plan name</th><th>Plan ID</th><th>Price</th><th>Billing period</th><th>Razorpay Plan ID</th><th>Subscribers</th><th>Status</th><th>Actions</th></tr></thead><tbody>{visible.map(({plan,index,meta})=><tr key={plan.code}><td><div className="admin-plan-name" aria-label={`${plan.name} plan`}><span className="admin-plan-icon" aria-hidden="true"><PlanIcon code={plan.code}/></span><span><b>{plan.name}</b><small>{plan.description??`${plan.name} SkillOnIT plan`}</small></span></div></td><td><code>{plan.code}</code></td><td><b>{price(plan)}</b></td><td>{plan.billingInterval??1} {plan.billingPeriod??'monthly'}</td><td><code>{plan.razorpayPlanId??'Not linked'}</code></td><td>{meta?.subscriberCount??0}</td><td><span className={`admin-badge ${(plan.status??'active')==='active'?'is-good':''}`}>{plan.status??'active'}</span></td><td><button className="admin-plan-edit" type="button" disabled={!canUpdate||index<0} title={canUpdate?'Edit plan':'You do not have permission to update plans.'} onClick={()=>setEditing(index)}>Edit</button></td></tr>)}</tbody></table></div>}</div><footer className="admin-plan-page-pagination"><span>Showing {visible.length} of {pagination.total} plans</span><span className="admin-plan-pagination"><button type="button" disabled={pagination.page<=1||filterLoading} onClick={()=>setPage(value=>Math.max(1,value-1))}>Previous</button><b>Page {pagination.page} of {pagination.totalPages}</b><button type="button" disabled={pagination.page>=pagination.totalPages||filterLoading} onClick={()=>setPage(value=>Math.min(pagination.totalPages,value+1))}>Next</button></span></footer>
+  {message&&<output className="notice">{message}</output>}
+  {creating&&<div className="admin-modal-backdrop" role="presentation"><dialog open className="admin-role-modal admin-plan-modal" aria-labelledby="create-plan-title"><div className="admin-card-head admin-plan-edit-head"><button type="button" aria-label="Close create plan" onClick={()=>setCreating(false)}>←</button><h2 id="create-plan-title">Create Plan</h2></div><div className="admin-plan-edit-form"><label>Plan Name *<input autoFocus value={draft.name} maxLength={50} onChange={e=>setDraft(value=>({...value,name:e.target.value}))}/></label><label>Plan ID *<input value={draft.code} maxLength={40} pattern="[a-z][a-z0-9-]+" placeholder="career-max" onChange={e=>setDraft(value=>({...value,code:e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,'')}))}/><small>Lowercase letters, numbers and hyphens.</small></label><label>Description<textarea value={draft.description??''} maxLength={500} onChange={e=>setDraft(value=>({...value,description:e.target.value}))}/></label><div className="admin-plan-price-fields"><label>Price *<input type="number" min="0" value={draft.price??0} onChange={e=>setDraft(value=>({...value,price:Number(e.target.value)}))}/></label><label>Currency<select value={draft.currency} onChange={e=>setDraft(value=>({...value,currency:e.target.value}))}><option value="INR">INR</option></select></label></div><div className="admin-plan-price-fields"><label>Display order<input type="number" min="0" max="999" value={draft.displayOrder??0} onChange={e=>setDraft(value=>({...value,displayOrder:Number(e.target.value)}))}/></label><label>Badge<input maxLength={40} value={draft.badge??''} placeholder="Most popular" onChange={e=>setDraft(value=>({...value,badge:e.target.value}))}/></label></div><label><span>Highlight on pricing page</span><input type="checkbox" checked={Boolean(draft.highlighted)} onChange={e=>setDraft(value=>({...value,highlighted:e.target.checked}))}/></label><label>Billing Period *<select value={draft.billingPeriod} onChange={e=>setDraft(value=>({...value,billingPeriod:e.target.value as Plan['billingPeriod']}))}><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="yearly">Yearly</option><option value="weekly">Weekly</option><option value="daily">Daily</option></select></label><fieldset className="admin-plan-status"><legend>Status</legend><button type="button" className={draft.status==='active'?'is-selected':''} onClick={()=>setDraft(value=>({...value,status:'active'}))}>Active</button><button type="button" className={draft.status==='inactive'?'is-selected':''} onClick={()=>setDraft(value=>({...value,status:'inactive'}))}>Inactive</button></fieldset><fieldset className="admin-plan-edit-entitlements"><legend>Entitlements</legend><label><span>Application Credits</span><input type="number" min="0" max="100" value={draft.dailyCap} onChange={e=>setDraft(value=>({...value,dailyCap:Number(e.target.value)}))}/></label><label><span>CV Versions</span><input type="number" min="1" max="20" value={draft.cvs} onChange={e=>setDraft(value=>({...value,cvs:Number(e.target.value)}))}/></label><label><span>Auto Apply</span><input type="checkbox" checked={draft.autoApply} onChange={e=>setDraft(value=>({...value,autoApply:e.target.checked}))}/></label><label><span>Employer Identity</span><input type="checkbox" checked={draft.identity} onChange={e=>setDraft(value=>({...value,identity:e.target.checked}))}/></label></fieldset></div><div className="admin-modal-actions"><button type="button" disabled={busy} onClick={()=>setCreating(false)}>Cancel</button><button type="button" className="primary" disabled={busy||draft.name.trim().length<1||!/^[a-z][a-z0-9-]{1,39}$/.test(draft.code)} onClick={()=>void createPlan()}>{busy?'Creating…':'Create Plan'}</button></div></dialog></div>}
+  {editing!==null&&<div className="admin-modal-backdrop" role="presentation"><dialog open className="admin-role-modal admin-plan-modal" aria-labelledby="edit-plan-title">
+   <div className="admin-card-head admin-plan-edit-head"><button type="button" aria-label="Back to plan details" onClick={()=>setEditing(null)}>←</button><h2 id="edit-plan-title">Edit Plan</h2></div>
+   <div className={`admin-plan-edit-summary is-${plans[editing].code}`}><span className="admin-plan-icon" aria-hidden="true"><PlanIcon code={plans[editing].code}/></span><div><strong>{plans[editing].name}</strong><div className="admin-plan-price">{price(plans[editing])} <small>/ {billingLabel(plans[editing].billingPeriod)}</small></div></div></div>
+   <div className="admin-plan-edit-form">
+    <label>Plan Name *<input value={plans[editing].name} maxLength={50} onChange={e=>update(editing,'name',e.target.value)}/></label>
+    <label>Description<textarea value={plans[editing].description??''} maxLength={500} onChange={e=>update(editing,'description',e.target.value)} placeholder="Describe this plan"/></label>
+    <div className="admin-plan-price-fields"><label>Price *<input type="number" min="0" value={plans[editing].price??''} onChange={e=>update(editing,'price',e.target.value===''?null:Number(e.target.value))}/></label><label>Currency<select value={plans[editing].currency} onChange={e=>update(editing,'currency',e.target.value)}><option value="INR">INR</option></select></label></div>
+    <div className="admin-plan-price-fields"><label>Display order<input type="number" min="0" max="999" value={plans[editing].displayOrder??0} onChange={e=>update(editing,'displayOrder',Number(e.target.value))}/></label><label>Badge<input maxLength={40} value={plans[editing].badge??''} placeholder="Most popular" onChange={e=>update(editing,'badge',e.target.value)}/></label></div>
+    <label><span>Highlight on pricing page</span><input type="checkbox" checked={Boolean(plans[editing].highlighted)} onChange={e=>update(editing,'highlighted',e.target.checked)}/></label>
+    <label>Billing Period *<select value={plans[editing].billingPeriod??'monthly'} onChange={e=>update(editing,'billingPeriod',e.target.value)}><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="yearly">Yearly</option><option value="weekly">Weekly</option></select></label>
+    <fieldset className="admin-plan-status"><legend>Status</legend><button type="button" className={(plans[editing].status??'active')==='active'?'is-selected':''} onClick={()=>update(editing,'status','active')}>Active</button><button type="button" className={plans[editing].status==='inactive'?'is-selected':''} onClick={()=>update(editing,'status','inactive')}>Inactive</button></fieldset>
+    <fieldset className="admin-plan-edit-entitlements"><legend>Entitlements</legend><label><span>▧ Application Credits</span><input type="number" min="0" max="100" value={plans[editing].dailyCap} onChange={e=>update(editing,'dailyCap',Number(e.target.value))}/></label><label><span>♢ Auto Apply Credits</span><input type="number" min="0" max="100" value={plans[editing].autoApplyDailyCap??0} disabled={!plans[editing].autoApply} onChange={e=>update(editing,'autoApplyDailyCap',Number(e.target.value))}/></label><div><span>⌾ Job Matching</span><span className="admin-static-toggle" aria-label="Job Matching enabled">✓</span></div><label><span>◉ Auto Apply</span><input type="checkbox" checked={plans[editing].autoApply} onChange={e=>update(editing,'autoApply',e.target.checked)}/></label><label><span>▣ CV Versions</span><input type="number" min="1" max="20" value={plans[editing].cvs} onChange={e=>update(editing,'cvs',Number(e.target.value))}/></label><label><span>◈ Employer Identity</span><input type="checkbox" checked={plans[editing].identity} onChange={e=>update(editing,'identity',e.target.checked)}/></label></fieldset>
+   </div>
+   {plans[editing].code!=='basic'&&<button type="button" className="secondary admin-razorpay-sync" disabled={!canUpdate||busy||Boolean(plans[editing].razorpayPlanId)} onClick={()=>void sync(editing)}>{plans[editing].razorpayPlanId?'Razorpay plan linked':'Create Razorpay plan'}</button>}
+   <div className="admin-modal-actions"><button type="button" className="secondary" onClick={()=>setEditing(null)}>Cancel</button><button type="button" className="primary" disabled={!canUpdate||busy} onClick={()=>void save()}>{busy?'Saving…':'Save Changes'}</button></div>
+  </dialog></div>}
+ </section>;
 }

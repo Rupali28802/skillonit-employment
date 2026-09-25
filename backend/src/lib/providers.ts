@@ -38,6 +38,9 @@ export interface PaymentProvider {
   verifyCheckout(orderId: string, paymentId: string, signature: string): boolean;
   refund(paymentId: string, input: { amount?: number; receipt: string }): Promise<{ id: string; paymentId: string; amount: number; status: string }>;
   payment(paymentId: string): Promise<{ id: string; orderId: string; amount: number; amountRefunded: number; currency: string; status: string }>;
+  createPlan(input:{period:string;interval:number;item:{name:string;amount:number;currency:string;description?:string};notes:Record<string,string>}):Promise<{id:string;period:string;interval:number;amount:number;currency:string}>;
+  createSubscription(input:{planId:string;totalCount:number;notes:Record<string,string>}):Promise<{id:string;planId:string;status:string;shortUrl:string|null;currentStart:number|null;currentEnd:number|null;chargeAt:number|null;customerId:string|null}>;
+  cancelSubscription(subscriptionId:string,cancelAtCycleEnd:boolean):Promise<{id:string;status:string;endedAt:number|null}>;
 }
 export class RazorpayProvider implements PaymentProvider {
   private credentials() {
@@ -85,6 +88,19 @@ export class RazorpayProvider implements PaymentProvider {
   async payment(paymentId: string) {
     const value = await this.request(`payments/${encodeURIComponent(paymentId)}`);
     return { id: String(value.id), orderId: String(value.order_id), amount: Number(value.amount), amountRefunded: Number(value.amount_refunded ?? 0), currency: String(value.currency), status: String(value.status) };
+  }
+  async createPlan(input:{period:string;interval:number;item:{name:string;amount:number;currency:string;description?:string};notes:Record<string,string>}) {
+    const value=await this.request('plans',{method:'POST',body:JSON.stringify(input)});
+    const item=value.item as Record<string,unknown>;
+    return {id:String(value.id),period:String(value.period),interval:Number(value.interval),amount:Number(item?.amount),currency:String(item?.currency)};
+  }
+  async createSubscription(input:{planId:string;totalCount:number;notes:Record<string,string>}) {
+    const value=await this.request('subscriptions',{method:'POST',body:JSON.stringify({plan_id:input.planId,total_count:input.totalCount,quantity:1,customer_notify:true,notes:input.notes})});
+    return {id:String(value.id),planId:String(value.plan_id),status:String(value.status),shortUrl:typeof value.short_url==='string'?value.short_url:null,currentStart:typeof value.current_start==='number'?value.current_start:null,currentEnd:typeof value.current_end==='number'?value.current_end:null,chargeAt:typeof value.charge_at==='number'?value.charge_at:null,customerId:typeof value.customer_id==='string'?value.customer_id:null};
+  }
+  async cancelSubscription(subscriptionId:string,cancelAtCycleEnd:boolean){
+    const value=await this.request(`subscriptions/${encodeURIComponent(subscriptionId)}/cancel`,{method:'POST',body:JSON.stringify({cancel_at_cycle_end:cancelAtCycleEnd?1:0})});
+    return {id:String(value.id),status:String(value.status),endedAt:typeof value.ended_at==='number'?value.ended_at:null};
   }
 }
 export function providerHealth() {

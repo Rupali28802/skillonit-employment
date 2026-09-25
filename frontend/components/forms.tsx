@@ -203,9 +203,11 @@ export function Action({
           if (confirm && !window.confirm('Confirm this request?')) return;
           setBusy(true);
           try {
+            const headers:Record<string,string> = { 'Content-Type': 'application/json' };
+            if (endpoint.startsWith('billing/')) headers['Idempotency-Key']=crypto.randomUUID();
             const r = await fetch('/api/v1/' + endpoint, {
               method,
-              headers: { 'Content-Type': 'application/json' },
+              headers,
               body: JSON.stringify(payload),
             });
             const j = await r.json();
@@ -217,6 +219,10 @@ export function Action({
               const destination = new URL(j.data.startUrl, window.location.origin);
               if (destination.origin !== window.location.origin)
                 throw Error('The authorization destination is invalid.');
+              window.location.assign(destination.href);
+            } else if (typeof j.data?.shortUrl === 'string') {
+              const destination=new URL(j.data.shortUrl);
+              if(destination.protocol!=='https:'||!['rzp.io','api.razorpay.com'].includes(destination.hostname))throw Error('The payment destination is invalid.');
               window.location.assign(destination.href);
             } else if (redirect) window.location.href = redirect;
             else {
@@ -370,7 +376,7 @@ export function AuthForm({
               Employer
             </button>
           </fieldset>
-          {accountType === 'student' && <>
+          <>
             <button type="button" className="auth-google" disabled={busy} onClick={async () => {
               setBusy(true); setMessage('');
               try {
@@ -379,11 +385,12 @@ export function AuthForm({
                 if (!response.ok || !result.data?.available) throw Error('Google sign-in is not available yet. Please use email sign-in.');
                 const destination = new URL(result.data.startUrl, window.location.origin);
                 if (nextPath) destination.searchParams.set('next', nextPath);
+                if (register) destination.searchParams.set('role', accountType);
                 window.location.assign(destination.href);
               } catch (error) { setMessage(error instanceof Error ? error.message : 'Google sign-in is unavailable.'); setBusy(false); }
             }}><span className="auth-google-mark" aria-hidden="true">G</span>Continue with Google</button>
             <div className="auth-divider"><span>or continue with email</span></div>
-          </>}
+          </>
           <form
             onSubmit={async (e) => {
               e.preventDefault();

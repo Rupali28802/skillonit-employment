@@ -8,7 +8,7 @@ import { persistJobFraudAssessment } from './fraud-detection.js';
 import { transitionJobLifecycle } from './lifecycle.js';
 import { updateJobSource } from './job-source-strategy.js';
 import { read, transaction, type Repository, type Row } from './store.js';
-import { ApiError, audit, safeUser } from './security.js';
+import { ApiError, audit, id, safeUser } from './security.js';
 import { revokeSessions } from './auth-lifecycle.js';
 import { assignAdminRole, listAdminRoles, requireAdminPermission, resolveAdminAccess, type AdminPermission } from './admin-rbac.js';
 
@@ -23,6 +23,7 @@ const pageSchema = z.object({
   query: z.string().trim().max(100).optional(),
 }).strict();
 const userStateSchema = z.object({ disabled: z.boolean(), reason: z.string().trim().min(3).max(500) }).strict();
+const userRoleSchema = z.object({ role: z.enum(['student', 'employer', 'admin']), reason: z.string().trim().min(3).max(500) }).strict();
 const verificationSchema = z.object({ status: z.enum(['verified', 'rejected', 'pending']), note: z.string().trim().min(3).max(2000).optional() }).strict();
 const moderationSchema = z.object({ action: z.enum(['publish', 'review', 'close', 'remove']), reason: z.string().trim().min(3).max(500) }).strict();
 const fraudReviewSchema = z.object({ status: z.enum(['resolved', 'rejected']), note: z.string().trim().min(3).max(1000) }).strict();
@@ -109,7 +110,97 @@ export async function setAdminUserState(actor: User, userId: string, input: unkn
   });
 }
 
-export const listAdminEmployers = (actor: User, params: URLSearchParams) => listRows(actor, 'employers', params);
+export async function setAdminUserRole(actor: User, userId: string, input: unknown) {
+  const value = userRoleSchema.parse(input);
+  if (actor.id === userId) throw new ApiError(409, 'SELF_ROLE_CHANGE_FORBIDDEN', 'Administrators cannot change their own account role.');
+  return transaction(async r => {
+    await requireAdmin(r, actor, 'admin.users.manage');
+    const user = await r.get<User>('users', userId);
+    if (!user) throw new ApiError(404, 'USER_NOT_FOUND', 'User not found.');
+    if (user.role === value.role) throw new ApiError(409, 'ROLE_UNCHANGED', 'The user already has this role.');
+    if (user.role === 'admin') {
+      const activeAdmins = (await r.find<User>('users', { role: 'admin' }, 1000)).filter(item => !item.disabled);
+      if (activeAdmins.length <= 1) throw new ApiError(409, 'LAST_ADMIN_REQUIRED', 'The final active administrator must remain an admin.');
+    }
+    const updated = { ...user, role: value.role };
+    await r.put('users', updated);
+    if (value.role !== 'admin') await r.remove('adminAssignments', userId);
+    await r.put('userRoleEvents', {
+      id: id(), userId, actorId: actor.id, fromRole: user.role,
+      toRole: value.role, reason: value.reason, createdAt: new Date().toISOString(),
+    });
+    await revokeSessions(r, userId);
+    await audit(r, actor.id, 'admin.user_role_updated', userId);
+    return { user: safeUser(updated), sessionsRevoked: true, reasonRecorded: true };
+  });
+}
+
+export async function deleteAdminUser(actor: User, userId: string) {
+  if (actor.id === userId) throw new ApiError(409, 'SELF_DELETE_FORBIDDEN', 'Administrators cannot delete their own account.');
+  return transaction(async r => {
+    await requireAdmin(r, actor, 'admin.users.manage');
+    const user = await r.get<User>('users', userId);
+    if (!user) throw new ApiError(404, 'USER_NOT_FOUND', 'User not found.');
+    if (user.role === 'admin') {
+      const activeAdmins = (await r.find<User>('users', { role: 'admin' }, 1000)).filter(item => !item.disabled);
+      if (activeAdmins.length <= 1) throw new ApiError(409, 'LAST_ADMIN_REQUIRED', 'The final active administrator cannot be deleted.');
+    }
+    await revokeSessions(r, userId);
+    for (const collection of ['mailboxConnections', 'automationPreferences', 'studentSubscriptions', 'adminAssignments']) {
+      await r.remove(collection, userId);
+    }
+    for (const collection of ['passwordResets', 'verifications', 'oauthStates']) {
+      for (const row of await r.find<{ id: string }>(collection, { userId }, 1000)) await r.remove(collection, row.id);
+    }
+    await r.remove('users', userId);
+    await audit(r, actor.id, 'admin.user_deleted', userId);
+    return { deleted: true, userId, sessionsRevoked: true };
+  });
+}
+
+export async function listAdminEmployers(actor: User, params: URLSearchParams): Promise<AdminList> {
+  const input = pageSchema.parse(Object.fromEntries(params));
+  return read(async r => {
+    await requireAdmin(r, actor, 'employers.read');
+    const employers = await r.find<EmployerRecord>('employers', {}, 1000);
+    const owners = new Set(employers.map(employer => employer.ownerId));
+    const enrichedProfiles = (await Promise.all(employers.map(async employer => {
+      const owner = await r.get<User>('users', employer.ownerId);
+      if (!owner) return null;
+      const subscription = await r.get<{ planCode?: string }>('studentSubscriptions', owner.id);
+      return {
+        ...employer,
+        hasEmployerProfile: true,
+        ownerUserId: owner.id,
+        userName: owner.name,
+        email: owner.email,
+        role: owner.role,
+        accountStatus: owner.disabled ? 'disabled' : 'active',
+        plan: subscription?.planCode ?? 'free',
+      };
+    }))).filter((row): row is NonNullable<typeof row> => row !== null);
+    const onboardingUsers = (await r.find<User>('users', { role: 'employer' }, 1000))
+      .filter(owner => !owners.has(owner.id))
+      .map(owner => ({
+        id: owner.id,
+        ownerUserId: owner.id,
+        hasEmployerProfile: false,
+        name: 'Organization not submitted',
+        userName: owner.name,
+        email: owner.email,
+        role: owner.role,
+        status: 'onboarding_required',
+        accountStatus: owner.disabled ? 'disabled' : 'active',
+        plan: owner.plan ?? 'free',
+        createdAt: owner.createdAt,
+      }));
+    const enriched = [...enrichedProfiles, ...onboardingUsers]
+      .filter(row => !input.status || row.status === input.status)
+      .filter(row => !input.role || row.role === input.role)
+      .filter(row => matchesQuery(row, input.query));
+    return page(enriched, input);
+  });
+}
 export async function adminEmployer(actor: User, employerId: string) {
   return read(async r => {
     await requireAdmin(r, actor, 'employers.read');
@@ -194,6 +285,8 @@ export async function adminConsoleRoute(actor: User, parts: string[], method: st
   if (resource === 'users' && !id && method === 'GET') return listAdminUsers(actor, params);
   if (resource === 'users' && id && !action && method === 'GET') return adminUser(actor, id);
   if (resource === 'users' && id && action === 'state' && method === 'PUT') return setAdminUserState(actor, id, await body());
+  if (resource === 'users' && id && action === 'role' && method === 'PUT') return setAdminUserRole(actor, id, await body());
+  if (resource === 'users' && id && !action && method === 'DELETE') return deleteAdminUser(actor, id);
   if (resource === 'employers' && !id && method === 'GET') return listAdminEmployers(actor, params);
   if (resource === 'employers' && id && !action && method === 'GET') return adminEmployer(actor, id);
   if (resource === 'employers' && id && action === 'verification' && method === 'PUT') return verifyAdminEmployer(actor, id, await body());

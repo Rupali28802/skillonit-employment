@@ -271,6 +271,9 @@ export async function bootstrapIndexes() {
     'billingRecords',
     'refundRequests',
     'refundEvents',
+    'planConfigHistory',
+    'subscriptionCheckoutRequests',
+    'subscriptionRenewals',
     'workerRuns',
     'queueExecutions',
     'deadLetterJobs',
@@ -334,6 +337,8 @@ export async function bootstrapIndexes() {
   await db.collection('studentSubscriptions').createIndex({ userId: 1 }, { unique: true });
   await db.collection('studentSubscriptions').createIndex({ status: 1, currentPeriodEnd: 1 });
   await db.collection('studentSubscriptions').createIndex({ providerPaymentId: 1 }, { unique: true, partialFilterExpression: { providerPaymentId: { $type: 'string' } } });
+  await db.collection('studentSubscriptions').createIndex({ providerSubscriptionId: 1 }, { unique: true, partialFilterExpression: { providerSubscriptionId: { $type: 'string' } } });
+  await db.collection('subscriptionRenewals').createIndex({ subscriptionId: 1, periodStart: 1 });
   await db.collection('entitlementUsage').createIndex({ userId: 1, period: 1, metric: 1 }, { unique: true, partialFilterExpression: { metric: { $type: 'string' } } });
   await db.collection('payments').createIndex({ userId: 1, createdAt: -1 });
   await db.collection('payments').createIndex({ providerPaymentId: 1 }, { unique: true, partialFilterExpression: { providerPaymentId: { $type: 'string' } } });
@@ -342,6 +347,7 @@ export async function bootstrapIndexes() {
   await db.collection('billingRecords').createIndex({ orderId: 1, createdAt: 1 });
   await db.collection('refundRequests').createIndex({ orderId: 1, createdAt: -1 });
   await db.collection('paymentEvents').createIndex({ createdAt: -1 });
+  await db.collection('planConfigHistory').createIndex({ planCode: 1, createdAt: -1 });
   await db.collection('candidateConsentEvents').createIndex({ userId: 1, updatedAt: -1 });
   await db.collection('cvDocuments').createIndex({ userId: 1, createdAt: -1 });
   await db.collection('cvDocuments').createIndex({ userId: 1, sha256: 1 });

@@ -32,6 +32,7 @@ import {
   type User,
   type Job,
   type ApplicationStatus,
+  type Plan,
   publicJob,
   eligibility,
   canTransition,
@@ -72,6 +73,9 @@ import { assessEmployer, assessSource, persistJobFraudAssessment } from './lib/f
 import { transitionJobLifecycle } from './lib/lifecycle.js';
 import { activateStudentSubscription, cancelStudentSubscription, expireStudentSubscriptions, getStudentSubscription } from './lib/student-entitlements.js';
 import { billingHistory, createPaymentOrder, processRazorpayWebhook, reconcilePayment, requestRefund, verifyCheckout } from './lib/payment-billing.js';
+import { adminPaymentDetail, adminPayments, adminSubscriptionDetail, adminSubscriptions } from './lib/billing-admin.js';
+import { requireAdminPermission } from './lib/admin-rbac.js';
+import { cancelRecurringSubscription, createRecurringSubscription, syncRazorpayPlan } from './lib/recurring-billing.js';
 import { addApplicantNote, closeEmployerJob, createEmployerProfile, getEmployerApplicant, getEmployerJob, getEmployerProfile, getEmployerVerification, listApplicantNotes, listEmployerApplicants, recordEmployerVerificationDecision, submitEmployerVerification, updateApplicantStatus, updateEmployerJob, updateEmployerProfile } from './lib/employer-portal.js';
 import { adminConsoleRoute } from './lib/admin-console.js';
 import { runSupportChat } from './lib/support-chatbot.js';
@@ -422,8 +426,22 @@ export async function handle(
     }
     if (p === "jobs" && method === "GET")
       return ok(await searchJobs(url.searchParams, await currentUser()));
-    if (p === "plans" && method === "GET")
-      return ok({ plans: await configuredPlans(), pricesFinal: false });
+    if (p === "plans" && method === "GET") {
+      const publicPlans = (await configuredPlans())
+        .map((plan, sourceIndex) => ({ plan, sourceIndex }))
+        .filter(({ plan }) => (plan.status ?? 'active') === 'active')
+        .sort((a, b) => (a.plan.displayOrder ?? a.sourceIndex) - (b.plan.displayOrder ?? b.sourceIndex))
+        .map(({ plan }) => ({
+          code: plan.code, name: plan.name, price: plan.price, currency: plan.currency,
+          dailyCap: plan.dailyCap, delayMinutes: plan.delayMinutes, identity: plan.identity,
+          autoApply: plan.autoApply, cvs: plan.cvs, autoApplyDailyCap: plan.autoApplyDailyCap,
+          billingPeriodDays: plan.billingPeriodDays, billingPeriod: plan.billingPeriod,
+          billingInterval: plan.billingInterval, status: plan.status ?? 'active',
+          description: plan.description, displayOrder: plan.displayOrder,
+          badge: plan.badge, highlighted: plan.highlighted,
+        }));
+      return ok({ plans: publicPlans });
+    }
     if (parts[0] === "jobs" && parts.length === 2 && method === "GET") {
       const job = await read((r) => r.get<Job>("jobs", parts[1]));
       if (!job || job.status !== "published")
@@ -803,7 +821,7 @@ export async function handle(
     if (p === "billing/checkout" && method === "POST") {
       const u = await requireUser('student');
       const { planCode } = z
-        .object({ planCode: z.enum(["basic", "pro", "premium"]) }).strict()
+        .object({ planCode: z.string().trim().regex(/^[a-z][a-z0-9-]{1,39}$/) }).strict()
         .parse(await body());
       const idempotencyKey = request.headers.get('idempotency-key');
       if (!idempotencyKey) throw new ApiError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'An Idempotency-Key header is required.');
@@ -817,7 +835,15 @@ export async function handle(
       const u = await requireUser('student');
       return ok(await billingHistory(u.id));
     }
-    if (p === "webhooks/razorpay" && method === "POST") {
+    if (p === 'billing/subscriptions' && method === 'POST') {
+      const u=await requireUser('student'),key=request.headers.get('idempotency-key');
+      if(!key)throw new ApiError(400,'IDEMPOTENCY_KEY_REQUIRED','An Idempotency-Key header is required.');
+      return ok(await createRecurringSubscription(u,await body(),key,new RazorpayProvider()),201);
+    }
+    if (p === 'billing/subscriptions/cancel' && method === 'POST') {
+      const u=await requireUser('student');return ok(await cancelRecurringSubscription(u,new RazorpayProvider()));
+    }
+    if ((p === "webhooks/razorpay" || p === "payments/razorpay/webhook") && method === "POST") {
       const raw = await request.text();
       if (raw.length > 100000) throw new ApiError(413, "TOO_LARGE", "Webhook is too large.");
       if (!new RazorpayProvider().verify(raw, request.headers.get("x-razorpay-signature") || ""))
@@ -835,14 +861,30 @@ export async function handle(
     if (parts[0] === "admin") {
       const u = await requireUser("admin");
       if (parts[1] === 'console') return ok(await adminConsoleRoute(u, parts, method, url.searchParams, body));
-      if (parts[1] === 'student-subscriptions' && parts.length === 3 && method === 'PUT')
+      if (parts[1] === 'student-subscriptions' && parts.length === 3 && method === 'PUT') {
+        await read(r => requireAdminPermission(r, u, 'subscriptions.manage'));
         return ok(await activateStudentSubscription(u, parts[2], await body()));
-      if (p === 'admin/student-subscriptions/expire' && method === 'POST')
+      }
+      if (p === 'admin/student-subscriptions/expire' && method === 'POST') {
+        await read(r => requireAdminPermission(r, u, 'subscriptions.manage'));
         return ok(await expireStudentSubscriptions());
-      if (parts[1] === 'payments' && parts.length === 4 && parts[3] === 'refund' && method === 'POST')
+      }
+      if (parts[1] === 'payments' && parts.length === 2 && method === 'GET')
+        return ok(await adminPayments(u, url.searchParams));
+      if (parts[1] === 'payments' && parts.length === 3 && method === 'GET')
+        return ok(await adminPaymentDetail(u, parts[2]));
+      if (parts[1] === 'subscriptions' && parts.length === 2 && method === 'GET')
+        return ok(await adminSubscriptions(u, url.searchParams));
+      if (parts[1] === 'subscriptions' && parts.length === 3 && method === 'GET')
+        return ok(await adminSubscriptionDetail(u, parts[2]));
+      if (parts[1] === 'payments' && parts.length === 4 && parts[3] === 'refund' && method === 'POST') {
+        await read(r => requireAdminPermission(r, u, 'payments.refund'));
         return ok(await requestRefund(u, parts[2], await body(), new RazorpayProvider()));
-      if (parts[1] === 'payments' && parts.length === 4 && parts[3] === 'reconcile' && method === 'POST')
+      }
+      if (parts[1] === 'payments' && parts.length === 4 && parts[3] === 'reconcile' && method === 'POST') {
+        await read(r => requireAdminPermission(r, u, 'payments.refund'));
         return ok(await reconcilePayment(u, parts[2], new RazorpayProvider()));
+      }
       if (p === 'admin/application-policy') {
         if (method === 'GET') return ok(await getApplicationPolicy());
         if (method === 'PUT') return ok(await configureApplicationPolicy(u, await body()));
@@ -873,35 +915,83 @@ export async function handle(
             leads: await r.count("leads"),
           })),
         });
+      if (p === 'admin/plans/summary' && method === 'GET') {
+        await read(r=>requireAdminPermission(r,u,'plans.read'));
+        const range=z.object({from:z.iso.date().optional(),to:z.iso.date().optional()}).strict().parse(Object.fromEntries(url.searchParams));
+        if(range.from&&range.to&&range.from>range.to)throw new ApiError(400,'INVALID_DATE_RANGE','The start date must be on or before the end date.');
+        const planList=await configuredPlans();
+        const items=await read(async r=>{
+          const history=await r.find<{planCode?:string;createdAt?:string}>('planConfigHistory',{},5000);
+          const start=range.from?Date.parse(`${range.from}T00:00:00.000Z`):null,end=range.to?Date.parse(`${range.to}T23:59:59.999Z`):null;
+          const summaries=await Promise.all(planList.map(async plan=>{
+            const timestamps=history.filter(row=>!row.planCode||row.planCode===plan.code).map(row=>row.createdAt).filter((value):value is string=>Boolean(value)).sort();
+            const updatedAt=timestamps.at(-1)??null;
+            return {code:plan.code,name:plan.name,price:plan.price,currency:plan.currency,billingPeriod:plan.billingPeriod??'monthly',billingInterval:plan.billingInterval??1,razorpayPlanId:plan.razorpayPlanId??null,status:plan.status??'active',subscriberCount:await r.count('studentSubscriptions',{planCode:plan.code}),updatedAt};
+          }));
+          return summaries.filter(item=>{
+            if(start===null&&end===null)return true;
+            if(!item.updatedAt)return false;
+            const value=Date.parse(item.updatedAt);
+            return (start===null||value>=start)&&(end===null||value<=end);
+          });
+        });
+        return ok({items});
+      }
       if (p === "admin/plans") {
-        if (method === "GET") return ok(await configuredPlans());
+        const planInputSchema=z.object({code:z.string().trim().regex(/^[a-z][a-z0-9-]{1,39}$/),name:z.string().trim().min(1).max(50),price:z.number().nonnegative().nullable(),currency:z.string().regex(/^[A-Z]{3}$/),dailyCap:z.number().int().min(0).max(100),delayMinutes:z.number().int().min(0).max(10080),identity:z.boolean(),autoApply:z.boolean(),cvs:z.number().int().min(1).max(20),autoApplyDailyCap:z.number().int().min(0).max(100).optional(),billingPeriodDays:z.number().int().min(1).max(366).default(30),billingPeriod:z.enum(['daily','weekly','monthly','quarterly','yearly']).default('monthly'),billingInterval:z.number().int().min(1).max(100).default(1),status:z.enum(['active','inactive','archived']).default('active'),description:z.string().trim().max(500).optional(),displayOrder:z.number().int().min(0).max(999).optional(),badge:z.string().trim().max(40).optional(),highlighted:z.boolean().optional()}).strict();
+        if (method === "GET") {
+          await read(r => requireAdminPermission(r, u, 'plans.read'));
+          const input=z.object({search:z.string().trim().max(100).optional(),status:z.enum(['active','inactive','archived']).optional(),billingPeriod:z.enum(['daily','weekly','monthly','quarterly','yearly']).optional(),dateFrom:z.iso.date().optional(),dateTo:z.iso.date().optional(),page:z.coerce.number().int().min(1).max(1000).default(1),limit:z.coerce.number().int().min(1).max(100).default(20)}).strict().parse(Object.fromEntries(url.searchParams));
+          if(input.dateFrom&&input.dateTo&&input.dateFrom>input.dateTo)throw new ApiError(400,'INVALID_DATE_RANGE','The start date must be on or before the end date.');
+          const configured=await configuredPlans();
+          const result=await read(async r=>{
+            const history=await r.find<{planCode?:string;createdAt?:string}>('planConfigHistory',{},5000);
+            let items=configured.map(plan=>{
+              const dates=history.filter(row=>!row.planCode||row.planCode===plan.code).map(row=>row.createdAt).filter((value):value is string=>Boolean(value)).sort();
+              return {...plan,createdAt:dates[0]??null,updatedAt:dates.at(-1)??null};
+            }).sort((a,b)=>(a.displayOrder??0)-(b.displayOrder??0));
+            if(input.search){const query=input.search.toLocaleLowerCase();items=items.filter(plan=>plan.name.toLocaleLowerCase().includes(query)||plan.code.toLocaleLowerCase().includes(query));}
+            if(input.status)items=items.filter(plan=>(plan.status??'active')===input.status);
+            if(input.billingPeriod)items=items.filter(plan=>(plan.billingPeriod??'monthly')===input.billingPeriod);
+            const start=input.dateFrom?Date.parse(`${input.dateFrom}T00:00:00.000Z`):null,end=input.dateTo?Date.parse(`${input.dateTo}T23:59:59.999Z`):null;
+            if(start!==null||end!==null)items=items.filter(plan=>{if(!plan.createdAt)return false;const value=Date.parse(plan.createdAt);return (start===null||value>=start)&&(end===null||value<=end);});
+            const total=items.length,totalPages=Math.max(1,Math.ceil(total/input.limit)),offset=(input.page-1)*input.limit;
+            return {items:items.slice(offset,offset+input.limit),pagination:{page:input.page,limit:input.limit,total,totalPages},filterOptions:{statuses:['active','inactive','archived'],billingPeriods:['daily','weekly','monthly','quarterly','yearly']}};
+          });
+          return ok(result);
+        }
+        if (method === "POST") {
+          await read(r => requireAdminPermission(r, u, 'plans.update'));
+          const created=planInputSchema.parse(await body());
+          if(created.code==='basic')throw new ApiError(409,'PLAN_CODE_RESERVED','The basic plan code is reserved.');
+          const configuredBeforeCreate=await configuredPlans();
+          await transaction(async r=>{
+            const current=(await r.get<{id:string;value:Plan[]}>('systemConfig','plans'))?.value??configuredBeforeCreate;
+            if(current.some(plan=>plan.code===created.code))throw new ApiError(409,'PLAN_ALREADY_EXISTS','A plan with this ID already exists.');
+            if(current.length>=20)throw new ApiError(409,'PLAN_LIMIT_REACHED','No more than 20 plans may be configured.');
+            await r.put('systemConfig',{id:'plans',value:[...current,created]});
+            await r.put('planConfigHistory',{id:crypto.randomUUID(),actorId:u.id,planCode:created.code,action:'plan.created',next:created,createdAt:new Date().toISOString()});
+            await audit(r,u.id,'plan.created',created.code);
+          });
+          return ok(created,201);
+        }
         if (method === "PUT") {
-          const input = z
-            .array(
-              z.object({
-                code: z.enum(["basic", "pro", "premium"]),
-                name: z.string().min(1).max(50),
-                price: z.number().nonnegative().nullable(),
-                currency: z.string().regex(/^[A-Z]{3}$/),
-                dailyCap: z.number().int().min(0).max(100),
-                delayMinutes: z.number().int().min(0).max(10080),
-                identity: z.boolean(),
-                autoApply: z.boolean(),
-                cvs: z.number().int().min(1).max(20),
-                autoApplyDailyCap: z.number().int().min(0).max(100).optional(),
-                billingPeriodDays: z.number().int().min(1).max(366).default(30),
-              }),
-            )
-            .length(3)
-            .parse(await body());
-          if (new Set(input.map((p) => p.code)).size !== 3)
-            throw new ApiError(400, "INVALID_PLANS", "Provide each plan once.");
+          await read(r => requireAdminPermission(r, u, 'plans.update'));
+          const input = z.array(planInputSchema.extend({razorpayPlanId:z.string().regex(/^plan_[A-Za-z0-9]{6,100}$/).optional()})).min(3).max(20).parse(await body());
+          if (new Set(input.map((plan) => plan.code)).size !== input.length||!['basic','pro','premium'].every(code=>input.some(plan=>plan.code===code)))
+            throw new ApiError(400, "INVALID_PLANS", "Plan IDs must be unique and the three base plans must remain configured.");
           await transaction(async (r) => {
+            const previous = await r.get<{id:string;value:unknown}>('systemConfig', 'plans');
             await r.put("systemConfig", { id: "plans", value: input });
+            await r.put('planConfigHistory', { id: crypto.randomUUID(), actorId: u.id, previous: previous?.value ?? null, next: input, policy: 'new_subscriptions_only', createdAt: new Date().toISOString() });
             await audit(r, u.id, "plans.updated", "plans");
           });
           return ok(input);
         }
+      }
+      if (parts[1] === 'plans' && parts.length === 4 && parts[3] === 'razorpay-sync' && method === 'POST') {
+        await read(r=>requireAdminPermission(r,u,'plans.update'));
+        return ok(await syncRazorpayPlan(u,z.string().trim().regex(/^[a-z][a-z0-9-]{1,39}$/).parse(parts[2]),new RazorpayProvider()));
       }
       const collection = allowed[parts[1]];
       if (collection && method === "GET") {

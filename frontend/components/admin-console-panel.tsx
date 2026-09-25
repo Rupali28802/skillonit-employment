@@ -10,6 +10,11 @@ type JobEngineStatus = {
   states: { id: string; lastSuccessAt?: string; failures?: number }[];
 };
 type SourceHealth = { online: number; configured: number };
+type AccountRole = 'student' | 'employer' | 'admin';
+type AdminAccess = { userId: string; permissions: string[] };
+type PendingRole = { row: Row; from: AccountRole; to: AccountRole };
+const accountRoles: AccountRole[] = ['student', 'employer', 'admin'];
+const ownerUserId = (row: Row) => typeof row.ownerUserId === 'string' ? row.ownerUserId : '';
 
 const resourceBySection: Record<string, string> = {
   users: 'users', employers: 'employers', jobs: 'jobs', sources: 'sources',
@@ -18,7 +23,7 @@ const resourceBySection: Record<string, string> = {
 
 const headings: Record<string, string[]> = {
   users: ['name', 'email', 'role', 'verified', 'disabled'],
-  employers: ['name', 'domain', 'country', 'status', 'updatedAt'],
+  employers: ['name', 'userName', 'email', 'role', 'status', 'accountStatus', 'plan', 'createdAt'],
   jobs: ['title', 'company', 'status', 'trust', 'expiresAt'],
   sources: ['provider', 'type', 'status', 'lastSuccessAt', 'failureCount'],
   applications: ['userId', 'jobId', 'method', 'status', 'createdAt'],
@@ -63,7 +68,7 @@ function AdminAction({ section, row, onDone }: { section: string; row: Row; onDo
   const [message, setMessage] = useState('');
   const actions = section === 'users'
     ? [row.disabled ? 'enable' : 'disable']
-    : section === 'employers' ? ['verified', 'rejected']
+    : section === 'employers' && row.hasEmployerProfile ? ['verified', 'rejected']
     : section === 'jobs' ? ['publish', 'review', 'close', 'remove']
     : section === 'fraud' ? ['resolved', 'rejected'] : [];
   if (!actions.length) return null;
@@ -108,6 +113,13 @@ export function AdminConsolePanel({ section }: { section: string }) {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
   const [sourceHealth, setSourceHealth] = useState<SourceHealth | null>(null);
+  const [access, setAccess] = useState<AdminAccess | null>(null);
+  const [pendingRole, setPendingRole] = useState<PendingRole | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Row | null>(null);
+  const [roleReason, setRoleReason] = useState('');
+  const [roleBusy, setRoleBusy] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [notice, setNotice] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -123,9 +135,11 @@ export function AdminConsolePanel({ section }: { section: string }) {
         if (query.trim()) params.set('query', query.trim());
         if (status) params.set('status', status);
         const pageRequest = request(`admin/console/${resource}?${params}`) as Promise<Page>;
-        const [page, engine] = section === 'sources'
-          ? await Promise.all([pageRequest, request('admin/job-engine') as Promise<JobEngineStatus>])
-          : [await pageRequest, null];
+        const [page, engine, currentAccess] = await Promise.all([
+          pageRequest,
+          section === 'sources' ? request('admin/job-engine') as Promise<JobEngineStatus> : Promise.resolve(null),
+          ['users', 'employers'].includes(section) ? request('admin/console/access') as Promise<AdminAccess> : Promise.resolve(null),
+        ]);
         setRows(page.items); setNextCursor(page.nextCursor);
         if (engine) {
           const now = Date.now();
@@ -138,13 +152,44 @@ export function AdminConsolePanel({ section }: { section: string }) {
           }).length;
           setSourceHealth({ online, configured: configured.length });
         } else setSourceHealth(null);
+        if (currentAccess) setAccess(currentAccess);
       }
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Admin data is unavailable.'); }
     finally { setLoading(false); }
   }, [cursor, query, resource, section, status]);
 
   useEffect(() => { queueMicrotask(() => void load()); }, [load]);
+  async function updateRole() {
+    if (!pendingRole || roleReason.trim().length < 3) return;
+    setRoleBusy(true); setNotice(null);
+    try {
+      const userId = section === 'employers' ? ownerUserId(pendingRole.row) : pendingRole.row.id;
+      await request(`admin/console/users/${encodeURIComponent(userId)}/role`, {
+        method: 'PUT', body: JSON.stringify({ role: pendingRole.to, reason: roleReason.trim() }),
+      });
+      setPendingRole(null); setRoleReason('');
+      setNotice({ tone: 'success', text: section === 'employers' ? 'Employer role updated successfully.' : 'User role updated successfully.' });
+      await load();
+    } catch (caught) {
+      setNotice({ tone: 'error', text: caught instanceof Error ? caught.message : 'The user role could not be updated.' });
+    } finally { setRoleBusy(false); }
+  }
+  async function deleteUser() {
+    if (!pendingDelete) return;
+    setDeleteBusy(true); setNotice(null);
+    try {
+      const userId = section === 'employers' ? ownerUserId(pendingDelete) : pendingDelete.id;
+      await request(`admin/console/users/${encodeURIComponent(userId)}`, { method: 'DELETE' });
+      setPendingDelete(null);
+      setNotice({ tone: 'success', text: section === 'employers' ? 'Employer user deleted successfully.' : 'User deleted successfully.' });
+      await load();
+    } catch (caught) {
+      setNotice({ tone: 'error', text: caught instanceof Error ? caught.message : 'The user could not be deleted.' });
+    } finally { setDeleteBusy(false); }
+  }
   const columns = useMemo(() => headings[section] ?? [], [section]);
+  const managedUserId = (row: Row) => section === 'employers' ? ownerUserId(row) : row.id;
+  const canManageUsers = Boolean(access?.permissions.includes('admin.users.manage'));
   if (loading) return <output className="admin-state"><span className="admin-spinner" />Loading secure admin data…</output>;
   if (error) return <div className="admin-state is-error" role="alert"><strong>Unable to load this section</strong><p>{error}</p><button onClick={() => void load()}>Retry</button></div>;
   if (!resource && overview) return <>
@@ -166,10 +211,13 @@ export function AdminConsolePanel({ section }: { section: string }) {
       <label>Status<input value={status} onChange={event => setStatus(event.target.value)} placeholder="All statuses" /></label>
       <button className="primary" type="submit">Apply filters</button>
     </form>
+    {notice && <div className={`admin-notice is-${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.text}</div>}
     {!rows.length ? <div className="admin-empty"><strong>No matching records</strong><p>Try clearing the filters. Synthetic records are never generated.</p></div> : <div className="table-scroll"><table className="admin-table"><thead><tr>{columns.map(column => <th key={column}>{label(column)}</th>)}<th>Actions</th></tr></thead><tbody>
-      {rows.map(row => <tr key={row.id}>{columns.map(column => <td key={column}>{['status', 'role', 'trust', 'riskLevel'].includes(column) ? <span className={`admin-badge ${tone(row[column])}`}>{text(row[column])}</span> : text(row[column])}</td>)}<td><AdminAction section={section} row={row} onDone={() => void load()} /></td></tr>)}
+      {rows.map(row => <tr key={row.id}>{columns.map(column => <td key={column}>{['users', 'employers'].includes(section) && column === 'role' ? <select className="admin-role-select" aria-label={`Role for ${text(row.userName ?? row.name)}`} value={String(row.role)} disabled={!canManageUsers || access?.userId === managedUserId(row)} onChange={event => setPendingRole({ row, from: row.role as AccountRole, to: event.target.value as AccountRole })}>{(canManageUsers ? accountRoles : [row.role as AccountRole]).map(role => <option key={role} value={role}>{label(role)}</option>)}</select> : ['status', 'role', 'trust', 'riskLevel', 'accountStatus'].includes(column) ? <span className={`admin-badge ${tone(row[column])}`}>{text(row[column])}</span> : text(row[column])}</td>)}<td><div className="admin-user-actions"><AdminAction section={section} row={row} onDone={() => void load()} />{['users', 'employers'].includes(section) && <button className="admin-danger" type="button" disabled={!canManageUsers || access?.userId === managedUserId(row)} title={!canManageUsers ? 'Your admin role cannot delete users.' : access?.userId === managedUserId(row) ? 'You cannot delete your own account.' : 'Delete user'} onClick={() => setPendingDelete(row)}>Delete</button>}</div></td></tr>)}
     </tbody></table></div>}
     <div className="admin-pagination"><button disabled={!history.length} onClick={() => { const prior = [...history]; setCursor(prior.pop() ?? ''); setHistory(prior); }}>Previous</button><span>{rows.length} records on this page</span><button disabled={!nextCursor} onClick={() => { setHistory(current => [...current, cursor]); setCursor(nextCursor ?? ''); }}>Next</button></div>
+    {pendingRole && <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !roleBusy) { setPendingRole(null); setRoleReason(''); } }}><dialog className="admin-role-modal" open aria-labelledby="role-change-title"><p className="eyebrow">CONFIRM ROLE CHANGE</p><h2 id="role-change-title">Change user role</h2><p className="admin-role-change"><strong>{label(pendingRole.from)}</strong><span aria-hidden="true">→</span><strong>{label(pendingRole.to)}</strong></p><label>Reason for this change<textarea autoFocus value={roleReason} maxLength={500} onChange={event => setRoleReason(event.target.value)} placeholder="Enter an audit reason (required)" /></label><div className="admin-modal-actions"><button type="button" disabled={roleBusy} onClick={() => { setPendingRole(null); setRoleReason(''); }}>Cancel</button><button className="primary" type="button" disabled={roleBusy || roleReason.trim().length < 3} onClick={() => void updateRole()}>{roleBusy ? 'Updating…' : 'Confirm role change'}</button></div></dialog></div>}
+    {pendingDelete && <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !deleteBusy) setPendingDelete(null); }}><dialog className="admin-role-modal" open aria-labelledby="delete-user-title"><p className="eyebrow danger-text">DELETE USER</p><h2 id="delete-user-title">Delete this user?</h2><p>This permanently removes the SkillOnIT account and revokes its active sessions.</p><div className="admin-delete-target"><strong>{text(pendingDelete.name)}</strong><span>{text(pendingDelete.email)}</span></div><p className="admin-danger-copy">This action cannot be undone.</p><div className="admin-modal-actions"><button type="button" disabled={deleteBusy} onClick={() => setPendingDelete(null)}>Cancel</button><button className="admin-danger" type="button" disabled={deleteBusy} onClick={() => void deleteUser()}>{deleteBusy ? 'Deleting…' : 'Delete user'}</button></div></dialog></div>}
     </section>
   </>;
 }

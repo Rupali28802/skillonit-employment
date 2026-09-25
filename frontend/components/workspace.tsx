@@ -6,12 +6,14 @@ import { api, configuredPlans, demoMode } from '@/lib/api';
 import { type PublicJob, type User, countries, categories } from '@/lib/domain';
 import { SmartForm, Action } from './forms';
 import { PlanEditor } from './admin-config';
+import { AdminBillingPanel } from './admin-billing-panel';
 import { ConsentManager, CvManager, GmailConnection, OnboardingActions, type MailboxStatus } from './candidate-tools';
 import { AssistantPanel, NotificationCenter, SavedSearchManager, TaxonomyLookup } from './candidate-extras';
 import { CandidateDashboard } from './candidate-dashboard';
 import { ProfileDashboard } from './profile-dashboard';
 import { AdminConsolePanel } from './admin-console-panel';
 import { AdminRolesPanel } from './admin-roles-panel';
+import { AdminResponsiveLayout } from './admin-responsive-layout';
 type RecordRow = { id: string; [key: string]: unknown };
 const candidateLinks = [
   ['dashboard', 'Overview'],
@@ -52,6 +54,7 @@ const adminLinks = [
   ['admin/fraud', 'Fraud & risk'],
   ['admin/plans', 'Plans & entitlements'],
   ['admin/payments', 'Payments'],
+  ['admin/subscriptions', 'Subscriptions'],
   ['admin/leads', 'Leads'],
   ['admin/content', 'Content & SEO'],
   ['admin/flags', 'Feature flags'],
@@ -66,7 +69,7 @@ const adminLinks = [
 ];
 const adminLinkPermission: Record<string, string> = {
   'admin/users':'users.read','admin/employers':'employers.read','admin/jobs':'jobs.read','admin/sources':'sources.read',
-  'admin/applications':'applications.read','admin/fraud':'fraud.read','admin/plans':'plans.read','admin/payments':'payments.read',
+  'admin/applications':'applications.read','admin/fraud':'fraud.read','admin/plans':'plans.read','admin/payments':'payments.read','admin/subscriptions':'subscriptions.read',
   'admin/queues':'system.read','admin/notifications':'notifications.read','admin/health':'system.read','admin/matching':'configuration.read',
   'admin/leads':'configuration.read','admin/content':'configuration.read','admin/flags':'configuration.read',
   'admin/audit':'audit.read','admin/privacy':'privacy.read','admin/roles':'admin.roles.manage','admin/settings':'configuration.read',
@@ -102,6 +105,13 @@ export async function Workspace({ section }: { section: string }) {
   if (group === 'admin') {
     adminAccess = await api<{ permissions: string[]; roleName:string }>('admin/console/access');
     links = adminLinks.filter(([path]) => !adminLinkPermission[path] || adminAccess?.permissions.includes(adminLinkPermission[path]));
+  }
+  if (group === 'admin') {
+    const title = links.find(([path]) => path === section)?.[1] || 'Admin Console';
+    return <AdminResponsiveLayout section={section} title={title} userName={user.name} links={links as [string, string][]} logout={<Action endpoint="auth/logout" label="Sign out" redirect="/" />}>
+      {(await demoMode()) && <p className="sample-note">Local demo · External providers may be unavailable.</p>}
+      <Admin section={section} user={user} permissions={adminAccess?.permissions ?? []} />
+    </AdminResponsiveLayout>;
   }
   return (
     <div className="page-wrap">
@@ -140,7 +150,7 @@ export async function Workspace({ section }: { section: string }) {
           ) : group === 'employer' ? (
             <Employer section={section} user={user} />
           ) : (
-            <Admin section={section} user={user} />
+            <Admin section={section} user={user} permissions={adminAccess?.permissions ?? []} />
           )}
         </section>
       </div>
@@ -380,7 +390,7 @@ async function Candidate({ section, user }: { section: string; user: User }) {
     return <GmailConnection initial={mailbox} />;
   }
   if (section === 'billing') {
-    const subscription = await api<{ plan: { name: string; dailyCap: number; cvs: number; delayMinutes: number }; subscriptionStatus: string; subscription: { currentPeriodEnd: string; cancelAtPeriodEnd: boolean } | null; limits: { applicationsPerDay: number; autoApplyPerDay: number; cvVersions: number } }>('me/subscription');
+    const subscription = await api<{ plan: { name: string; dailyCap: number; cvs: number; delayMinutes: number }; subscriptionStatus: string; subscription: { currentPeriodStart:string; currentPeriodEnd: string; nextBillingAt?:string; autoRenew:boolean; cancelAtPeriodEnd: boolean; providerSubscriptionId?:string } | null; limits: { applicationsPerDay: number; autoApplyPerDay: number; cvVersions: number } }>('me/subscription');
     const history = await api<RecordRow[]>('billing/history');
     const plan = subscription.plan;
     return (
@@ -394,7 +404,7 @@ async function Candidate({ section, user }: { section: string; user: User }) {
         <Link href="/pricing" className="primary">
           Compare plans
         </Link>
-        {subscription.subscription && <><p>Current period ends {new Date(subscription.subscription.currentPeriodEnd).toLocaleDateString('en-IN')}.</p>{!subscription.subscription.cancelAtPeriodEnd && <Action endpoint="me/subscription/cancel" label="Cancel at period end" confirm />}</>}
+        {subscription.subscription && <><p>Current billing period: {new Date(subscription.subscription.currentPeriodStart).toLocaleDateString('en-IN')} – {new Date(subscription.subscription.currentPeriodEnd).toLocaleDateString('en-IN')}.</p><p>Auto-renewal: {subscription.subscription.autoRenew?'On':'Off'}{subscription.subscription.nextBillingAt?` · Next billing ${new Date(subscription.subscription.nextBillingAt).toLocaleDateString('en-IN')}`:''}{subscription.subscription.cancelAtPeriodEnd?' · Cancels at period end':''}</p>{subscription.subscription.providerSubscriptionId&&!subscription.subscription.cancelAtPeriodEnd&&<Action endpoint="billing/subscriptions/cancel" label="Cancel Renewal" confirm />}</>}
         <h3 style={{ marginTop: 25 }}>Billing history</h3>
         {history.length ? <ul>{history.map(row => <li key={row.id}>{display(row.type)} · {display(row.currency)} {(Number(row.amount || 0) / 100).toFixed(2)} · {new Date(display(row.createdAt)).toLocaleString('en-IN')}</li>)}</ul> : <p>No billing activity yet.</p>}
       </div>
@@ -452,7 +462,9 @@ async function Employer({ section, user }: { section: string; user: User }) {
         </p>
         <SmartForm
           endpoint="employers"
+          method={org ? 'PUT' : 'POST'}
           initial={org || { country: 'India' }}
+          expectedRevision={org && typeof org.revision === 'number' ? org.revision : undefined}
           fields={[
             { name: 'name', label: 'Organization name' },
             {
@@ -669,17 +681,20 @@ async function Employer({ section, user }: { section: string; user: User }) {
 async function Admin({
   section,
   user: _user,
+  permissions,
 }: {
   section: string;
   user: User;
+  permissions: string[];
 }) {
   const segment = section.split('/')[1];
   if (!segment) {
     return <AdminConsolePanel section="overview" />;
   }
   if (segment === 'roles') return <AdminRolesPanel />;
-  if (['users', 'employers', 'jobs', 'sources', 'applications', 'fraud', 'payments', 'audit'].includes(segment))
+  if (['users', 'employers', 'jobs', 'sources', 'applications', 'fraud', 'audit'].includes(segment))
     return <AdminConsolePanel section={segment} />;
+  if (segment === 'payments' || segment === 'subscriptions') return <AdminBillingPanel mode={segment} canRefund={permissions.includes('payments.refund')} canManageSubscriptions={permissions.includes('subscriptions.manage')} />;
   const operational: Record<string, { endpoint: string; title: string; description: string }> = {
     queues: { endpoint: 'admin/queue/status', title: 'Queue and worker health', description: 'Live queue state from the existing worker infrastructure.' },
     health: { endpoint: 'admin/observability', title: 'System health', description: 'Provider-safe operational status. Credentials and raw provider responses are never displayed.' },
@@ -699,38 +714,8 @@ async function Admin({
   }
   if (segment === 'plans') {
     const p = await configuredPlans();
-    return (
-      <div className="panel">
-        <h2>Candidate plan configuration</h2>
-        <p>
-          Initial quotas and delays are development assumptions. Final prices
-          have not been set.
-        </p>
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Plan</th>
-                <th>Daily cap</th>
-                <th>Delay</th>
-                <th>Identity</th>
-              </tr>
-            </thead>
-            <tbody>
-              {p.map((plan) => (
-                <tr key={plan.code}>
-                  <td>{plan.name}</td>
-                  <td>{plan.dailyCap}</td>
-                  <td>{plan.delayMinutes} minutes</td>
-                  <td>{plan.identity ? 'Visible' : 'Protected'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <PlanEditor initial={p} />
-      </div>
-    );
+    const summary = await api<{items:{code:string;subscriberCount:number;razorpayPlanId:string|null;status:string;billingPeriod:string;billingInterval:number}[]}>('admin/plans/summary');
+    return <PlanEditor initial={p} summary={summary.items} canUpdate={permissions.includes('plans.update')} />;
   }
   const collections: Record<string, string> = {
     leads: 'leads',

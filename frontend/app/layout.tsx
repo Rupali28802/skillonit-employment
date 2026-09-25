@@ -76,7 +76,7 @@ export default async function RootLayout({
           </div>
         </header>
         <main id="main">
-          {sessionUnavailable && <p className="notice" role="status">The service is temporarily unavailable. Jobs and account details may not load. Please try reloading shortly.</p>}
+          {sessionUnavailable && <output className="notice">The service is temporarily unavailable. Jobs and account details may not load. Please try reloading shortly.</output>}
           {children}
         </main>
         <footer className="site-footer">

@@ -32,6 +32,9 @@ test('local account-resolution unit checks (not a real Google identity validatio
     assert.equal(created.profile.confirmed, false, 'Verified email does not confirm candidate profile facts');
     assert.equal(verifyPassword('any password', created.passwordHash), false);
     assert.equal((await resolveGoogleUser(identity)).id, created.id);
+    const employer = await resolveGoogleUser({ ...identity, sub: 'employer-subject', email: 'employer@example.test' }, undefined, 'employer');
+    assert.equal(employer.role, 'employer');
+    assert.equal((await resolveGoogleUser({ ...identity, sub: 'employer-subject', email: 'employer@example.test' }, undefined, 'student')).role, 'employer', 'existing Google accounts retain their stored role');
     const local = { ...created, id: 'local-user', googleId: undefined, email: 'local@example.test', authProvider: 'password' as const, passwordHash: hashPassword('a-long-local-password'), verified: false };
     await transaction(r => r.put('users', local));
     const linkIdentity = { ...identity, sub: 'link-subject', email: local.email };

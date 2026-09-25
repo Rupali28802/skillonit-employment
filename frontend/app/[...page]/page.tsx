@@ -4,7 +4,7 @@ import { AuthForm, SmartForm } from '@/components/forms';
 import { AuthRecovery } from '@/components/auth-recovery';
 import { EmailConnectionVerification } from '@/components/email-connection';
 import { Workspace } from '@/components/workspace';
-import { PlansCarousel } from '@/components/plans-carousel';
+import { PublicPricing } from '@/components/public-pricing';
 import { demoMode, configuredPlans, currentUser } from '@/lib/api';
 export const dynamic = 'force-dynamic';
 export async function generateMetadata({
@@ -70,6 +70,7 @@ export default async function Page({
       'admin/fraud',
       'admin/plans',
       'admin/payments',
+      'admin/subscriptions',
       'admin/leads',
       'admin/content',
       'admin/flags',
@@ -86,23 +87,7 @@ export default async function Page({
     return <Workspace section={page} />;
   if (page === 'pricing') {
     const [plans, user] = await Promise.all([configuredPlans(), currentUser()]);
-    return (
-      <div className="page-wrap">
-        <div className="pricing-intro">
-          <div className="eyebrow">A PLAN FOR YOUR NEXT CHAPTER</div>
-          <h1>Move forward at your pace.</h1>
-          <p className="pricing-intro-copy">
-            Choose the plan that fits your goals and move your career forward with confidence.
-          </p>
-        </div>
-        <PlansCarousel plans={plans} currentPlan={user?.role === 'student' ? user.plan : null} />
-        <p className="small">
-          Displayed quotas are configurable development defaults, not a final
-          commercial offer. Automation requires verified destinations, a
-          confirmed profile, explicit consent and authorized mailbox access.
-        </p>
-      </div>
-    );
+    return <PublicPricing plans={plans} currentPlan={user?.role === 'student' ? user.plan : null} role={user?.role} />;
   }
   if (page === 'contact')
     return (

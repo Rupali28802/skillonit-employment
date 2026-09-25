@@ -1,6 +1,6 @@
 export { countries } from './countries';
 export type Role = 'student' | 'employer' | 'admin';
-export type PlanCode = 'basic' | 'pro' | 'premium';
+export type PlanCode = string;
 export type Job = {
   id: string;
   title: string;
@@ -104,6 +104,16 @@ export type Plan = {
   identity: boolean;
   autoApply: boolean;
   cvs: number;
+  autoApplyDailyCap?: number;
+  billingPeriodDays?: number;
+  billingPeriod?: 'daily'|'weekly'|'monthly'|'quarterly'|'yearly';
+  billingInterval?: number;
+  razorpayPlanId?: string;
+  status?: 'active'|'inactive'|'archived';
+  description?: string;
+  displayOrder?: number;
+  badge?: string;
+  highlighted?: boolean;
 };
 export const categories = [
   'Technology',

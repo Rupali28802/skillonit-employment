@@ -6,11 +6,13 @@ import type { Repository, Row } from './store.js';
 import { configuredPlans, read, transaction } from './store.js';
 import { ApiError, audit, digest } from './security.js';
 import { activatePaidSubscription, type StudentSubscription } from './student-entitlements.js';
+import { processRecurringEvent } from './recurring-billing.js';
 
 export type PaymentStatus = 'created' | 'authorized' | 'captured' | 'failed' | 'partially_refunded' | 'refunded';
 export type PaymentRecord = {
   id: string; userId: string; planCode: PlanCode; status: PaymentStatus; amount: number; currency: string;
   refundedAmount: number; createdAt: string; updatedAt: string; providerPaymentId?: string; failureCode?: string;
+  paymentMethod?: string; capturedAt?: string; failedAt?: string;
 };
 export type BillingRecord = {
   id: string; userId: string; orderId: string; paymentId?: string; refundId?: string;
@@ -98,20 +100,22 @@ const webhookSchema = z.object({
 export async function processRazorpayWebhook(r: Repository, eventId: string, input: unknown, plans: Plan[], now = new Date()) {
   if (await r.get('paymentEvents', eventId)) return { duplicate: true };
   const event = webhookSchema.parse(input), payment = event.payload.payment?.entity, refund = event.payload.refund?.entity;
+  const recurringOutcome=await processRecurringEvent(r,eventId,event,plans,now);
+  if(recurringOutcome){await r.put('paymentEvents',{id:eventId,eventType:event.event,processed:true,processedAt:now.toISOString(),receivedAt:now.toISOString(),outcome:recurringOutcome});return {duplicate:false,outcome:recurringOutcome};}
   const orderId = typeof payment?.order_id === 'string' ? payment.order_id : undefined;
   const order = orderId ? await r.get<PaymentRecord>('payments', orderId) : null;
   let outcome = 'ignored';
   if (event.event === 'payment.captured' && order && payment && payment.amount === order.amount && payment.currency === order.currency && typeof payment.id === 'string' && ['created', 'authorized', 'captured'].includes(order.status)) {
     if (order.providerPaymentId && order.providerPaymentId !== payment.id) throw new ApiError(409, 'PAYMENT_CONFLICT', 'Payment identifier conflict.');
     if (order.status !== 'captured') {
-      await r.put('payments', { ...order, status: 'captured', providerPaymentId: payment.id, updatedAt: now.toISOString() });
+      await r.put('payments', { ...order, status: 'captured', providerPaymentId: payment.id, paymentMethod: typeof payment.method === 'string' ? payment.method.slice(0, 40) : undefined, capturedAt: now.toISOString(), updatedAt: now.toISOString() });
       await activatePaidSubscription(r, { userId: order.userId, planCode: order.planCode, providerPaymentId: payment.id }, plans, now);
       await billing(r, { userId: order.userId, orderId: order.id, paymentId: payment.id, type: 'payment_captured', amount: order.amount, currency: order.currency }, now);
       await audit(r, 'razorpay', 'payment.captured', order.id);
     }
     outcome = order.status === 'captured' ? 'captured_duplicate' : 'captured';
   } else if (event.event === 'payment.failed' && order && payment && !['captured', 'partially_refunded', 'refunded'].includes(order.status)) {
-    await r.put('payments', { ...order, status: 'failed', providerPaymentId: typeof payment.id === 'string' ? payment.id : order.providerPaymentId, failureCode: typeof payment.error_code === 'string' ? payment.error_code.slice(0, 100) : 'PROVIDER_DECLINED', updatedAt: now.toISOString() });
+    await r.put('payments', { ...order, status: 'failed', providerPaymentId: typeof payment.id === 'string' ? payment.id : order.providerPaymentId, failureCode: typeof payment.error_code === 'string' ? payment.error_code.slice(0, 100) : 'PROVIDER_DECLINED', failedAt: now.toISOString(), updatedAt: now.toISOString() });
     await billing(r, { userId: order.userId, orderId: order.id, paymentId: typeof payment.id === 'string' ? payment.id : undefined, type: 'payment_failed', amount: order.amount, currency: order.currency }, now);
     await audit(r, 'razorpay', 'payment.failed', order.id); outcome = 'failed';
   } else if (['refund.processed', 'refund.failed'].includes(event.event) && refund && typeof refund.payment_id === 'string') {
@@ -147,7 +151,7 @@ export async function processRazorpayWebhook(r: Repository, eventId: string, inp
       if (refundId) await r.put('refundEvents', { id: refundId, paymentId: refund.payment_id, event: event.event, createdAt: now.toISOString() });
     }
   }
-  await r.put('paymentEvents', { id: eventId, event: event.event, outcome, createdAt: now.toISOString() });
+  await r.put('paymentEvents', { id: eventId, eventType: event.event, processed: true, processedAt: now.toISOString(), receivedAt: now.toISOString(), outcome });
   return { duplicate: false, outcome };
 }
 
@@ -166,7 +170,7 @@ export async function requestRefund(actor: User, orderId: string, input: unknown
   const refund = await provider.refund(payment.providerPaymentId, { amount, receipt: requestId.slice(0, 40) });
   if (refund.paymentId !== payment.providerPaymentId || refund.amount !== amount || !refund.id) throw new ApiError(503, 'REFUND_PROVIDER_MISMATCH', 'The payment provider returned an invalid refund.');
   await transaction(async r => {
-    await r.put('refundRequests', { id: requestId, orderId, userId: payment.userId, refundId: refund.id, amount, reasonCode: 'ADMIN_APPROVED', status: refund.status, createdAt: new Date().toISOString() });
+    await r.put('refundRequests', { id: requestId, orderId, userId: payment.userId, razorpayPaymentId: payment.providerPaymentId, razorpayRefundId: refund.id, refundId: refund.id, amount, reason: value.reason, status: refund.status, createdBy: actor.id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     await billing(r, { userId: payment.userId, orderId, paymentId: payment.providerPaymentId, refundId: refund.id, type: 'refund_requested', amount, currency: payment.currency });
     await audit(r, actor.id, 'refund.requested', orderId);
   });
