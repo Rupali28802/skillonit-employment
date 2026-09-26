@@ -17,23 +17,16 @@ import { AdminResponsiveLayout } from './admin-responsive-layout';
 type RecordRow = { id: string; [key: string]: unknown };
 const candidateLinks = [
   ['dashboard', 'Overview'],
-  ['onboarding', 'Getting started'],
   ['profile', 'My profile'],
   ['preferences', 'Job preferences'],
   ['saved', 'Saved jobs'],
-  ['alerts', 'Job alerts'],
   ['applications', 'Applications'],
-  ['cvs', 'My CVs'],
-  ['cv-versions', 'CV versions'],
-  ['templates', 'Email templates'],
-  ['notifications', 'Notifications'],
+  ['cvs', 'CV manager'],
+  ['alerts', 'Job alerts'],
   ['assistant', 'AI assistant'],
-  ['taxonomy', 'Occupation & location'],
-  ['insights', 'Profile & usage'],
-  ['mail', 'Email integration'],
-  ['automation', 'Automation'],
-  ['billing', 'Billing'],
-  ['settings', 'Privacy & settings'],
+  ['mail', 'Connected email'],
+  ['billing', 'Plan & billing'],
+  ['settings', 'Settings'],
 ];
 const employerLinks = [
   ['employer', 'Overview'],
@@ -114,14 +107,15 @@ export async function Workspace({ section }: { section: string }) {
     </AdminResponsiveLayout>;
   }
   return (
-    <div className="page-wrap">
-      <div className="section-line">
+    <div className={group === 'student' ? 'page-wrap candidate-workspace-shell' : 'page-wrap'}>
+      <div className={group === 'student' ? 'section-line workspace-page-heading' : 'section-line'}>
         <div>
-          <div className="eyebrow">{group.toUpperCase()} WORKSPACE</div>
+          <div className="eyebrow">{group === 'student' ? 'MY CAREER WORKSPACE' : `${group.toUpperCase()} WORKSPACE`}</div>
           <h1>{links.find(([p]) => p === section)?.[1] || 'Workspace'}</h1>
+          {group === 'student' && <p>Manage your job search, profile and applications from one focused place.</p>}
         </div>
         <div className="actions">
-          <span className="pill">{user.name}</span>
+          <span className="pill workspace-user-pill">{user.name}</span>
           <Action endpoint="auth/logout" label="Sign out" redirect="/" />
         </div>
       </div>
@@ -133,16 +127,22 @@ export async function Workspace({ section }: { section: string }) {
       )}
       <div className="workspace">
         <nav className="workspace-nav" aria-label="Workspace navigation">
+          {group === 'student' && <div className="workspace-nav-identity">
+            <span aria-hidden="true">{user.name.trim().slice(0, 1).toUpperCase()}</span>
+            <div><strong>{user.name}</strong><small>{user.profile.headline || user.profile.targetRole || 'Candidate profile'}</small></div>
+          </div>}
+          {group === 'student' && <small className="workspace-nav-label">WORKSPACE</small>}
           {links.map(([path, label]) => (
             <Link
               key={path}
               href={'/' + path}
               aria-current={section === path ? 'page' : undefined}
-              style={section === path ? { background: '#e4f0e9', fontWeight: 700 } : undefined}
             >
+              <i aria-hidden="true" />
               {label}
             </Link>
           ))}
+          {group === 'student' && <Link className="workspace-find-jobs" href="/"><i aria-hidden="true" />Find matching jobs <span>→</span></Link>}
         </nav>
         <section>
           {group === 'student' ? (

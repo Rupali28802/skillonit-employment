@@ -94,7 +94,11 @@ export default async function RootLayout({
               <p>Find meaningful work, build a trusted profile, and take your next career step with confidence.</p>
               <nav className="footer-socials" aria-label="SkillOnIT social media">
                 <a href="https://www.instagram.com/skillonit.employment/" target="_blank" rel="noreferrer" aria-label="SkillOnIT on Instagram">
-                  <span className="social-monogram social-instagram" aria-hidden="true">ig</span>
+                  <svg className="social-instagram-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="3" y="3" width="18" height="18" rx="5" />
+                    <circle cx="12" cy="12" r="4.25" />
+                    <circle className="social-instagram-dot" cx="17.4" cy="6.7" r="1.15" />
+                  </svg>
                 </a>
                 <a href="https://www.facebook.com/profile.php?id=61594123457942" target="_blank" rel="noreferrer" aria-label="SkillOnIT on Facebook">
                   <span className="social-monogram social-facebook" aria-hidden="true">f</span>
@@ -139,6 +143,7 @@ export default async function RootLayout({
             </div>
           </div>
         </footer>
+        <script src="/pricing-carousel.js" defer />
       </body>
     </html>
   );

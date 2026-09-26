@@ -24,6 +24,7 @@
     "i18n-iso-countries": "^7.14.0",
     "input-otp": "1.4.2",
     "lucide-react": "1.31.0",
+    "motion": "^13.4.4",
     "next": "^16.3.4",
     "react": "19.2.6",
     "react-day-picker": "9.8.1",
