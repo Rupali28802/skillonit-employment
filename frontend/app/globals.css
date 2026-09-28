@@ -3689,3 +3689,180 @@ body:has(.admin-responsive-shell)>main{height:calc(100dvh - 88px);min-height:0;o
 @media (prefers-reduced-motion: reduce) {
   .public-plan-stage .public-plan-card,.public-plan-radio,.public-plan-arrow { transition: none; }
 }
+
+/* Mobile-only compact discovery hero. */
+@media (max-width: 600px) {
+  .live-discovery {
+    margin: 10px 8px 12px;
+    padding: 12px;
+    border-radius: 16px;
+    box-shadow: 0 12px 32px #123f2d12, inset 0 1px #ffffffd9;
+  }
+  .live-discovery::after {
+    top: 12px;
+    right: -116px;
+    width: 190px;
+    height: 190px;
+  }
+  .radar-metrics {
+    display: flex;
+    justify-content: flex-start;
+    padding: 0;
+    margin: 0 0 9px;
+  }
+  .radar-metrics > strong {
+    min-height: 24px;
+    padding: 4px 8px;
+    font-size: 8px;
+    letter-spacing: .11em;
+  }
+  .radar-metrics > strong::before {
+    width: 6px;
+    height: 6px;
+  }
+  .radar-metric-values,
+  .discovery-kicker,
+  .live-discovery-top p,
+  .discovery-location,
+  .discovery-filter,
+  .intent-summary,
+  .discovery-footnote {
+    display: none;
+  }
+  .live-discovery-top {
+    position: relative;
+    display: block;
+    margin: 0 0 10px;
+    padding: 0;
+  }
+  .live-discovery-top > div {
+    max-width: none;
+  }
+  .live-discovery h1 {
+    max-width: 285px;
+    margin: 0;
+    font-size: clamp(21px, 6.4vw, 25px);
+    line-height: 1.08;
+    letter-spacing: -.04em;
+  }
+  .discovery-status {
+    position: absolute;
+    top: -34px;
+    right: 0;
+    gap: 5px;
+    min-height: 24px;
+    padding: 4px 8px;
+    font-size: 8px;
+    box-shadow: none;
+  }
+  .discovery-status i {
+    width: 6px;
+    height: 6px;
+  }
+  .discovery-search {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    min-height: 42px;
+    padding: 4px;
+    gap: 4px;
+    border-radius: 13px;
+    box-shadow: 0 8px 20px #123f2d10, inset 0 1px #fff;
+  }
+  .discovery-query {
+    grid-column: auto;
+    flex-basis: auto;
+    gap: 5px;
+    min-width: 0;
+    padding-left: 3px;
+  }
+  .discovery-query > svg {
+    width: 28px;
+    height: 28px;
+    padding: 7px;
+    border-radius: 8px;
+  }
+  .discovery-query input {
+    min-width: 0;
+    padding: 6px 0;
+    font-size: 12px;
+  }
+  .discovery-query .ai-search-badge {
+    display: none;
+  }
+  .voice-search {
+    width: 30px;
+    height: 30px;
+    padding: 5px;
+  }
+  .voice-search svg {
+    width: 16px;
+    height: 16px;
+  }
+  .discovery-submit {
+    min-height: 34px;
+    padding: 7px 10px !important;
+    border-radius: 9px !important;
+    font-size: 10px;
+  }
+  .discovery-submit svg {
+    display: none;
+  }
+  .voice-search-status {
+    margin-top: 7px;
+    padding: 7px 9px;
+    font-size: 9px;
+  }
+
+  /* Keep the four live metrics visible without returning to the tall hero. */
+  .radar-metrics {
+    display: grid;
+    gap: 7px;
+    margin-bottom: 10px;
+  }
+  .radar-metric-values {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
+  }
+  .radar-metric-values > .radar-metric-card {
+    grid-template-columns: 24px minmax(0, 1fr);
+    gap: 5px;
+    height: 49px;
+    min-height: 49px;
+    padding: 4px 6px;
+    border-radius: 10px;
+  }
+  .radar-metric-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 7px;
+  }
+  .radar-metric-icon svg {
+    width: 13px;
+    height: 13px;
+  }
+  .radar-metric-copy {
+    gap: 1px;
+  }
+  .radar-metric-copy b {
+    font-size: 16px;
+  }
+  .radar-metric-copy small {
+    font-size: 7px;
+    line-height: 1.08;
+  }
+  .live-discovery > .live-discovery-top {
+    position: static;
+  }
+  .discovery-status {
+    top: 12px;
+    right: 12px;
+  }
+
+  /* Mobile visitors reach the actual jobs directly after the hero. */
+  .live-job-feed > .category-carousel {
+    display: none;
+  }
+}
