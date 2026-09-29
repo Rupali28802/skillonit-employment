@@ -22,9 +22,9 @@ export function demoEnabled(env = process.env) {
 
 export function validateRuntime(env = process.env) {
   const demo = demoEnabled(env);
-  if (!env.MONGODB_URI?.trim() && !demo)
+  if (!env.DATABASE_URL?.trim() && !env.MONGODB_URI?.trim() && !demo)
     throw new Error(
-      'MongoDB configuration is required outside explicit local demo mode.',
+      'PostgreSQL or MongoDB configuration is required outside explicit local demo mode.',
     );
   if (env.DEMO_MODE && !['true', 'false'].includes(env.DEMO_MODE))
     throw new Error('DEMO_MODE must be true or false.');

@@ -16,14 +16,14 @@ try {
   }
   if (process.env.NODE_ENV === 'production' && process.env.ENABLE_CV_UPLOADS !== 'true') throw new Error('Module 2 CV production configuration required');
   if (process.env.ENABLE_CV_UPLOADS === 'true') await productionCvProviders().check();
-  if (process.env.MONGODB_URI) {
+  if (process.env.DATABASE_URL || process.env.MONGODB_URI) {
     await bootstrapIndexes();
     if (process.env.NODE_ENV === 'production') await read(async r => {
       const catalog = await r.get<{ value: { source?: string } }>('systemConfig', 'student-catalog-policy');
       if (catalog?.value.source !== 'managed' || !(await r.get('systemConfig', 'profile-completion'))) throw new Error('Module 2 managed policy required');
       for (const collection of ['occupationFamilies', 'locations', 'skills']) if (!(await r.count(collection, { active: true }))) throw new Error('Module 2 active catalog required');
     });
-    safeLog('info', 'mongodb.connected');
+    safeLog('info', process.env.DATABASE_URL ? 'postgresql.connected' : 'mongodb.connected');
   }
   else if (!demoMode()) throw new Error('Missing persistence');
 } catch {

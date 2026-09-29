@@ -46,7 +46,7 @@ export function configuredSchedules(env = process.env): QueueSchedule[] {
 }
 
 export function queueConnection(env = process.env) {
-  if (!env.MONGODB_URI) throw new Error('QUEUE_MONGODB_REQUIRED');
+  if (!env.DATABASE_URL && !env.MONGODB_URI) throw new Error('QUEUE_DATABASE_REQUIRED');
   return redisSettings(env);
 }
 

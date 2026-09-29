@@ -9,6 +9,7 @@ import path from 'node:path';
 import { sampleJobs } from './fixtures.js';
 import { plans } from './domain.js';
 import { demoEnabled } from './runtime-config.js';
+import { bootstrapPostgres, closePostgres, postgresConfigured, postgresRead, postgresTransaction } from './postgres-store.js';
 export type Row = { id: string; [key: string]: unknown };
 export const demoMode = () => demoEnabled();
 type Query = Record<string, unknown>;
@@ -33,6 +34,7 @@ let lock: Promise<unknown> = Promise.resolve();
 export async function closeStore() {
   await client?.close();
   client = undefined;
+  await closePostgres();
 }
 function mongo() {
   if (!process.env.MONGODB_URI) throw Error('MongoDB is not configured.');
@@ -174,6 +176,7 @@ async function loadLocal() {
 export async function transaction<T>(
   fn: (r: Repository) => Promise<T>,
 ): Promise<T> {
+  if (postgresConfigured()) return postgresTransaction(fn);
   if (process.env.MONGODB_URI) {
     const session = mongo().startSession();
     try {
@@ -196,6 +199,7 @@ export async function transaction<T>(
   return task;
 }
 export async function read<T>(fn: (r: Repository) => Promise<T>): Promise<T> {
+  if (postgresConfigured()) return postgresRead(fn);
   if (process.env.MONGODB_URI) return fn(mongoRepo());
   if (!demoMode()) throw Error('Production persistence is not configured.');
   await lock;
@@ -211,6 +215,7 @@ export async function configuredPlans() {
   });
 }
 export async function bootstrapIndexes() {
+  if (postgresConfigured()) { await bootstrapPostgres(); return; }
   // Reject standalone deployments before any index writes. No demo fallback.
   const hello = await mongo().db('admin').command({ hello: 1 });
   if (!hello.setName && hello.msg !== 'isdbgrid')

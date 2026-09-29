@@ -11,6 +11,10 @@ test('Module 2 production gate names missing variables without disclosing their 
   for (const name of ['MONGODB_URI', 'APP_URL', 'AUTH_OTP_SECRET', 'CV_GOOGLE_DRIVE_CLIENT_ID', 'CV_GOOGLE_DRIVE_REFRESH_TOKEN', 'CV_GOOGLE_DRIVE_FOLDER_ID', 'CV_SCANNER_TOKEN', 'CV_PARSER_TOKEN', 'REDIS_URL']) assert.ok(missing.includes(name));
   const output = module2ProductionIssues({ MONGODB_URI: 'invalid-private-fixture', REDIS_URL: 'https://user:private-fixture@example.test', CV_PARSER_URL: 'invalid-private-fixture' });
   assert.ok(!JSON.stringify(output).includes('private-fixture'));
+  assert.ok(output.includes('MONGODB_URI'));
+  const postgres = module2ProductionIssues({ DATABASE_URL: 'postgresql://localhost/skillonit_test' });
+  for (const name of ['DATABASE_URL', 'MONGODB_URI', 'MONGODB_DATABASE']) assert.ok(!postgres.includes(name));
+  assert.ok(module2ProductionIssues({ DATABASE_URL: 'https://example.test' }).includes('DATABASE_URL'));
 });
 test('Module 2 Redis configuration preserves TLS, database selection and bounded backoff', () => {
   const options = redisSettings({ REDIS_URL: 'rediss://user:p%40ss@example.test:6380/2', NODE_ENV: 'production' });

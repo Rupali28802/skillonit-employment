@@ -106,8 +106,8 @@ export class RazorpayProvider implements PaymentProvider {
 export function providerHealth() {
   return [
     {
-      name: 'MongoDB',
-      status: process.env.MONGODB_URI
+      name: process.env.DATABASE_URL ? 'PostgreSQL' : 'MongoDB',
+      status: process.env.DATABASE_URL || process.env.MONGODB_URI
         ? 'Configured — connection checked on use'
         : 'Not configured',
     },
