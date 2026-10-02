@@ -1,3 +1,4 @@
+import { configuredRazorpayProvider, razorpayForRecord, verifyConfiguredWebhook, razorpayMetadata, saveRazorpayConfiguration, razorpayAction, razorpayConfigurationHistory } from './lib/razorpay-configuration.js';
 import { requestContext } from './request-context.js';
 import { getPreferences } from './lib/student-preferences.js';
 import { randomBytes } from "node:crypto";
@@ -39,11 +40,12 @@ import {
   isRecent,
 } from "./lib/domain.js";
 import { searchJobs } from "./lib/search.js";
+import { isSeoJobEligible, seoPage, seoRegistry } from './lib/seo-registry.js';
 import { engineStatus } from './job-engine/engine.js';
 import { socialSourceSchema, ingestSocial } from './job-engine/social.js';
 import { getMatches, runMatching, getRankingPolicy, configureRankingPolicy } from './lib/matching-engine.js';
 import { matchingQuerySchema } from './lib/matching-contracts.js';
-import { providerHealth, RazorpayProvider } from "./lib/providers.js";
+import { providerHealth } from "./lib/providers.js";
 import { featureRoute, notify } from "./features.js";
 import { authMailConfig, sendAuthMail } from "./lib/auth-mail.js";
 import { createEmailOtp, verifyEmailOtp, otpKey } from "./lib/email-otp.js";
@@ -67,6 +69,8 @@ import {
   externalApplicationUrl,
   previewApplication,
   publicApplication,
+  applicationDetails,
+  releaseApplicationCredits,
   type ApplicationRecord as App,
 } from './lib/application-engine.js';
 import { assessEmployer, assessSource, persistJobFraudAssessment } from './lib/fraud-detection.js';
@@ -76,7 +80,7 @@ import { billingHistory, createPaymentOrder, processRazorpayWebhook, reconcilePa
 import { adminPaymentDetail, adminPayments, adminSubscriptionDetail, adminSubscriptions } from './lib/billing-admin.js';
 import { requireAdminPermission } from './lib/admin-rbac.js';
 import { cancelRecurringSubscription, createRecurringSubscription, syncRazorpayPlan } from './lib/recurring-billing.js';
-import { addApplicantNote, closeEmployerJob, createEmployerProfile, getEmployerApplicant, getEmployerJob, getEmployerProfile, getEmployerVerification, listApplicantNotes, listEmployerApplicants, recordEmployerVerificationDecision, submitEmployerVerification, updateApplicantStatus, updateEmployerJob, updateEmployerProfile } from './lib/employer-portal.js';
+import { listEmployerJobs, createEmployerJob, employerPage, employerOverview, addApplicantNote, closeEmployerJob, createEmployerProfile, getEmployerApplicant, getEmployerJob, getEmployerProfile, getEmployerVerification, listApplicantNotes, listEmployerApplicants, recordEmployerVerificationDecision, submitEmployerVerification, updateApplicantStatus, updateEmployerJob, updateEmployerProfile } from './lib/employer-portal.js';
 import { adminConsoleRoute } from './lib/admin-console.js';
 import { runSupportChat } from './lib/support-chatbot.js';
 import { publicWhatsAppSupportConfig } from './lib/direct-whatsapp-support.js';
@@ -262,7 +266,7 @@ export async function handle(
           throw new Error('Registration persistence confirmation failed');
       } catch (error) {
         if (error instanceof ApiError) throw error;
-        if ((error as { code?: number }).code === 11000)
+        if ([11000, '23505'].includes((error as { code?: number | string }).code ?? ''))
           throw new ApiError(409, "ACCOUNT_EXISTS", "An account already exists for this email.");
         console.error('Registration database persistence failed; sensitive details withheld.');
         throw new ApiError(500, "PERSISTENCE_FAILED", "Unable to save registration. Please try again later.");
@@ -415,6 +419,7 @@ export async function handle(
         const heartbeat = await r.get<{updatedAt:string}>('jobEngineState','discovery-heartbeat');
         const base={status:'published',sample:{$ne:true},expiresAt:{$gt:now.toISOString()}};
         return {sourcesOnline:sources.filter(s=>{const state=states.get(s.id);return state?.lastSuccessAt && !state.failures && now.getTime()-Date.parse(state.lastSuccessAt)<s.intervalMinutes*120000;}).length,
+          totalJobs:await r.count('jobs'),
           workerOnline: !!heartbeat && now.getTime()-Date.parse(heartbeat.updatedAt)<600000,
           workerLastSeenAt: heartbeat?.updatedAt ?? null,
           detectedToday:await r.count('jobs',{...base,discoveredAt:{$gte:today.toISOString()}}),
@@ -423,6 +428,17 @@ export async function handle(
             ? await r.count('jobs',{...base,discoveredAt:{$gt:new Date(since).toISOString(),$lte:now.toISOString()}}) : 0,
           countries:audit?.countries.filter(c=>c.indexedListings>0).length ?? null, measuredAt:now.toISOString(), countryAuditAt:audit?.generatedAt ?? null};
       }));
+    }
+    if (p === 'seo/registry' && method === 'GET') {
+      const registry = await seoRegistry();
+      return ok({ ...registry, pages: registry.pages.map(({ jobIds: _jobIds, ...item }) => item), eligibleJobIds: registry.eligibleJobIds });
+    }
+    if (p === 'seo/page' && method === 'GET') {
+      const path = url.searchParams.get('path') || '';
+      if (!path.startsWith('/jobs/') || path.length > 240) throw new ApiError(400, 'INVALID_SEO_PATH', 'A valid SEO path is required.');
+      const result = await seoPage(path);
+      if (!result) throw new ApiError(404, 'NOT_FOUND', 'This discovery page is not currently eligible for publication.');
+      return ok(result);
     }
     if (p === "jobs" && method === "GET")
       return ok(await searchJobs(url.searchParams, await currentUser()));
@@ -449,6 +465,7 @@ export async function handle(
       return ok({
         ...publicJob(job, await currentUser(), await configuredPlans()),
         acceptingApplications: isRecent(job),
+        seoEligible: isSeoJobEligible(job),
       });
     }
     if (parts[0] === "jobs" && parts[2] === "save" && method === "POST") {
@@ -607,6 +624,12 @@ export async function handle(
       const u = await requireUser("student");
       return ok((await read((r) => r.find<App>("applications", { userId: u.id }))).map(publicApplication));
     }
+    if (parts[0] === 'applications' && parts.length === 2 && method === 'GET') {
+      const u = await requireUser('student');
+      const application = await read(r => r.get<App>('applications', parts[1]));
+      if (!application || application.userId !== u.id) throw new ApiError(404, 'NOT_FOUND', 'Application not found.');
+      return ok(applicationDetails(application));
+    }
     if (p === "applications/preview" && method === "POST") {
       const u = await requireUser("student");
       return ok(await previewApplication(u.id, await body()));
@@ -630,7 +653,13 @@ export async function handle(
       if (parts[2] === 'approve') {
         const approval = z.object({ confirmed: z.literal(true) }).strict().parse(await body());
         if (!approval.confirmed) throw new ApiError(400, 'APPLICATION_CONFIRMATION_REQUIRED', 'Review and confirm this application before continuing.');
+        const application = await read(r => r.get<App>('applications', parts[1]));
+        if (!application || application.userId !== u.id) throw new ApiError(404, 'NOT_FOUND', 'Application not found.');
+        if (!['NEEDS_REVIEW','FAILED'].includes(application.status) || application.lastErrorCode === 'MAIL_SEND_UNCERTAIN') throw new ApiError(409, 'INVALID_TRANSITION', 'This application cannot be safely retried.');
+        const result = await createApplication(u.id, { jobId: application.jobId, confirmed: true });
+        return ok(publicApplication(result.application));
       }
+      if (parts[2] === 'confirm-external') z.object({ confirmed: z.literal(true) }).strict().parse(await body());
       let openedExternalUrl: string | undefined;
       if (parts[2] === 'open-external') {
         const application = await read(r => r.get<App>('applications', parts[1]));
@@ -642,6 +671,7 @@ export async function handle(
       await transaction(async (r) => {
         const a = await r.get<App>("applications", parts[1]);
         if (!a || a.userId !== u.id) throw new ApiError(404, "NOT_FOUND", "Application not found.");
+        if (parts[2] === 'confirm-external' && a.method !== 'external') throw new ApiError(409, 'INVALID_TRANSITION', 'Only an external application can be self-reported.');
         if (parts[2] === 'approve' && a.method === 'external') throw new ApiError(409, 'INVALID_TRANSITION', 'External applications must be opened on the source form.');
         const target: ApplicationStatus =
           parts[2] === "cancel"
@@ -653,18 +683,22 @@ export async function handle(
             : parts[2] === "confirm-external"
               ? "EXTERNAL_SUBMITTED"
               : "WITHDRAWN";
-        if (!canTransition(a.status, target))
+        if (!canTransition(a.status, target) && !(parts[2] === 'confirm-external' && a.status === 'NEEDS_REVIEW' && a.reviewReasons?.every(code => code === 'EXTERNAL_FORM_UNSUPPORTED')))
           throw new ApiError(
             409,
             "INVALID_TRANSITION",
             "This application cannot move to that status.",
           );
+        const at = new Date().toISOString();
+        const next = target === 'CANCELLED' && a.lastErrorCode !== 'MAIL_SEND_UNCERTAIN' ? await releaseApplicationCredits(r, a, at) : a;
         await r.put("applications", {
-          ...a,
+          ...next, updatedAt: at,
+          ...(target === 'EXTERNAL_SUBMITTED' ? { submittedAt: at, confirmedAt: at, submissionEvidence: 'candidate_reported', reviewReasons: [] } : {}),
           status: target,
           events: [...a.events, { status: target, at: new Date().toISOString(), actorId: u.id }],
         });
         await audit(r, u.id, "application." + target.toLowerCase(), a.id);
+        await audit(r, u.id, target === 'CANCELLED' ? 'APPLICATION_CANCELLED' : target === 'EXTERNAL_SUBMITTED' ? 'APPLICATION_CONFIRMED' : 'APPLICATION_UPDATED', a.id);
       });
       if (parts[2] === 'open-external') {
         return ok({ updated: true, externalUrl: openedExternalUrl });
@@ -729,6 +763,9 @@ export async function handle(
       });
       return ok({ reported: true }, 201);
     }
+    if (p === 'employer/overview' && method === 'GET') {
+      const u = await requireUser('employer'); return ok(await employerOverview(u.id));
+    }
     if (p === "employers") {
       const u = await requireUser("employer");
       if (method === "GET") return ok(await getEmployerProfile(u.id));
@@ -742,56 +779,26 @@ export async function handle(
     }
     if (p === "employer/jobs") {
       const u = await requireUser("employer");
-      if (method === "GET") return ok(await read((r) => r.find<Job>("jobs", { employerId: u.id })));
-      if (method === "POST") {
-        const input = jobSchema.parse(await body());
-        await read(r => validateTaxonomyReferences(r, { occupationId: input.matching?.occupationId, locationId: input.matching?.locationId }));
-        const org = await read((r) =>
-          r.get<{ name: string; domain: string; status: string }>("employers", u.id),
-        );
-        if (!org) throw new ApiError(409, "ORG_REQUIRED", "Create an organization profile first.");
-        const job: Job = {
-          ...input,
-          id: id(),
-          company: org.name,
-          domain: org.domain,
-          employerId: u.id,
-            status: "review",
-            trust: "pending",
-          source: "Employer submission",
-          discoveredAt: new Date().toISOString(),
-            expiresAt: new Date(Date.now() + 90 * 86400000).toISOString(),
-            revision: 0,
-            updatedAt: new Date().toISOString(),
-            lifecycle: { schemaVersion: 1, state: 'publishing', revision: 0, changedAt: new Date().toISOString(), reasonCode: 'EMPLOYER_SUBMITTED' },
-        } as Job;
-        await transaction(async (r) => {
-          await r.put("jobs", job);
-          await audit(r, u.id, "job.review_requested", job.id);
-        });
-        return ok(job, 201);
-      }
+      if (method === "GET") return ok(url.searchParams.has("page") ? await employerPage(u.id, "jobs", Object.fromEntries(url.searchParams)) : await listEmployerJobs(u.id));
+      if (method === "POST") return ok(await createEmployerJob(u.id, await body()), 201);
     }
-    if (parts[0] === 'employer' && parts[1] === 'jobs' && parts[2] && method === 'GET') {
+    if (parts[0] === 'employer' && parts[1] === 'jobs' && parts[2] && parts.length === 3 && method === 'GET') {
       const u = await requireUser('employer'); return ok(await getEmployerJob(u.id, parts[2]));
     }
-    if (parts[0] === 'employer' && parts[1] === 'jobs' && parts[2] && method === 'PUT') {
+    if (parts[0] === 'employer' && parts[1] === 'jobs' && parts[2] && parts.length === 3 && method === 'PUT') {
       const u = await requireUser('employer'); return ok(await updateEmployerJob(u.id, parts[2], await body()));
     }
     if (parts[0] === 'employer' && parts[1] === 'jobs' && parts[2] && parts[3] === 'close' && method === 'POST') {
       const u = await requireUser('employer'); return ok(await closeEmployerJob(u.id, parts[2]));
     }
-    if (parts[0] === "employer" && parts[1] === "jobs" && parts[2] && method === "PATCH") {
+    if (parts[0] === "employer" && parts[1] === "jobs" && parts[2] && parts.length === 3 && method === "PATCH") {
       const u = await requireUser("employer");
-      await transaction(async (r) => {
-        const job = await r.get<Job>("jobs", parts[2]);
-        if (!job || job.employerId !== u.id) throw new ApiError(404, "NOT_FOUND", "Job not found.");
-        await transitionJobLifecycle(r, job.id, 'closed', u.id, 'EMPLOYER_CLOSED');
-      });
+      await closeEmployerJob(u.id, parts[2]);
       return ok({ closed: true });
     }
     if (p === "employer/applicants" && method === "GET") {
       const u = await requireUser("employer");
+      if (url.searchParams.has('page')) return ok(await employerPage(u.id, 'applicants', Object.fromEntries(url.searchParams)));
       const status = url.searchParams.get('status');
       const allowed = ['QUEUED','NEEDS_REVIEW','SENDING','SENT','EXTERNAL_STARTED','EXTERNAL_SUBMITTED','DIRECT_SUBMITTED','VIEWED','SHORTLISTED','INTERVIEW','OFFER','REJECTED','WITHDRAWN','CANCELLED','FAILED'] as const;
       if (status && !(allowed as readonly string[]).includes(status)) throw new ApiError(400, 'INVALID_STATUS', 'Applicant status is invalid.');
@@ -805,7 +812,7 @@ export async function handle(
       if (method === 'GET') return ok(await listApplicantNotes(u.id, parts[2]));
       if (method === 'POST') return ok(await addApplicantNote(u.id, parts[2], await body()), 201);
     }
-    if (parts[0] === "employer" && parts[1] === "applicants" && parts[2] && method === "PATCH") {
+    if (parts[0] === "employer" && parts[1] === "applicants" && parts[2] && parts.length === 3 && method === "PATCH") {
       const u = await requireUser("employer");
       const { status, expectedStatus } = z
         .object({
@@ -814,8 +821,7 @@ export async function handle(
         })
         .strict()
         .parse(await body());
-      const updated = await updateApplicantStatus(u.id, parts[2], status, expectedStatus);
-      await transaction(async r => { const application = await r.get<App>('applications', parts[2]); if (application) await notify(r, application.userId, 'An employer updated your application', `${application.job.title}: ${status.replaceAll('_', ' ')}`, '/applications', 'application_status'); });
+      await updateApplicantStatus(u.id, parts[2], status, expectedStatus);
       return ok({ updated: true });
     }
     if (p === "billing/checkout" && method === "POST") {
@@ -825,11 +831,12 @@ export async function handle(
         .parse(await body());
       const idempotencyKey = request.headers.get('idempotency-key');
       if (!idempotencyKey) throw new ApiError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'An Idempotency-Key header is required.');
-      return ok(await createPaymentOrder(u, planCode, idempotencyKey, new RazorpayProvider()), 201);
+      return ok(await createPaymentOrder(u, planCode, idempotencyKey, await configuredRazorpayProvider()), 201);
     }
     if (p === 'billing/verify' && method === 'POST') {
       const u = await requireUser('student');
-      return ok(await verifyCheckout(u.id, await body(), new RazorpayProvider()));
+      const input=await body();const {razorpay_order_id}=z.object({razorpay_order_id:z.string().min(1).max(100)}).parse(input);
+      return ok(await verifyCheckout(u.id, input, await razorpayForRecord('payments',razorpay_order_id,u.id)));
     }
     if (p === 'billing/history' && method === 'GET') {
       const u = await requireUser('student');
@@ -838,15 +845,15 @@ export async function handle(
     if (p === 'billing/subscriptions' && method === 'POST') {
       const u=await requireUser('student'),key=request.headers.get('idempotency-key');
       if(!key)throw new ApiError(400,'IDEMPOTENCY_KEY_REQUIRED','An Idempotency-Key header is required.');
-      return ok(await createRecurringSubscription(u,await body(),key,new RazorpayProvider()),201);
+      return ok(await createRecurringSubscription(u,await body(),key,await configuredRazorpayProvider()),201);
     }
     if (p === 'billing/subscriptions/cancel' && method === 'POST') {
-      const u=await requireUser('student');return ok(await cancelRecurringSubscription(u,new RazorpayProvider()));
+      const u=await requireUser('student');return ok(await cancelRecurringSubscription(u,await razorpayForRecord('studentSubscriptions',u.id,u.id)));
     }
     if ((p === "webhooks/razorpay" || p === "payments/razorpay/webhook") && method === "POST") {
       const raw = await request.text();
       if (raw.length > 100000) throw new ApiError(413, "TOO_LARGE", "Webhook is too large.");
-      if (!new RazorpayProvider().verify(raw, request.headers.get("x-razorpay-signature") || ""))
+      if (!await verifyConfiguredWebhook(raw, request.headers.get("x-razorpay-signature") || ""))
         throw new ApiError(401, "INVALID_SIGNATURE", "Webhook signature is invalid.");
       let event: unknown;
       try { event = JSON.parse(raw); } catch { throw new ApiError(400, 'INVALID_JSON', 'Webhook payload is invalid.'); }
@@ -860,6 +867,15 @@ export async function handle(
     }
     if (parts[0] === "admin") {
       const u = await requireUser("admin");
+      if (p === 'admin/seo' && method === 'GET') {
+        await read(r => requireAdminPermission(r, u, 'configuration.read'));
+        const registry = await seoRegistry(url.searchParams.get('refresh') === 'true');
+        return ok({ ...registry, pages: registry.pages.map(({ jobIds: _jobIds, ...item }) => item) });
+      }
+      if (p === 'admin/payments/razorpay/config' && method === 'GET') return ok(await razorpayMetadata(u,url.searchParams.get('environment')??'test'));
+      if (p === 'admin/payments/razorpay/config' && method === 'POST') return ok(await saveRazorpayConfiguration(u,await body()));
+      if (p === 'admin/payments/razorpay/history' && method === 'GET') return ok(await razorpayConfigurationHistory(u));
+      if (parts[1] === 'payments' && parts[2] === 'razorpay' && parts.length === 4 && method === 'POST' && ['validate','enable','disable'].includes(parts[3])) return ok(await razorpayAction(u,parts[3] as 'validate'|'enable'|'disable',await body()));
       if (parts[1] === 'console') return ok(await adminConsoleRoute(u, parts, method, url.searchParams, body));
       if (parts[1] === 'student-subscriptions' && parts.length === 3 && method === 'PUT') {
         await read(r => requireAdminPermission(r, u, 'subscriptions.manage'));
@@ -879,11 +895,11 @@ export async function handle(
         return ok(await adminSubscriptionDetail(u, parts[2]));
       if (parts[1] === 'payments' && parts.length === 4 && parts[3] === 'refund' && method === 'POST') {
         await read(r => requireAdminPermission(r, u, 'payments.refund'));
-        return ok(await requestRefund(u, parts[2], await body(), new RazorpayProvider()));
+        return ok(await requestRefund(u, parts[2], await body(), await razorpayForRecord('payments',parts[2])));
       }
       if (parts[1] === 'payments' && parts.length === 4 && parts[3] === 'reconcile' && method === 'POST') {
         await read(r => requireAdminPermission(r, u, 'payments.refund'));
-        return ok(await reconcilePayment(u, parts[2], new RazorpayProvider()));
+        return ok(await reconcilePayment(u, parts[2], await razorpayForRecord('payments',parts[2])));
       }
       if (p === 'admin/application-policy') {
         if (method === 'GET') return ok(await getApplicationPolicy());
@@ -981,9 +997,14 @@ export async function handle(
           if (new Set(input.map((plan) => plan.code)).size !== input.length||!['basic','pro','premium'].every(code=>input.some(plan=>plan.code===code)))
             throw new ApiError(400, "INVALID_PLANS", "Plan IDs must be unique and the three base plans must remain configured.");
           await transaction(async (r) => {
-            const previous = await r.get<{id:string;value:unknown}>('systemConfig', 'plans');
-            await r.put("systemConfig", { id: "plans", value: input });
-            await r.put('planConfigHistory', { id: crypto.randomUUID(), actorId: u.id, previous: previous?.value ?? null, next: input, policy: 'new_subscriptions_only', createdAt: new Date().toISOString() });
+            const previous = await r.get<{id:string;value:Plan[]}>('systemConfig', 'plans');
+            const next = input.map(plan => {
+              const old = previous?.value.find(item => item.code === plan.code);
+              const razorpayPlanId = plan.razorpayPlanId ?? old?.razorpayPlanId;
+              return { ...plan, razorpayPlanId, ...(razorpayPlanId === old?.razorpayPlanId ? { razorpayConfigVersion: old?.razorpayConfigVersion } : {}) };
+            });
+            await r.put("systemConfig", { id: "plans", value: next });
+            await r.put('planConfigHistory', { id: crypto.randomUUID(), actorId: u.id, previous: previous?.value ?? null, next, policy: 'new_subscriptions_only', createdAt: new Date().toISOString() });
             await audit(r, u.id, "plans.updated", "plans");
           });
           return ok(input);
@@ -991,7 +1012,7 @@ export async function handle(
       }
       if (parts[1] === 'plans' && parts.length === 4 && parts[3] === 'razorpay-sync' && method === 'POST') {
         await read(r=>requireAdminPermission(r,u,'plans.update'));
-        return ok(await syncRazorpayPlan(u,z.string().trim().regex(/^[a-z][a-z0-9-]{1,39}$/).parse(parts[2]),new RazorpayProvider()));
+        return ok(await syncRazorpayPlan(u,z.string().trim().regex(/^[a-z][a-z0-9-]{1,39}$/).parse(parts[2]),await configuredRazorpayProvider()));
       }
       const collection = allowed[parts[1]];
       if (collection && method === "GET") {
@@ -999,11 +1020,12 @@ export async function handle(
         if (collection === 'users') return ok(rows.map(row => safeUser(row as unknown as User)));
         if (collection === 'applications') return ok(rows.map(row => publicApplication(row as unknown as App)));
         if (collection === 'payments') return ok(rows.map(({ providerPaymentId: _payment, providerOrderId: _order, signature: _signature, ...row }) => row));
-        if (collection === 'systemConfig') return ok(rows.map(row => ({ id: row.id, revision: row.revision ?? 0 })));
+        if (collection === 'systemConfig') return ok(rows.filter(row => !row.id.startsWith('razorpay-')).map(row => ({ id: row.id, revision: row.revision ?? 0 })));
         if (collection === 'auditLogs') return ok(rows.map(row => ({ id: row.id, actorId: row.actorId, action: row.action, entityId: row.entityId, entityType: row.entityType, correlationId: row.correlationId, createdAt: row.createdAt ?? row.timestamp })));
         return ok(rows);
       }
       if (collection && method === "PATCH" && parts[2]) {
+        if (collection === 'systemConfig' && parts[2].startsWith('razorpay-')) throw new ApiError(404, 'NOT_FOUND', 'Record not found.');
         const change = z
           .object({
             status: z.enum([

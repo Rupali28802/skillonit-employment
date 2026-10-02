@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ApplicationDetails } from './application-details';
 
 type Row = { id: string; [key: string]: unknown };
 type Page = { items: Row[]; nextCursor: string | null };
@@ -26,7 +27,7 @@ const headings: Record<string, string[]> = {
   employers: ['name', 'userName', 'email', 'role', 'status', 'accountStatus', 'plan', 'createdAt'],
   jobs: ['title', 'company', 'status', 'trust', 'expiresAt'],
   sources: ['provider', 'type', 'status', 'lastSuccessAt', 'failureCount'],
-  applications: ['userId', 'jobId', 'method', 'status', 'createdAt'],
+  applications: ['id', 'candidate', 'jobTitle', 'employer', 'applicationMethod', 'submissionState', 'submittedAt', 'updatedAt', 'reason'],
   fraud: ['entityType', 'entityId', 'status', 'riskLevel', 'createdAt'],
   payments: ['userId', 'status', 'amount', 'currency', 'createdAt'],
   audit: ['actorId', 'action', 'entityId', 'result', 'createdAt'],
@@ -109,6 +110,7 @@ export function AdminConsolePanel({ section }: { section: string }) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
+  const [applicationMethod, setApplicationMethod] = useState('');
   const [cursor, setCursor] = useState('');
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [history, setHistory] = useState<string[]>([]);
@@ -134,6 +136,7 @@ export function AdminConsolePanel({ section }: { section: string }) {
         if (cursor) params.set('cursor', cursor);
         if (query.trim()) params.set('query', query.trim());
         if (status) params.set('status', status);
+        if (section === 'applications' && applicationMethod) params.set('method', applicationMethod);
         const pageRequest = request(`admin/console/${resource}?${params}`) as Promise<Page>;
         const [page, engine, currentAccess] = await Promise.all([
           pageRequest,
@@ -156,7 +159,7 @@ export function AdminConsolePanel({ section }: { section: string }) {
       }
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Admin data is unavailable.'); }
     finally { setLoading(false); }
-  }, [cursor, query, resource, section, status]);
+  }, [cursor, query, resource, section, status, applicationMethod]);
 
   useEffect(() => { queueMicrotask(() => void load()); }, [load]);
   async function updateRole() {
@@ -208,12 +211,13 @@ export function AdminConsolePanel({ section }: { section: string }) {
     <div className="admin-card-head"><div><p className="eyebrow">SECURE OPERATIONS</p><h2>{label(section)}</h2></div><button onClick={() => void load()}>Refresh</button></div>
     <form className="admin-filters" onSubmit={event => { event.preventDefault(); setCursor(''); setHistory([]); void load(); }}>
       <label>Search<input value={query} onChange={event => setQuery(event.target.value)} placeholder={`Search ${section}`} /></label>
-      <label>Status<input value={status} onChange={event => setStatus(event.target.value)} placeholder="All statuses" /></label>
+      <label>Status{section === 'applications' ? <select value={status} onChange={event => {setStatus(event.target.value); setCursor(''); setHistory([]);}}><option value="">All statuses</option>{['DRAFT','READY','SUBMITTING','SUBMITTED','CONFIRMED','NEEDS_REVIEW','FAILED','CANCELLED'].map(value => <option key={value}>{value}</option>)}</select> : <input value={status} onChange={event => setStatus(event.target.value)} placeholder="All statuses" />}</label>
+      {section === 'applications' && <label>Method<select value={applicationMethod} onChange={event => {setApplicationMethod(event.target.value); setCursor(''); setHistory([]);}}><option value="">All methods</option>{['EMAIL','EXTERNAL_FORM','SKILLONIT','ATS','UNSUPPORTED'].map(value => <option key={value}>{value}</option>)}</select></label>}
       <button className="primary" type="submit">Apply filters</button>
     </form>
     {notice && <div className={`admin-notice is-${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.text}</div>}
     {!rows.length ? <div className="admin-empty"><strong>No matching records</strong><p>Try clearing the filters. Synthetic records are never generated.</p></div> : <div className="table-scroll"><table className="admin-table"><thead><tr>{columns.map(column => <th key={column}>{label(column)}</th>)}<th>Actions</th></tr></thead><tbody>
-      {rows.map(row => <tr key={row.id}>{columns.map(column => <td key={column}>{['users', 'employers'].includes(section) && column === 'role' ? <select className="admin-role-select" aria-label={`Role for ${text(row.userName ?? row.name)}`} value={String(row.role)} disabled={!canManageUsers || access?.userId === managedUserId(row)} onChange={event => setPendingRole({ row, from: row.role as AccountRole, to: event.target.value as AccountRole })}>{(canManageUsers ? accountRoles : [row.role as AccountRole]).map(role => <option key={role} value={role}>{label(role)}</option>)}</select> : ['status', 'role', 'trust', 'riskLevel', 'accountStatus'].includes(column) ? <span className={`admin-badge ${tone(row[column])}`}>{text(row[column])}</span> : text(row[column])}</td>)}<td><div className="admin-user-actions"><AdminAction section={section} row={row} onDone={() => void load()} />{['users', 'employers'].includes(section) && <button className="admin-danger" type="button" disabled={!canManageUsers || access?.userId === managedUserId(row)} title={!canManageUsers ? 'Your admin role cannot delete users.' : access?.userId === managedUserId(row) ? 'You cannot delete your own account.' : 'Delete user'} onClick={() => setPendingDelete(row)}>Delete</button>}</div></td></tr>)}
+      {rows.map(row => <tr key={row.id}>{columns.map(column => <td key={column}>{['users', 'employers'].includes(section) && column === 'role' ? <select className="admin-role-select" aria-label={`Role for ${text(row.userName ?? row.name)}`} value={String(row.role)} disabled={!canManageUsers || access?.userId === managedUserId(row)} onChange={event => setPendingRole({ row, from: row.role as AccountRole, to: event.target.value as AccountRole })}>{(canManageUsers ? accountRoles : [row.role as AccountRole]).map(role => <option key={role} value={role}>{label(role)}</option>)}</select> : ['status', 'role', 'trust', 'riskLevel', 'accountStatus'].includes(column) ? <span className={`admin-badge ${tone(row[column])}`}>{text(row[column])}</span> : text(row[column])}</td>)}<td><div className="admin-user-actions">{section === 'applications' && <ApplicationDetails id={row.id} admin />}<AdminAction section={section} row={row} onDone={() => void load()} />{['users', 'employers'].includes(section) && <button className="admin-danger" type="button" disabled={!canManageUsers || access?.userId === managedUserId(row)} title={!canManageUsers ? 'Your admin role cannot delete users.' : access?.userId === managedUserId(row) ? 'You cannot delete your own account.' : 'Delete user'} onClick={() => setPendingDelete(row)}>Delete</button>}</div></td></tr>)}
     </tbody></table></div>}
     <div className="admin-pagination"><button disabled={!history.length} onClick={() => { const prior = [...history]; setCursor(prior.pop() ?? ''); setHistory(prior); }}>Previous</button><span>{rows.length} records on this page</span><button disabled={!nextCursor} onClick={() => { setHistory(current => [...current, cursor]); setCursor(nextCursor ?? ''); }}>Next</button></div>
     {pendingRole && <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !roleBusy) { setPendingRole(null); setRoleReason(''); } }}><dialog className="admin-role-modal" open aria-labelledby="role-change-title"><p className="eyebrow">CONFIRM ROLE CHANGE</p><h2 id="role-change-title">Change user role</h2><p className="admin-role-change"><strong>{label(pendingRole.from)}</strong><span aria-hidden="true">→</span><strong>{label(pendingRole.to)}</strong></p><label>Reason for this change<textarea autoFocus value={roleReason} maxLength={500} onChange={event => setRoleReason(event.target.value)} placeholder="Enter an audit reason (required)" /></label><div className="admin-modal-actions"><button type="button" disabled={roleBusy} onClick={() => { setPendingRole(null); setRoleReason(''); }}>Cancel</button><button className="primary" type="button" disabled={roleBusy || roleReason.trim().length < 3} onClick={() => void updateRole()}>{roleBusy ? 'Updating…' : 'Confirm role change'}</button></div></dialog></div>}

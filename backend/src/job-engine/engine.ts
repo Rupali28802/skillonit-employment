@@ -11,6 +11,8 @@ type Variant = { id: string; sourceId: string; jobId: string; lastSeenRun: strin
 export type SourceState = { id: string; nextRunAt: number; failures: number; status: string; lastSuccessAt?: string; lastAttemptAt?: string; errorCode?: string; counts?: Counts };
 type Counts = { fetched: number; added: number; updated: number; duplicates: number; rejected: number; closed: number; requests: number; complete: boolean };
 const leaseId = 'job-engine';
+const verificationContentUnchanged = (left: Job, right: Job) => ['title', 'company', 'description', 'requirements', 'method', 'url', 'email', 'expiresAt', 'sourcePostedAt']
+  .every(key => left[key as keyof Job] === right[key as keyof Job]) && left.feed?.sourceId === right.feed?.sourceId && left.feed?.externalId === right.feed?.externalId;
 async function fence(r: Repository, owner: string) {
   const lease = await r.get<Lease>('jobEngineState', leaseId);
   if (lease?.owner !== owner || lease.until < Date.now()) throw new FeedError('LEASE_LOST');
@@ -106,10 +108,12 @@ async function ingest(source: FeedSource, batch: FeedBatch, owner: string, runId
           jobWrites.set(jobId, { ...candidate, id: jobId }); result.added++;
         } else if (existing.feed) {
           const blocked = existing.status === 'disabled' || existing.status === 'review' || (existing.status === 'closed' && !existing.feed.closedByEngine);
+          const verificationUnchanged = existing.trust === 'verified' && verificationContentUnchanged(existing, candidate);
           jobWrites.set(jobId, { ...candidate, id: jobId, discoveredAt: existing.discoveredAt,
             ...(existing.sourcePostedAt ? { sourcePostedAt: existing.sourcePostedAt } : {}),
             status: blocked ? existing.status : candidate.status,
-            trust: existing.trust === 'verified' && existing.description === candidate.description ? 'verified' : candidate.trust });
+            trust: verificationUnchanged ? 'verified' : candidate.trust,
+            ...(verificationUnchanged && existing.verification ? { verification: existing.verification } : {}) });
           if (isOtherSource) result.duplicates++; else result.updated++;
         } else result.duplicates++;
         const variant = { id: variantId, sourceId: source.id, jobId, lastSeenRun: runId, missing: 0, active: true };

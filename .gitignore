@@ -17,3 +17,10 @@
 
 .deploy-*
 backend/.deploy-*
+**/.atlas-reconciliation-manifest*.jsonl
+**/.postgres-reconciliation-manifest*.jsonl
+**/.reconciliation-comparison*.json
+**/.reconciliation-field-hashes*.jsonl
+**/.reconciliation-field-summary*.json
+**/.cutover-evidence/
+**/.provider-secret-*.tmp

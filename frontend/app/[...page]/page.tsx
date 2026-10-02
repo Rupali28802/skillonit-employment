@@ -13,14 +13,13 @@ export async function generateMetadata({
   params: Promise<{ page: string[] }>;
 }) {
   const section = (await params).page.join('/');
+  const publicSections = new Set(['about', 'trust', 'contact', 'pricing', 'privacy', 'terms']);
+  const publicPage=publicSections.has(section);
+  const label=section.split('/').pop()!.replace(/^./,(c)=>c.toUpperCase());
   return {
-    title: section
-      .split('/')
-      .pop()!
-      .replace(/^./, (c) => c.toUpperCase()),
-    robots: ['about', 'trust', 'contact', 'pricing'].includes(section)
-      ? undefined
-      : { index: false, follow: false },
+    title: label,
+    ...(publicPage?{alternates:{canonical:`/${section}`},openGraph:{type:'website' as const,title:`${label} | SkillOnIT Employment`,url:`/${section}`,siteName:'SkillOnIT Employment'}}:{}),
+    robots: publicPage ? {index:true,follow:true} : { index: false, follow: false },
   };
 }
 export default async function Page({
@@ -60,6 +59,9 @@ export default async function Page({
       'employer/post',
       'employer/applicants',
       'employer/team',
+      'employer/candidates',
+      'employer/notifications',
+      'employer/settings',
       'employer/billing',
       'admin',
       'admin/users',

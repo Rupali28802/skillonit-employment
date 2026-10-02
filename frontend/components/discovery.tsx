@@ -96,7 +96,7 @@ export function Discovery({
   const zeroNewJobsMeasurements = useRef(0);
   const arrivalBaseline = useRef('');
   const latestMeasurement = useRef('');
-  const [stats, setStats] = useState<{detectedToday:number;newJobs:number;countries:number|null;workerOnline?:boolean}|null>(null);
+  const [stats, setStats] = useState<{totalJobs:number;detectedToday:number;newJobs:number;countries:number|null;workerOnline?:boolean}|null>(null);
   const previousJobs = useRef<PublicJob[]>(initialJobs.slice(0, 12));
   const feed = useRef<HTMLDivElement>(null);
   const [savedIds, setSavedIds] = useState<string[]>([]);
@@ -396,7 +396,7 @@ export function Discovery({
     [user?.profile.city, user?.profile.country].filter(Boolean).join(', ') ||
     'Building my next career move';
   const radarMetrics = [
-    { label: 'Total matching opportunities', value: total, Icon: BriefcaseBusiness, tone: 'opportunities' },
+    { label: 'Total matching opportunities', value: stats?.totalJobs, Icon: BriefcaseBusiness, tone: 'opportunities' },
     { label: 'Detected today (UTC)', value: stats?.detectedToday, Icon: CalendarDays, tone: 'today' },
     { label: 'New in 10 minutes', value: displayedNewJobs, Icon: Clock3, tone: 'live' },
     { label: 'Countries / territories · includes eligibility', value: stats?.countries, Icon: Globe2, tone: 'coverage' },

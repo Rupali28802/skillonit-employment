@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { Job, User } from './domain.js';
 import type { ApplicationRecord } from './application-engine.js';
-import { publicApplication } from './application-engine.js';
+import { applicationDetails } from './application-engine.js';
+import { applicationMethod, submissionState } from './application-routing.js';
 import type { EmployerRecord, EmployerVerification } from './employer-portal.js';
 import { recordEmployerVerificationDecision } from './employer-portal.js';
 import { persistJobFraudAssessment } from './fraud-detection.js';
@@ -261,7 +262,43 @@ export async function reviewAdminFraud(actor: User, reportId: string, input: unk
   });
 }
 
-export const listAdminApplications = (actor: User, params: URLSearchParams) => listRows(actor, 'applications', params, (row: ApplicationRecord) => publicApplication(row));
+const applicationPageSchema = pageSchema.extend({ method: z.enum(['EMAIL','EXTERNAL_FORM','SKILLONIT','ATS','UNSUPPORTED']).optional() });
+async function adminApplicationRow(r: Repository, row: ApplicationRecord) {
+  const [candidate, job, employer] = await Promise.all([r.get<User>('users', row.userId), r.get<Job>('jobs', row.jobId), r.get<EmployerRecord>('employers', row.employerId)]);
+  const details = applicationDetails(row);
+  return { ...details, reason: details.reasons.map(reason => reason.message).join(' '), candidate: candidate?.name ?? row.userId, candidateEmail: candidate?.email ?? null, jobTitle: job?.title ?? row.job.title, employer: employer?.name ?? job?.company ?? row.employerId };
+}
+export async function listAdminApplications(actor: User, params: URLSearchParams) {
+  const input = applicationPageSchema.parse(Object.fromEntries(params));
+  return read(async r => {
+    await requireAdmin(r, actor, 'applications.read');
+    const items: Awaited<ReturnType<typeof adminApplicationRow>>[] = [];
+    let cursor = input.cursor;
+    while (items.length <= input.limit) {
+      const rows = await r.scan<ApplicationRecord>('applications', {}, cursor, 100);
+      if (!rows.length) break;
+      for (const row of rows) {
+        cursor = row.id;
+        if (input.method && applicationMethod(row.method) !== input.method) continue;
+        if (input.status && submissionState(row.status) !== input.status && row.status !== input.status) continue;
+        const safe = await adminApplicationRow(r, row);
+        if (input.query && ![safe.id, safe.candidate, safe.candidateEmail, safe.jobTitle, safe.employer].some(value => String(value ?? '').toLowerCase().includes(input.query!.toLowerCase()))) continue;
+        items.push(safe);
+        if (items.length > input.limit) break;
+      }
+      if (rows.length < 100) break;
+    }
+    return { items: items.slice(0, input.limit), nextCursor: items.length > input.limit ? items[input.limit - 1].id : null };
+  });
+}
+export async function adminApplication(actor: User, id: string) {
+  return read(async r => {
+    await requireAdmin(r, actor, 'applications.read');
+    const row = await r.get<ApplicationRecord>('applications', id);
+    if (!row) throw new ApiError(404, 'NOT_FOUND', 'Application not found.');
+    return adminApplicationRow(r, row);
+  });
+}
 export const listAdminPayments = (actor: User, params: URLSearchParams) => listRows(actor, 'payments', params, safePayment);
 export const listAdminAudit = (actor: User, params: URLSearchParams) => listRows(actor, 'auditLogs', params, (row: AuditRecord) => ({ id: row.id, actorId: row.actorId, action: row.action, entityId: row.entityId, entityType: row.entityType, correlationId: row.correlationId, createdAt: row.createdAt ?? row.timestamp }));
 
@@ -296,7 +333,7 @@ export async function adminConsoleRoute(actor: User, parts: string[], method: st
   if (resource === 'sources' && id && method === 'PUT') return updateAdminSource(actor, id, await body());
   if (resource === 'fraud' && !id && method === 'GET') return listAdminFraud(actor, params);
   if (resource === 'fraud' && id && action === 'review' && method === 'POST') return reviewAdminFraud(actor, id, await body());
-  if (resource === 'applications' && method === 'GET') return listAdminApplications(actor, params);
+  if (resource === 'applications' && !action && method === 'GET') return id ? adminApplication(actor, id) : listAdminApplications(actor, params);
   if (resource === 'payments' && method === 'GET') return listAdminPayments(actor, params);
   if (resource === 'configuration' && method === 'GET') return adminConfiguration(actor);
   if (resource === 'audit' && method === 'GET') return listAdminAudit(actor, params);

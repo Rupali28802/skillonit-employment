@@ -17,6 +17,7 @@ export type StudentSubscription = {
   cancelAtPeriodEnd: boolean;
   revision: number;
   source: 'admin' | 'razorpay' | 'migration';
+  razorpayConfigVersion?: string;
   providerPaymentId?: string;
   providerSubscriptionId?: string;
   providerCustomerId?: string;

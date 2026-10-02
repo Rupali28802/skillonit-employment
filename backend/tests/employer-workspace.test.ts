@@ -1,0 +1,77 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { once } from 'node:events';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
+import type { User } from '../src/lib/domain.ts';
+
+test('employer HTTP workspace: drafts, isolation, privacy, pagination and role revocation', async () => {
+  const replica = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
+  const old = { ...process.env };
+  delete process.env.DATABASE_URL;
+  process.env.MONGODB_URI = replica.getUri(); process.env.MONGODB_DATABASE = 'employer_workspace_http'; process.env.DEMO_MODE = 'true'; process.env.APP_URL = 'http://localhost:3102';
+  const store = await import('../src/lib/store.ts'), security = await import('../src/lib/security.ts');
+  const { app } = await import('../src/app.ts');
+  const server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1/`;
+  const user = (id: string, role: User['role']): User => ({ id, role, email: `${id}@example.test`, name: id, verified: true, passwordHash: security.hashPassword('IsolatedTestPassword123!'), plan: 'basic', createdAt: new Date().toISOString(), profile: { name: id, headline: '', skills: [], experience: null, education: '', country: '', city: '', confirmed: false }, preferences: { roles: [], relatedRoles: [], countries: [], modes: [], exclusions: [], automation: false, dailyCap: 5 } });
+  const session = async (id: string) => { const token = `isolated-session-${id}-${Date.now()}`; await store.transaction(r => r.put('sessions', { id: security.digest(token), userId: id, expiresAt: new Date(Date.now() + 3600000).toISOString() })); return token; };
+  const call = async (token: string, path: string, method = 'GET', payload?: unknown, expected = 200) => {
+    const response = await fetch(base + path, { method, headers: { Origin: process.env.APP_URL!, 'Content-Type': 'application/json', ...(token ? { Cookie: `skillonit_session=${token}` } : {}) }, ...(payload === undefined ? {} : { body: JSON.stringify(payload) }) });
+    const result = await response.json(); assert.equal(response.status, expected, `${method} ${path}: ${JSON.stringify(result.error)}`); return result.data;
+  };
+  try {
+    await store.bootstrapIndexes();
+    await store.transaction(async r => { for (const u of [user('a','employer'),user('b','employer'),user('student','student')]) await r.put('users',u); });
+    const a = await session('a'), b = await session('b'), student = await session('student');
+    await call('', 'employer/overview', 'GET', undefined, 401);
+    await call(student,'employer/overview','GET',undefined,403);
+    await call(a,'admin/console/users','GET',undefined,403);
+    const profile = await call(a,'employers','POST',{name:'Isolated Company',domain:'isolated.test',country:'India',description:'Company for isolated tests.',website:''},201);
+    assert.equal(profile.status,'pending'); assert.equal('verifiedBy' in profile,false);
+    await call(b,'employers','POST',{name:'Second Company',domain:'second.test',country:'India',description:''},201);
+    await store.transaction(async r => { const company = await r.get<{ id:string; ownerId:string }>('employers','b'); await r.remove('employers','b'); await r.put('employers',{...company!,id:'legacy-company-id'}); });
+    assert.equal((await call(b,'employers')).id,'legacy-company-id');
+    await call(b,'employers','PUT',{expectedRevision:0,description:'Same account, existing company.'});
+    await call(a,'employers','PUT',{expectedRevision:0,industry:'Engineering'});
+    await call(a,'employers','PUT',{expectedRevision:0,industry:'Stale'},409);
+    const input = { title:'Engineer',category:'Technology',country:'India',state:'',city:'Pune',skills:['TypeScript'],mode:'Remote',type:'Full-time',salaryMin:1,salaryMax:2,currency:'INR',experienceMin:0,experienceMax:3,description:'Build reliable software with secure engineering practices.',requirements:'TypeScript engineering experience.',method:'direct',submission:'draft' };
+    const job = await call(a,'employer/jobs','POST',input,201);
+    assert.equal(job.status,'draft');
+    await call(a,'employer/jobs','POST',{...input,salaryMin:3},400);
+    await call(a,'employer/jobs','POST',{...input,matching:{occupationId:'missing-catalog-id'}},400);
+    await call(b,`employer/jobs/${job.id}`,'GET',undefined,404);
+    await call(b,`employer/jobs/${job.id}`,'PUT',{...input,expectedRevision:0},404);
+    await call(b,`employer/jobs/${job.id}/close`,'POST',{},404);
+    assert.equal((await call(b,'employer/jobs?page=1')).total,0);
+    assert.equal((await call(a,'employer/jobs?page=1&status=draft')).total,1);
+    assert.equal((await call(a,'employer/jobs?page=1&q=%5B')).total,0);
+    const submitted = await call(a,`employer/jobs/${job.id}`,'PUT',{expectedRevision:0,submission:'review'});
+    assert.equal(submitted.status,'review'); assert.equal(submitted.trust,'pending');
+    await call(a,`employer/jobs/${job.id}`,'PUT',{expectedRevision:0,title:'Stale'},409);
+    const at = new Date().toISOString();
+    await store.transaction(r => r.put('applications',{id:'app',userId:'student',jobId:job.id,employerId:'a',method:'direct',status:'DIRECT_SUBMITTED',createdAt:at,job:{title:'Engineer',city:'Pune',country:'India'},events:[{status:'DIRECT_SUBMITTED',at,actorId:'private-actor'}],snapshot:{profile:{name:'Candidate',skills:['TypeScript'],headline:'Engineer',education:'Degree',experience:2,country:'India',city:'Pune',privateToken:'never-expose'},cvVersion:{id:'cv',name:'Resume',content:'private-document'}},delivery:{destination:'private-address'},providerMessageId:'private-provider'}));
+    const otherJob = await call(b,'employer/jobs','POST',input,201);
+    await store.transaction(async r => { const original = await r.get<{id:string}>('applications','app'); await r.put('applications',{...original!,id:'wrong-job-owner',jobId:otherJob.id}); });
+    const applications = await call(a,'employer/applicants?page=1'); assert.equal(applications.total,1);
+    assert.equal(applications.items[0].candidate.name,'Candidate'); assert.ok(!JSON.stringify(applications).includes('private-'));
+    assert.equal((await call(b,'employer/applicants?page=1')).total,0);
+    for (const path of ['employer/applicants/app','employer/applicants/app/notes']) await call(b,path,'GET',undefined,404);
+    await call(b,'employer/applicants/app','PATCH',{status:'SHORTLISTED',expectedStatus:'DIRECT_SUBMITTED'},404);
+    await call(a,'employer/applicants/app','PATCH',{status:'SHORTLISTED',expectedStatus:'DIRECT_SUBMITTED'});
+    await call(a,'employer/applicants/app','PATCH',{status:'INTERVIEW',expectedStatus:'DIRECT_SUBMITTED'},409);
+    await call(a,'employer/applicants/app/notes','POST',{note:'Relevant application experience.'},201);
+    assert.equal((await call(a,'employer/applicants/app/notes')).length,1);
+    const overview = await call(a,'employer/overview'); assert.equal(overview.counts.shortlisted,1); assert.equal(overview.counts.applications,1); assert.equal(overview.subscription.available,false);
+    assert.equal((await call(student,'me/notifications')).length,1);
+    await call(a,'employer/applicants/wrong-job-owner','GET',undefined,404);
+    const notifications = await call(a,'me/notifications'); assert.ok(Array.isArray(notifications));
+    await call(a,'me/notification-preferences');
+    await store.transaction(async r => { const u = await r.get<User>('users','a'); await r.put('users',{...u!,role:'student'}); });
+    await call(a,'employer/overview','GET',undefined,403);
+    await call(a,'employer/jobs','POST',input,403);
+    await call(b,'auth/logout','POST',{}); await call(b,'employer/overview','GET',undefined,401);
+  } finally {
+    server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve()));
+    await store.closeStore(); await replica.stop(); process.env = old;
+  }
+});

@@ -156,10 +156,10 @@ export function JobActions({
           <p className="small">Nothing is submitted until you select the confirmation button below.</p>
           <button
             className="primary"
-            disabled={busy || !preview || !preview.readyToConfirm}
+            disabled={busy || !preview}
             onClick={() => void apply()}
           >
-            {busy ? 'Checking…' : preview?.action === 'open_source_form' ? preview.destinationKind === 'direct-form' ? 'Confirm and open application form' : 'Confirm and continue to application' : preview?.action === 'send_authorized_email' ? 'Confirm and send from Gmail' : 'Confirm and apply'}
+            {busy ? 'Checking…' : preview && !preview.readyToConfirm ? 'Record attempt for review' : preview?.action === 'open_source_form' ? preview.destinationKind === 'direct-form' ? 'Confirm and open application form' : 'Confirm and continue to application' : preview?.action === 'send_authorized_email' ? 'Confirm and queue Gmail application' : 'Confirm and apply'}
           </button>
         </DialogContent>
       </Dialog>

@@ -1,19 +1,24 @@
+import { EmployerPortal, EmployerNavigation } from './employer-portal';
 import { display } from '@/lib/display';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { currentUser } from '@/lib/api';
 import { api, configuredPlans, demoMode } from '@/lib/api';
-import { type PublicJob, type User, countries, categories } from '@/lib/domain';
+import { type PublicJob, type User } from '@/lib/domain';
 import { SmartForm, Action } from './forms';
 import { PlanEditor } from './admin-config';
+import { RazorpayConfiguration } from './razorpay-configuration';
 import { AdminBillingPanel } from './admin-billing-panel';
 import { ConsentManager, CvManager, GmailConnection, OnboardingActions, type MailboxStatus } from './candidate-tools';
 import { AssistantPanel, NotificationCenter, SavedSearchManager, TaxonomyLookup } from './candidate-extras';
 import { CandidateDashboard } from './candidate-dashboard';
 import { ProfileDashboard } from './profile-dashboard';
 import { AdminConsolePanel } from './admin-console-panel';
+import { AdminSeoPanel } from './admin-seo-panel';
 import { AdminRolesPanel } from './admin-roles-panel';
 import { AdminResponsiveLayout } from './admin-responsive-layout';
+import { ApplicationDetails } from './application-details';
+import { JobActions } from './job-actions';
 type RecordRow = { id: string; [key: string]: unknown };
 const candidateLinks = [
   ['dashboard', 'Overview'],
@@ -29,13 +34,10 @@ const candidateLinks = [
   ['settings', 'Settings'],
 ];
 const employerLinks = [
-  ['employer', 'Overview'],
-  ['employer/organization', 'Organization'],
-  ['employer/jobs', 'Manage jobs'],
-  ['employer/post', 'Post a job'],
-  ['employer/applicants', 'Applicants'],
-  ['employer/team', 'Team'],
-  ['employer/billing', 'Billing'],
+  ['employer', 'Dashboard'], ['employer/organization', 'Company Profile'],
+  ['employer/jobs', 'Jobs'], ['employer/applicants', 'Applications'],
+  ['employer/candidates', 'Candidates'], ['employer/billing', 'Subscription'],
+  ['employer/notifications', 'Notifications'], ['employer/settings', 'Settings'],
 ];
 const adminLinks = [
   ['admin', 'Overview'],
@@ -107,7 +109,7 @@ export async function Workspace({ section }: { section: string }) {
     </AdminResponsiveLayout>;
   }
   return (
-    <div className={group === 'student' ? 'page-wrap candidate-workspace-shell' : 'page-wrap'}>
+    <div className={group === 'student' ? 'page-wrap candidate-workspace-shell' : 'page-wrap employer-workspace-shell'}>
       <div className={group === 'student' ? 'section-line workspace-page-heading' : 'section-line'}>
         <div>
           <div className="eyebrow">{group === 'student' ? 'MY CAREER WORKSPACE' : `${group.toUpperCase()} WORKSPACE`}</div>
@@ -126,7 +128,7 @@ export async function Workspace({ section }: { section: string }) {
         </p>
       )}
       <div className="workspace">
-        <nav className="workspace-nav" aria-label="Workspace navigation">
+        <>{group === 'employer' ? <EmployerNavigation links={links} section={section} /> : <nav className="workspace-nav" aria-label="Workspace navigation">
           {group === 'student' && <div className="workspace-nav-identity">
             <span aria-hidden="true">{user.name.trim().slice(0, 1).toUpperCase()}</span>
             <div><strong>{user.name}</strong><small>{user.profile.headline || user.profile.targetRole || 'Candidate profile'}</small></div>
@@ -143,12 +145,12 @@ export async function Workspace({ section }: { section: string }) {
             </Link>
           ))}
           {group === 'student' && <Link className="workspace-find-jobs" href="/"><i aria-hidden="true" />Find matching jobs <span>→</span></Link>}
-        </nav>
+        </nav>}</>
         <section>
           {group === 'student' ? (
             <Candidate section={section} user={user} />
           ) : group === 'employer' ? (
-            <Employer section={section} user={user} />
+            <EmployerPortal key={section} section={section} user={{ name: user.name, email: user.email }} />
           ) : (
             <Admin section={section} user={user} permissions={adminAccess?.permissions ?? []} />
           )}
@@ -307,6 +309,8 @@ async function Candidate({ section, user }: { section: string; user: User }) {
               <p className="small">
                 {new Date(display(a.createdAt)).toLocaleString('en-IN')}
               </p>
+              <p className="small">Company: {display(a.company)} · Method: {display(a.applicationMethod)} · Submission: {display(a.submissionState)} · Submitted: {display(a.submittedAt)} · Updated: {display(a.updatedAt)}</p>
+              {(a.reasons as {code: string; message: string}[] | undefined)?.map(reason => <p className="notice" key={reason.code}>{reason.message}</p>)}
               <ol>
                 {(a.events as { status: string; at: string }[]).map((e, i) => (
                   <li key={i}>
@@ -316,13 +320,17 @@ async function Candidate({ section, user }: { section: string; user: User }) {
                 ))}
               </ol>
               <div className="actions">
-                {a.status === 'EXTERNAL_STARTED' && (
+                <ApplicationDetails id={a.id} />
+                {['NEEDS_REVIEW','FAILED'].includes(display(a.status)) && !(a.reasons as {code: string}[] | undefined)?.some(reason => reason.code === 'MAIL_SEND_UNCERTAIN') && <JobActions jobId={display(a.jobId)} compact />}
+                {(a.status === 'EXTERNAL_STARTED' || (a.method === 'external' && a.status === 'NEEDS_REVIEW')) && (
                   <Action
                     endpoint={`applications/${a.id}/confirm-external`}
                     label="I submitted on the employer website"
+                    payload={{confirmed:true}}
+                    confirm
                   />
                 )}
-                {a.status === 'QUEUED' && (
+                {['QUEUED','NEEDS_REVIEW','FAILED'].includes(display(a.status)) && (
                   <Action
                     endpoint={`applications/${a.id}/cancel`}
                     label="Cancel queued application"
@@ -449,235 +457,6 @@ async function Candidate({ section, user }: { section: string; user: User }) {
   }>('me/dashboard'), api<{percentage:number;missingFields:string[];readinessStatus:string}>('me/profile/completion'), api<{completeness:number;completed:boolean;steps:{name:string;complete:boolean;optional:boolean}[]}>('me/onboarding'), api<MailboxStatus>('mail/status'), api<{plan:{name:string};subscriptionStatus:string;limits:{applicationsPerDay:number;autoApplyPerDay:number;cvVersions:number}}>('me/subscription'), api<{id:string;title:string;message:string;href:string;read:boolean;createdAt:string}[]>('me/notifications'), api<RecordRow[]>('me/cv')]);
   return <CandidateDashboard user={user} dashboard={dashboard as never} completion={completion} onboarding={onboarding} mailboxConnected={mailbox.connected} subscription={subscription} notifications={notifications} cvCount={documents.filter(document => document.status === 'confirmed').length} />;
 }
-async function Employer({ section, user }: { section: string; user: User }) {
-  const org = await api<RecordRow | null>('employers');
-  if (section === 'employer/organization')
-    return (
-      <div className="panel">
-        <h2>Introduce your organization</h2>
-        <p>
-          Verification status: {display(org?.status || 'Not submitted')}. A
-          moderator reviews organization identity before vacancies are
-          published.
-        </p>
-        <SmartForm
-          endpoint="employers"
-          method={org ? 'PUT' : 'POST'}
-          initial={org || { country: 'India' }}
-          expectedRevision={org && typeof org.revision === 'number' ? org.revision : undefined}
-          fields={[
-            { name: 'name', label: 'Organization name' },
-            {
-              name: 'domain',
-              label: 'Company domain',
-              hint: 'example.com, without https://',
-            },
-            { name: 'country', label: 'Country', options: countries },
-            {
-              name: 'description',
-              label: 'About your organization',
-              type: 'textarea',
-              required: false,
-            },
-          ]}
-          submit="Submit for verification"
-        />
-      </div>
-    );
-  if (section === 'employer/post')
-    return (
-      <div className="panel">
-        <h2>Make your next hire a great one.</h2>
-        <p>Your vacancy is reviewed before it becomes searchable.</p>
-        <SmartForm
-          endpoint="employer/jobs"
-          initial={{
-            country: 'India',
-            currency: 'INR',
-            mode: 'Hybrid',
-            type: 'Full-time',
-            method: 'direct',
-            experienceMin: 0,
-            experienceMax: 3,
-            salaryMin: 0,
-            salaryMax: 0,
-          }}
-          fields={[
-            { name: 'title', label: 'Job title' },
-            {
-              name: 'category',
-              label: 'Industry / function',
-              options: categories,
-            },
-            { name: 'country', label: 'Country', options: countries },
-            { name: 'state', label: 'State or region', required: false },
-            { name: 'city', label: 'City' },
-            {
-              name: 'mode',
-              label: 'Work arrangement',
-              options: ['Remote', 'Hybrid', 'On-site'],
-            },
-            {
-              name: 'type',
-              label: 'Employment type',
-              options: [
-                'Full-time',
-                'Part-time',
-                'Contract',
-                'Internship',
-                'Graduate',
-              ],
-            },
-            { name: 'skills', label: 'Required skills', type: 'list' },
-            {
-              name: 'experienceMin',
-              label: 'Minimum experience (years)',
-              type: 'number',
-            },
-            {
-              name: 'experienceMax',
-              label: 'Maximum experience (years)',
-              type: 'number',
-            },
-            {
-              name: 'salaryMin',
-              label: 'Minimum annual salary',
-              type: 'number',
-            },
-            {
-              name: 'salaryMax',
-              label: 'Maximum annual salary',
-              type: 'number',
-            },
-            {
-              name: 'currency',
-              label: 'Currency',
-              options: ['INR', 'USD', 'GBP', 'EUR', 'CAD', 'AUD', 'SGD', 'AED'],
-            },
-            {
-              name: 'method',
-              label: 'Application method',
-              options: ['direct'],
-            },
-            { name: 'description', label: 'Job description', type: 'textarea' },
-            {
-              name: 'requirements',
-              label: 'Qualifications and requirements',
-              type: 'textarea',
-            },
-          ]}
-          submit="Submit vacancy for review"
-        />
-      </div>
-    );
-  if (section === 'employer/team')
-    return (
-      <div className="panel">
-        <h2>Your recruiting team</h2>
-        <p>{user.name} · Organization owner</p>
-        <p>
-          Team invitations are unavailable until the notification provider and
-          seat entitlements are configured.
-        </p>
-      </div>
-    );
-  if (section === 'employer/billing')
-    return (
-      <div className="panel">
-        <h2>Employer subscriptions</h2>
-        <p>
-          Employer prices, active-job allowances and recruiter seats require
-          commercial configuration before checkout opens.
-        </p>
-        <Link className="primary" href="/contact">
-          Contact SkillonIT
-        </Link>
-      </div>
-    );
-  if (section === 'employer/applicants') {
-    const apps = await api<RecordRow[]>('employer/applicants');
-    return (
-      <>
-        {apps.length ? (
-          apps.map((a) => (
-            <div className="panel" key={a.id}>
-              <h2>{display((a.job as { title: string }).title)}</h2>
-              <p>{display(a.status)}</p>
-              <SmartForm
-                endpoint={'employer/applicants/' + a.id}
-                method="PATCH"
-                fields={[
-                  {
-                    name: 'status',
-                    label: 'Applicant status',
-                    options: [
-                      'VIEWED',
-                      'SHORTLISTED',
-                      'INTERVIEW',
-                      'OFFER',
-                      'REJECTED',
-                    ],
-                  },
-                ]}
-                submit="Update status"
-              />
-            </div>
-          ))
-        ) : (
-          <Empty
-            title="Applications will appear here"
-            text="Publish a verified vacancy to start receiving direct applications."
-          />
-        )}
-      </>
-    );
-  }
-  const jobs = await api<PublicJob[]>('employer/jobs');
-  return (
-    <>
-      <div className="panel">
-        <h2>{org ? display(org.name) : 'Welcome to your hiring workspace'}</h2>
-        <p>
-          {org
-            ? 'Organization status: ' + display(org.status)
-            : 'Start by creating and verifying your organization profile.'}
-        </p>
-        <div className="actions">
-          <Link className="primary" href="/employer/organization">
-            Organization profile
-          </Link>
-          <Link className="secondary" href="/employer/post">
-            Post a vacancy
-          </Link>
-        </div>
-      </div>
-      {jobs.length ? (
-        jobs.map((j) => (
-          <div className="panel" key={j.id}>
-            <span className="pill">{j.status}</span>
-            <h2 style={{ marginTop: 15 }}>{j.title}</h2>
-            <p>
-              {j.city} · {j.mode}
-            </p>
-            {j.status !== 'closed' && (
-              <Action
-                endpoint={'employer/jobs/' + j.id}
-                method="PATCH"
-                label="Close vacancy"
-                confirm
-              />
-            )}
-          </div>
-        ))
-      ) : (
-        <Empty
-          title="Your hiring pipeline starts here"
-          text="Create a structured vacancy and submit it for review."
-        />
-      )}
-    </>
-  );
-}
 async function Admin({
   section,
   user: _user,
@@ -692,9 +471,10 @@ async function Admin({
     return <AdminConsolePanel section="overview" />;
   }
   if (segment === 'roles') return <AdminRolesPanel />;
+  if (segment === 'content') return <AdminSeoPanel />;
   if (['users', 'employers', 'jobs', 'sources', 'applications', 'fraud', 'audit'].includes(segment))
     return <AdminConsolePanel section={segment} />;
-  if (segment === 'payments' || segment === 'subscriptions') return <AdminBillingPanel mode={segment} canRefund={permissions.includes('payments.refund')} canManageSubscriptions={permissions.includes('subscriptions.manage')} />;
+  if (segment === 'payments' || segment === 'subscriptions') return <>{segment === 'payments' && permissions.includes('payments.read') && permissions.includes('configuration.read') && <RazorpayConfiguration canManage={permissions.includes('configuration.update')} />}<AdminBillingPanel mode={segment} canRefund={permissions.includes('payments.refund')} canManageSubscriptions={permissions.includes('subscriptions.manage')} /></>;
   const operational: Record<string, { endpoint: string; title: string; description: string }> = {
     queues: { endpoint: 'admin/queue/status', title: 'Queue and worker health', description: 'Live queue state from the existing worker infrastructure.' },
     health: { endpoint: 'admin/observability', title: 'System health', description: 'Provider-safe operational status. Credentials and raw provider responses are never displayed.' },
@@ -719,7 +499,6 @@ async function Admin({
   }
   const collections: Record<string, string> = {
     leads: 'leads',
-    content: 'content',
     flags: 'systemConfig',
     queues: 'queue',
     audit: 'auditLogs',

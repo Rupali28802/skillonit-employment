@@ -77,8 +77,8 @@ const concurrent = await Promise.allSettled([
 ]);
 assert.equal(
   concurrent.filter((item) => item.status === "fulfilled").length,
-  1,
-  "Only one request can reserve the final quota slot",
+  2,
+  "Both attempts are durable; only one can reserve the final quota slot",
 );
 for (const item of concurrent)
   if (item.status === "rejected")
@@ -88,7 +88,9 @@ for (const item of concurrent)
       "Quota races must return a clear eligibility error, not an internal failure",
     );
 const applications = await candidate("applications");
-assert.equal(applications.length, 1);
+assert.equal(applications.length, 2);
+assert.equal(applications.filter(item => item.status === 'DIRECT_SUBMITTED').length, 1);
+assert.equal(applications.filter(item => item.status === 'NEEDS_REVIEW' && item.reasons.some(reason => reason.code === 'DAILY_CAP_REACHED')).length, 1);
 const usage = await candidate("me/usage");
 assert.equal(usage.usage.count, 1);
 const search = await candidate(

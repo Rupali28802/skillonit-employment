@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { read, transaction, type Repository } from './store.js';
 import type { Job, User } from './domain.js';
+import { createNotificationRecord } from './notification-platform.js';
 import { ApiError, audit } from './security.js';
 
 export const jobLifecycleStates = ['publishing', 'active', 'expired', 'closed', 'removed', 'reposted'] as const;
@@ -85,6 +86,10 @@ export async function transitionJobLifecycle(r: Repository, jobId: string, targe
   await r.put('jobs', next);
   await r.put('jobLifecycleEvents', { id: `${jobId}:${lifecycle.revision}`, schemaVersion: 1, jobId, from: currentState, to: target, revision: lifecycle.revision, reasonCode, actorId, ...(options.relatedJobId ? { relatedJobId: options.relatedJobId } : {}), changedAt: lifecycle.changedAt });
   await audit(r, actorId, `job.lifecycle.${target}`, jobId);
+  if (reasonCode.startsWith('ADMIN_')) {
+    const company = await r.get<{ ownerId: string }>('employers', job.employerId) || (await r.find<{ ownerId: string }>('employers', { ownerId: job.employerId }, 1))[0];
+    if (company?.ownerId) await createNotificationRecord(r, { userId: company.ownerId, type: 'system', title: 'Job moderation updated', message: `${job.title}: ${next.status}.`, href: '/employer/jobs', dedupeKey: `employer-job:${jobId}:${lifecycle.revision}` }, now);
+  }
   return next;
 }
 

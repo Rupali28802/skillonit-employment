@@ -1,3 +1,4 @@
+import { razorpayVersionMatches } from './razorpay-configuration.js';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { Plan, PlanCode, User } from './domain.js';
@@ -12,7 +13,7 @@ export type PaymentStatus = 'created' | 'authorized' | 'captured' | 'failed' | '
 export type PaymentRecord = {
   id: string; userId: string; planCode: PlanCode; status: PaymentStatus; amount: number; currency: string;
   refundedAmount: number; createdAt: string; updatedAt: string; providerPaymentId?: string; failureCode?: string;
-  paymentMethod?: string; capturedAt?: string; failedAt?: string;
+  razorpayConfigVersion?: string; paymentMethod?: string; capturedAt?: string; failedAt?: string;
 };
 export type BillingRecord = {
   id: string; userId: string; orderId: string; paymentId?: string; refundId?: string;
@@ -47,7 +48,8 @@ export async function createPaymentOrder(user: User, planCode: PlanCode, idempot
   if (prior?.userId !== undefined && prior.userId !== user.id) throw new ApiError(409, 'IDEMPOTENCY_CONFLICT', 'Checkout request conflict.');
   if (prior?.orderId) {
     const payment = await read(r => r.get<PaymentRecord>('payments', prior.orderId!));
-    if (payment) return { order: { id: payment.id, amount: payment.amount, currency: payment.currency }, keyId: process.env.RAZORPAY_KEY_ID, reused: true };
+    if(payment&&!await razorpayVersionMatches(payment.razorpayConfigVersion,provider.configVersion))throw new ApiError(409,'CHECKOUT_CONFIGURATION_CHANGED','Start a new checkout after the payment configuration change.');
+    if (payment) return { order: { id: payment.id, amount: payment.amount, currency: payment.currency }, keyId: provider.keyId, reused: true };
   }
   if (prior?.status === 'creating') throw new ApiError(409, 'CHECKOUT_IN_PROGRESS', 'This checkout is already being created.');
   await transaction(async r => {
@@ -67,13 +69,13 @@ export async function createPaymentOrder(user: User, planCode: PlanCode, idempot
   await transaction(async r => {
     const collision = await r.get<PaymentRecord>('payments', order.id);
     if (collision && collision.userId !== user.id) throw new ApiError(409, 'PAYMENT_CONFLICT', 'Payment order conflict.');
-    const record: PaymentRecord = { id: order.id, userId: user.id, planCode, status: 'created', amount: order.amount, currency: order.currency, refundedAmount: 0, createdAt: now.toISOString(), updatedAt: now.toISOString() };
+    const record: PaymentRecord = { razorpayConfigVersion:provider.configVersion, id: order.id, userId: user.id, planCode, status: 'created', amount: order.amount, currency: order.currency, refundedAmount: 0, createdAt: now.toISOString(), updatedAt: now.toISOString() };
     await r.put('payments', record);
     await r.put('paymentCheckoutRequests', { id: requestId, userId: user.id, planCode, orderId: order.id, status: 'created', createdAt: now.toISOString(), updatedAt: now.toISOString() });
     await billing(r, { userId: user.id, orderId: order.id, type: 'order_created', amount: order.amount, currency: order.currency }, now);
     await audit(r, user.id, 'checkout.created', order.id);
   });
-  return { order, keyId: process.env.RAZORPAY_KEY_ID, reused: false };
+  return { order, keyId: provider.keyId, reused: false };
 }
 
 export async function verifyCheckout(userId: string, input: unknown, provider: PaymentProvider) {

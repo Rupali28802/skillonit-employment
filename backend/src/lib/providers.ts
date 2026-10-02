@@ -29,6 +29,8 @@ export interface NotificationProvider {
   ): Promise<void>;
 }
 export interface PaymentProvider {
+  readonly keyId?: string;
+  readonly configVersion?: string;
   checkout(input: {
     amount: number;
     currency: string;
@@ -43,8 +45,11 @@ export interface PaymentProvider {
   cancelSubscription(subscriptionId:string,cancelAtCycleEnd:boolean):Promise<{id:string;status:string;endedAt:number|null}>;
 }
 export class RazorpayProvider implements PaymentProvider {
+  constructor(private readonly configured?: { key: string; secret: string; webhookSecret?: string; version: string }) {}
+  get keyId() { return this.configured?.key ?? process.env.RAZORPAY_KEY_ID; }
+  get configVersion() { return this.configured?.version; }
   private credentials() {
-    const key = process.env.RAZORPAY_KEY_ID, secret = process.env.RAZORPAY_KEY_SECRET;
+    const key = this.configured?.key ?? process.env.RAZORPAY_KEY_ID, secret = this.configured?.secret ?? process.env.RAZORPAY_KEY_SECRET;
     if (!key || !secret) throw new ApiError(503, 'PROVIDER_UNAVAILABLE', 'Payments are not available yet. No charge has been made.');
     return { key, secret };
   }
@@ -54,19 +59,23 @@ export class RazorpayProvider implements PaymentProvider {
       ...init,
       headers: { Authorization: 'Basic ' + Buffer.from(key + ':' + secret).toString('base64'), 'Content-Type': 'application/json', ...init.headers },
       signal: AbortSignal.timeout(10000),
-    });
+    }).catch(() => { throw new ApiError(503, 'PROVIDER_UNAVAILABLE', 'The payment provider could not complete the request.'); });
     if (!response.ok) throw new ApiError(503, 'PROVIDER_UNAVAILABLE', 'The payment provider could not complete the request.');
-    return response.json() as Promise<Record<string, unknown>>;
+    return response.json().catch(() => { throw new ApiError(503,'PROVIDER_UNAVAILABLE','The payment provider returned an invalid response.'); }) as Promise<Record<string, unknown>>;
+  }
+  async validateConnection() {
+    const value = await this.request('payments?count=1');
+    if (value.entity !== 'collection' || !Array.isArray(value.items)) throw new ApiError(503, 'PROVIDER_UNAVAILABLE', 'The payment provider returned an invalid response.');
   }
   async checkout(input: { amount: number; currency: string; receipt: string }) {
     const value = await this.request('orders', {
       method: 'POST',
       body: JSON.stringify(input),
     });
-    return value as unknown as { id: string; amount: number; currency: string };
+    return { id: String(value.id), amount: Number(value.amount), currency: String(value.currency) };
   }
   verify(body: string, signature: string) {
-    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    const secret = this.configured ? this.configured.webhookSecret : process.env.RAZORPAY_WEBHOOK_SECRET;
     if (!secret) return false;
     const expected = createHmac('sha256', secret).update(body).digest();
     const actual = Buffer.from(signature, 'hex');
@@ -75,7 +84,7 @@ export class RazorpayProvider implements PaymentProvider {
     );
   }
   verifyCheckout(orderId: string, paymentId: string, signature: string) {
-    const secret = process.env.RAZORPAY_KEY_SECRET;
+    const secret = this.configured?.secret ?? process.env.RAZORPAY_KEY_SECRET;
     if (!secret || !/^[a-f0-9]{64}$/i.test(signature)) return false;
     const expected = createHmac('sha256', secret).update(orderId + '|' + paymentId).digest();
     const actual = Buffer.from(signature, 'hex');
@@ -113,13 +122,15 @@ export function providerHealth() {
     },
     {
       name: 'Payments',
-      status:
-        process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
-          ? process.env.RAZORPAY_WEBHOOK_SECRET ? 'Configured' : 'Credentials configured — webhook secret missing'
-          : 'Not configured',
+      status: 'See Admin Payments for active Razorpay configuration and validation status',
     },
     { name: 'Mailbox OAuth', status: 'Not configured' },
-    { name: 'CV scanning and parsing', status: 'Not configured' },
+    {
+      name: 'CV scanning and parsing',
+      status: process.env.ENABLE_CV_UPLOADS === 'true'
+        ? 'Configured — storage, scanner and parser checked at startup'
+        : 'Not configured',
+    },
     { name: 'Search index', status: 'Bounded database fallback' },
     {
       name: 'Redis / workers',

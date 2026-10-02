@@ -1,6 +1,8 @@
 import { Discovery } from '@/components/discovery';
 import { api, currentUser } from '@/lib/api';
 import type { PublicJob } from '@/lib/domain';
+import type { Metadata } from 'next';
+export const metadata:Metadata={alternates:{canonical:'/'},robots:{index:true,follow:true}};
 export const dynamic = 'force-dynamic';
 export default async function Home() {
   const [jobsResult, userResult] = await Promise.allSettled([

@@ -368,7 +368,8 @@ export async function sendMailboxMessage(
   input: z.infer<typeof outboundMessageSchema>,
 ) {
   const message = outboundMessageSchema.parse(input);
-  const config = mailboxConfig();
+  let config: ReturnType<typeof mailboxConfig>;
+  try { config = mailboxConfig(); } catch { throw new ApiError(503, 'MAIL_CONFIGURATION_REQUIRED', 'Gmail sending is not configured.'); }
   await rateLimit(`mail-send:${user.id}`, 10);
   const connection = await read((repository) =>
     repository.get<MailboxConnection>('mailboxConnections', user.id),
@@ -385,6 +386,7 @@ export async function sendMailboxMessage(
       'MAILBOX_NOT_CONNECTED',
       'Connect your verified mailbox before sending email.',
     );
+  let submissionStarted = false;
   try {
     const client = new OAuth2Client(
       config.MAIL_GOOGLE_CLIENT_ID,
@@ -398,10 +400,12 @@ export async function sendMailboxMessage(
     });
     const { token } = await client.getAccessToken();
     if (!token) throw new Error('Access token unavailable');
+    submissionStarted = true;
     const response = await fetch(
       'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
       {
         method: 'POST',
+        signal: AbortSignal.timeout(30_000),
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -409,17 +413,23 @@ export async function sendMailboxMessage(
         body: JSON.stringify({ raw: gmailRawMessage(message) }),
       },
     );
-    if (!response.ok) throw new Error('Gmail send rejected');
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) throw new ApiError(409, 'MAIL_AUTH_REQUIRED', 'Reconnect Gmail before sending.');
+      if (response.status === 429) throw new ApiError(429, 'MAIL_RATE_LIMITED', 'Gmail temporarily limited sending.');
+      if (response.status < 500) throw new ApiError(502, 'MAIL_SEND_FAILED', 'Gmail rejected this application.');
+      throw new Error('Submission outcome unknown');
+    }
     const result = z.object({ id: z.string().min(1) }).parse(await response.json());
     await transaction((repository) =>
       audit(repository, user.id, 'mail.sent', user.id),
     );
     return { accepted: true, providerMessageId: result.id };
-  } catch {
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
     throw new ApiError(
-      502,
-      'MAIL_SEND_FAILED',
-      'The email provider could not send the message.',
+      submissionStarted ? 502 : 409,
+      submissionStarted ? 'MAIL_SEND_UNCERTAIN' : 'MAIL_AUTH_REQUIRED',
+      submissionStarted ? 'Check Gmail Sent before retrying; submission could not be confirmed.' : 'Reconnect Gmail before sending.',
     );
   }
 }

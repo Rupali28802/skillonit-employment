@@ -1,0 +1,91 @@
+{
+  "summary": [
+    {
+      "name": "sequential discovery and replay",
+      "result": "PASS",
+      "details": {
+        "jobs": 1,
+        "runs": 2
+      }
+    },
+    {
+      "name": "transaction rollback",
+      "result": "PASS"
+    },
+    {
+      "name": "concurrent distinct inserts and same-ID replay",
+      "result": "PASS"
+    },
+    {
+      "name": "concurrent read-modify-write preserves every increment",
+      "result": "PASS"
+    },
+    {
+      "name": "exclusive concurrent lease: jobEngineState",
+      "result": "PASS"
+    },
+    {
+      "name": "exclusive concurrent lease: systemConfig",
+      "result": "PASS"
+    },
+    {
+      "name": "matching state write/replay/delete with isolated search double",
+      "result": "PASS",
+      "details": {
+        "externalProvider": "test double, not production-validated"
+      }
+    },
+    {
+      "name": "required uniqueness: user email",
+      "result": "PASS"
+    },
+    {
+      "name": "required uniqueness: payment provider ID",
+      "result": "PASS"
+    },
+    {
+      "name": "required uniqueness: application user and job",
+      "result": "PASS"
+    },
+    {
+      "name": "semantic model extraction/write/replay",
+      "result": "PASS"
+    },
+    {
+      "name": "all 33 unique key definitions reject duplicate business keys",
+      "result": "PASS",
+      "details": {
+        "definitions": 33
+      }
+    },
+    {
+      "name": "partial string keys and missing/null uniqueness",
+      "result": "PASS"
+    },
+    {
+      "name": "separate processes preserve updates and one lease owner",
+      "result": "PASS"
+    },
+    {
+      "name": "bounded expiry keeps future malformed and unrelated records",
+      "result": "PASS"
+    },
+    {
+      "name": "index migration refuses conflicts without altering records",
+      "result": "PASS"
+    },
+    {
+      "name": "real matching embedding and search in isolated external index",
+      "result": "PASS",
+      "details": {
+        "indexed": 1,
+        "replaySkipped": 1,
+        "removed": 1
+      }
+    }
+  ],
+  "cleanup": {
+    "isolatedDatabaseRemoved": "skillonit_verify_1790675761023"
+  },
+  "testExit": 0
+}

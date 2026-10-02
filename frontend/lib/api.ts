@@ -40,7 +40,7 @@ export const configuredPlans = cache(
 );
 export const getJob = cache(async (id: string) => {
   try {
-    return await api<PublicJob & { acceptingApplications: boolean }>(
+    return await api<PublicJob & { acceptingApplications: boolean; seoEligible: boolean }>(
       'jobs/' + encodeURIComponent(id),
     );
   } catch (error) {

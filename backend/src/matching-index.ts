@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 const owner = randomUUID();
 let ownsLease = false;
 try {
-  if (process.env.DEMO_MODE !== 'false' || !process.env.MONGODB_URI) throw new Error();
+  if (process.env.DEMO_MODE !== 'false' || (!process.env.DATABASE_URL?.trim() && !process.env.MONGODB_URI?.trim())) throw new Error();
   const providers = configuredMatchingProviders();
   if (!providers.search) throw new Error();
   const acquired = await transaction(async r => {

@@ -1,4 +1,5 @@
 import { transaction, type Row } from './store.js';
+import { postgresConfigured, prunePostgresExpiredDocuments } from './postgres-store.js';
 
 const number = (name: string, fallback: number) => Number(process.env[name] || fallback);
 const retentionPolicy = () => ({ auditRetentionDays: number('AUDIT_RETENTION_DAYS', 365), operationalRetentionDays: number('OPERATIONAL_RETENTION_DAYS', 90), webhookRetentionDays: number('WEBHOOK_EVENT_RETENTION_DAYS', 90), retentionBatchSize: number('RETENTION_BATCH_SIZE', 250) });
@@ -15,13 +16,14 @@ export function retentionExpiry(kind: 'audit' | 'operational' | 'webhook', now =
 
 export async function runRetentionMaintenance(now = new Date()) {
   const settings = retentionPolicy();
+  const expired = postgresConfigured() ? await prunePostgresExpiredDocuments(now, settings.retentionBatchSize) : {};
   return transaction(async r => {
-    const result: Record<string, number> = {};
+    const result: Record<string, number> = { ...expired };
     for (const target of targets(settings)) {
       const cutoff = new Date(now.getTime() - target.days * 86400000).toISOString();
       const rows = await r.find<Row>(target.collection, { createdAt: { $lt: cutoff } }, settings.retentionBatchSize);
       for (const row of rows) await r.remove(target.collection, row.id);
-      result[target.collection] = rows.length;
+      result[target.collection] = (result[target.collection] || 0) + rows.length;
     }
     return result;
   });

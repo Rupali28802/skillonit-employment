@@ -35,7 +35,7 @@ export type FraudPolicy = z.infer<typeof fraudPolicySchema>;
 export const defaultFraudPolicy = () => fraudPolicySchema.parse({});
 
 type Employer = { id: string; domain?: string; website?: string; status?: string };
-type Source = { id: string; enabled?: boolean; compliance?: { status?: string }; health?: { status?: string; consecutiveFailures?: number } };
+type Source = { id: string; enabled?: boolean; approved?: boolean; compliance?: { status?: string }; health?: { status?: string; consecutiveFailures?: number } };
 type Report = { entityType?: FraudEntityType; entityId: string; status: string };
 
 const normalizeHost = (value: string) => value.trim().toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
@@ -123,7 +123,7 @@ export async function assessSource(r: Repository, source: Source | null, now = n
   if (!source) findings.push({ code: 'SOURCE_MISSING', score: 25 });
   else {
     if (!source.enabled) findings.push({ code: 'SOURCE_DISABLED', score: 25 });
-    if (source.compliance?.status !== 'approved') findings.push({ code: 'SOURCE_UNAPPROVED', score: 80 });
+    if (source.approved !== true && source.compliance?.status !== 'approved') findings.push({ code: 'SOURCE_UNAPPROVED', score: 80 });
     if (source.health?.status === 'failed') findings.push({ code: 'SOURCE_HEALTH_FAILED', score: 40 });
     else if (source.health?.status === 'degraded' || (source.health?.consecutiveFailures || 0) >= 3) findings.push({ code: 'SOURCE_HEALTH_DEGRADED', score: 25 });
   }
@@ -136,15 +136,21 @@ export async function assessJob(r: Repository, job: Job, now = new Date()) {
   if (/\b(registration|application|processing|security|training)\s+(fee|deposit)\b|\bpay\b.{0,30}\b(fee|deposit|recruiter)\b/i.test(text)) findings.push({ code: 'JOB_PAYMENT_REQUEST', score: 70 });
   if (/\b(send|share|provide|submit)\b.{0,35}\b(password|passcode|otp|one[- ]time password|pin|cvv)\b/i.test(text)) findings.push({ code: 'JOB_CREDENTIAL_HARVESTING', score: 80 });
   if (/\bguaranteed\s+(job|income|placement)\b|\bearn\b.{0,20}\b(per day|daily)\b.{0,20}\bwithout experience\b/i.test(text)) findings.push({ code: 'JOB_DECEPTIVE_CLAIM', score: 35 });
-  const [employer, source] = await Promise.all([
-    job.employerId ? r.get<Employer>('employers', job.employerId) : Promise.resolve(null),
-    job.source ? r.get<Source>('jobSources', job.source) : Promise.resolve(null),
-  ]);
-  const [employerRisk, sourceRisk, destinationRisk, reports] = await Promise.all([
-    assessEmployer(r, employer, now), assessSource(r, source, now), assessDestination(r, job, now), reportFindings(r, 'job', job.id, config),
-  ]);
-  if (employerRisk.riskLevel === 'blocked' || employerRisk.riskLevel === 'high') findings.push({ code: 'EMPLOYER_RISK_HIGH', score: 55 });
-  else if (employerRisk.riskLevel === 'review') findings.push({ code: 'EMPLOYER_REVIEW_REQUIRED', score: 20 });
+  // Repository operations share one PostgreSQL transaction client and must stay
+  // sequential; concurrent client.query calls are unsupported by pg.
+  const employer = job.employerId ? await r.get<Employer>('employers', job.employerId) : null;
+  const legacySource = job.source ? await r.get<Source>('jobSources', job.source) : null;
+  const feedSource = job.feed?.sourceId ? await r.get<Source>('jobFeedSources', job.feed.sourceId) : null;
+  const feedState = job.feed?.sourceId ? await r.get<{ status?: string; failures?: number }>('jobFeedStates', job.feed.sourceId) : null;
+  const source = legacySource || (feedSource ? { ...feedSource, health: { status: feedState?.status === 'failed' ? 'failed' : (feedState?.failures || 0) >= 3 ? 'degraded' : 'healthy', consecutiveFailures: feedState?.failures || 0 } } : null);
+  const employerRisk = await assessEmployer(r, employer, now);
+  const sourceRisk = await assessSource(r, source, now);
+  const destinationRisk = await assessDestination(r, job, now);
+  const reports = await reportFindings(r, 'job', job.id, config);
+  if (employer || !source) {
+    if (employerRisk.riskLevel === 'blocked' || employerRisk.riskLevel === 'high') findings.push({ code: 'EMPLOYER_RISK_HIGH', score: 55 });
+    else if (employerRisk.riskLevel === 'review') findings.push({ code: 'EMPLOYER_REVIEW_REQUIRED', score: 20 });
+  }
   if (source || !employer) {
     if (sourceRisk.riskLevel === 'blocked' || sourceRisk.riskLevel === 'high') findings.push({ code: 'SOURCE_RISK_HIGH', score: 55 });
     else if (sourceRisk.riskLevel === 'review') findings.push({ code: 'SOURCE_REVIEW_REQUIRED', score: 20 });

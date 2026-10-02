@@ -48,6 +48,7 @@ export type Job = {
     normalizedAt: string; method: 'source-fields';
   };
   feed?: { sourceId: string; externalId: string; publicListing: boolean; attributionUrl: string; lastSeenAt: string; applicationTarget?: 'direct-form' | 'source-job-page' | 'source-redirect'; closedByEngine?: boolean };
+  verification?: { rulesVersion: 'job-trust-v1'; decision: 'verified'; reasonCodes: string[]; verifiedAt: string; sourceId: string; sourceLastSuccessAt: string; contentHash: string };
   matching?: JobMatching;
   lifecycle?: { schemaVersion: 1; state: 'publishing' | 'active' | 'expired' | 'closed' | 'removed' | 'reposted'; revision: number; changedAt: string; reasonCode: string; declaredExpiresAt?: string; effectiveExpiresAt?: string };
 };
@@ -144,6 +145,7 @@ export type Plan = {
   billingPeriod?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly';
   billingInterval?: number;
   razorpayPlanId?: string;
+  razorpayConfigVersion?: string;
   status?: 'active' | 'inactive' | 'archived';
   description?: string;
   /** Public presentation order. Lower values are shown first. */

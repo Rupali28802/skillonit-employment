@@ -107,7 +107,7 @@ export const employerBaseSchema = z.object({
   domain: z.string().regex(/^[a-z0-9.-]+\.[a-z]{2,}$/),
   country: text,
   description: z.string().max(3000),
-  website: z.url().refine(value => new URL(value).protocol === 'https:', 'Company website must use HTTPS.').optional(),
+  website: z.union([z.literal(''), z.url().refine(value => new URL(value).protocol === 'https:', 'Company website must use HTTPS.')]).transform(value => value || undefined).optional(),
   industry: z.string().trim().max(200).default(''),
   companySize: z.enum(['1-10', '11-50', '51-200', '201-500', '501-1000', '1001-5000', '5001+']).optional(),
   headquarters: z.string().trim().max(300).default(''),

@@ -104,6 +104,7 @@ function localRepo(data: LocalData): Repository {
       if (key === '$or') return (value as Query[]).some(q => matches(row, q));
       if (value instanceof RegExp) return value.test(Array.isArray(row[key]) ? (row[key] as unknown[]).join(' ') : String(row[key] ?? ''));
       if (value && typeof value === 'object' && '$in' in value) return (value.$in as unknown[]).includes(row[key]);
+      if (value && typeof value === 'object' && '$nin' in value) return !(value.$nin as unknown[]).includes(row[key]);
       if (value && typeof value === 'object') {
         const range = value as Record<string, unknown>;
         const actual = row[key];
@@ -277,6 +278,7 @@ export async function bootstrapIndexes() {
     'refundRequests',
     'refundEvents',
     'planConfigHistory',
+    'razorpayConfigurationEvents',
     'subscriptionCheckoutRequests',
     'subscriptionRenewals',
     'workerRuns',

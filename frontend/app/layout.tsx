@@ -10,8 +10,10 @@ import {
 import './globals.css';
 import { currentUser } from '@/lib/api';
 import { Toaster } from '@/components/ui/toast';
+import { jsonLd, siteOrigin } from '@/lib/seo';
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteOrigin()),
   icons: { icon: '/favicon.svg' },
   title: {
     default: 'SkillonIT — Find work that fits you',
@@ -19,6 +21,7 @@ export const metadata: Metadata = {
   },
   description:
     'Discover global opportunities, match your skills and manage your job applications with confidence.',
+  openGraph: { type:'website',siteName:'SkillOnIT Employment',url:'/',title:'SkillOnIT — Find work that fits you',description:'Discover global opportunities, match your skills and manage your job applications with confidence.' },
 };
 
 export default async function RootLayout({
@@ -38,6 +41,8 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body>
+        <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd({'@context':'https://schema.org','@type':'Organization',name:'SkillOnIT Employment',url:siteOrigin(),logo:new URL('/favicon.svg',siteOrigin()).href,sameAs:['https://www.instagram.com/skillonit.employment/','https://www.facebook.com/profile.php?id=61594123457942','https://medium.com/@skillonitemployment']})}/>
+        <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd({'@context':'https://schema.org','@type':'WebSite',name:'SkillOnIT Employment',url:siteOrigin()})}/>
         <Toaster />
         <a href="#main" className="skip-link">
           Skip to content

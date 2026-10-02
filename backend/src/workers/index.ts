@@ -10,6 +10,7 @@ import { expireJobs } from '../lib/lifecycle.js';
 import { runCvBatch, runCvMaintenance } from './cv.js';
 import { processDueEmailApplications, scheduleAutomaticApplicationBatch, scheduleAutomaticApplications } from '../lib/application-engine.js';
 import { recheckFraud } from '../lib/fraud-detection.js';
+import { verifyJobs } from '../lib/job-verification.js';
 import { expireStudentSubscriptions } from '../lib/student-entitlements.js';
 import { dispatchNotificationEmails, processNotificationCampaigns } from '../lib/notification-platform.js';
 import { recordAnalyticsSnapshot } from '../lib/analytics-platform.js';
@@ -29,7 +30,7 @@ const handlers: Record<QueueTaskName, QueueHandler> = {
   'source-discovery': async (data, context) => fetchJobSource(data.sourceId, context.taskId),
   'source-fetch': async (data, context) => fetchJobSource(data.sourceId, context.taskId),
   'job-ingestion': async () => runIngestion(),
-  'job-verify': async (data, context) => recheckFraud(context.taskId, data.jobId ? { jobId: data.jobId } : {}),
+  'job-verify': async (data, context) => verifyJobs(context.taskId, data.jobId ? { jobId: data.jobId } : {}),
   'fraud-recheck': async (data, context) => recheckFraud(context.taskId, data.jobId ? { jobId: data.jobId } : {}),
   'job-retention': async () => expireJobs(),
   'notification-dispatch': async () => { await processNotificationCampaigns(); await dispatchNotificationEmails(); },

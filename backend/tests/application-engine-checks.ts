@@ -20,7 +20,7 @@ export async function checkApplicationEngine() {
     await r.put('cvVersions', { id: 'application-cv-v1', userId: user.id, confirmed: true, documentId: 'application-cv-document', name: 'Confirmed CV', createdAt: now.toISOString(), profile: user.profile });
     await r.put('applicationTemplates', { id: user.id, subject: 'Application for {{job_title}}', body: 'Please consider my confirmed profile for {{job_title}}.', signature: '{{name}}', updatedAt: now.toISOString() });
   });
-  const previousDemo = process.env.DEMO_MODE; process.env.DEMO_MODE = 'false';
+  const previousDemo = process.env.DEMO_MODE, previousEngine = process.env.ENABLE_APPLICATION_ENGINE; process.env.DEMO_MODE = 'false'; process.env.ENABLE_APPLICATION_ENGINE = 'true';
   try {
     await assert.rejects(createApplication(user.id, { jobId: job.id }, false, now), /Review and confirm/);
     const created = await createApplication(user.id, { jobId: job.id, confirmed: true }, false, now);
@@ -30,17 +30,19 @@ export async function checkApplicationEngine() {
     await processDueEmailApplications('application-engine-test-worker', 10, new Date(now.getTime() + 1000));
     const submitted = await read(r => r.get<{ status: string; events: unknown[] }>('applications', created.application.id));
     assert.equal(submitted?.status, 'DIRECT_SUBMITTED'); assert.ok((submitted?.events.length ?? 0) >= 3);
-    const external = { ...job, id: 'application-external-job', method: 'external' as const, employerId: '', url: 'https://ats.example.com/jobs/1', source: 'verified-ats' };
+    const external = { ...job, id: 'application-external-job', method: 'external' as const, domain: 'example.com', url: 'https://ats.example.com/jobs/1', source: 'verified-ats' };
     await transaction(async r => {
+      await r.put('employers', { id: job.employerId, status: 'verified', domain: 'example.com' });
       await r.put('jobs', external);
       const current = await r.get<User>('users', user.id);
       await r.put('users', { ...current!, profile: { ...current!.profile, confirmed: false, skills: [] } });
     });
     const opened = await createApplication(user.id, { jobId: external.id, confirmed: true }, false, now);
-    assert.equal(opened.application.status, 'EXTERNAL_STARTED'); assert.equal(opened.externalUrl, external.url);
+    assert.equal(opened.application.status, 'NEEDS_REVIEW'); assert.equal(opened.externalUrl, external.url, JSON.stringify(opened.application.reviewReasons));
     const reopened = await createApplication(user.id, { jobId: external.id, confirmed: true }, false, now);
     assert.equal(reopened.created, false); assert.equal(reopened.externalUrl, external.url, 'repeat Apply reopens the source form');
     await transaction(async r => { const current = await r.get<User>('users', user.id); await r.put('users', { ...current!, activeCvVersionId: null, profile: user.profile }); await r.put('jobs', { ...job, id: 'application-missing-cv-job' }); });
-    await assert.rejects(createApplication(user.id, { jobId: 'application-missing-cv-job', confirmed: true }), /CONFIRMED_CV_REQUIRED/);
-  } finally { process.env.DEMO_MODE = previousDemo; }
+    const review = await createApplication(user.id, { jobId: 'application-missing-cv-job', confirmed: true });
+    assert.equal(review.application.status, 'NEEDS_REVIEW'); assert.ok(review.application.reviewReasons?.includes('CONFIRMED_CV_REQUIRED'));
+  } finally { process.env.DEMO_MODE = previousDemo; process.env.ENABLE_APPLICATION_ENGINE = previousEngine; }
 }

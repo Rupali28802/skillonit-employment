@@ -9,7 +9,7 @@ import { indexSemantic } from './semantic.js';
 let stopping = false;
 for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => { stopping = true; });
 try {
-  if (!process.env.MONGODB_URI) throw Error('MONGODB_REQUIRED');
+  if (!process.env.DATABASE_URL?.trim() && !process.env.MONGODB_URI?.trim()) throw Error('DATABASE_REQUIRED');
   await bootstrapIndexes();
   const command = process.argv[2] || 'status';
   if (command === 'watch-semantic') {
@@ -86,6 +86,6 @@ try {
     } finally {if(heartbeatTimer)clearInterval(heartbeatTimer);}
   } else throw Error('UNKNOWN_COMMAND');
 } catch {
-  console.error('Job engine failed. Check MongoDB, source configuration and saved source status; private connection details withheld.');
+  console.error('Job engine failed. Check database, source configuration and saved source status; private connection details withheld.');
   process.exitCode = 1;
 } finally { await closeStore(); }

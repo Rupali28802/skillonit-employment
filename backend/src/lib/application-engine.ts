@@ -1,8 +1,8 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
 import { z } from 'zod';
 import type { ApplicationStatus, Job, Plan, User } from './domain.js';
-import { isRecent, publicJob } from './domain.js';
+import { isRecent, publicJob, transitions } from './domain.js';
 import type { Repository } from './store.js';
 import { configuredPlans, read, transaction } from './store.js';
 import { ApiError, audit, rateLimit } from './security.js';
@@ -13,7 +13,9 @@ import { configuredCvProviders } from './cv-providers.js';
 import { downloadCv } from './cv-service.js';
 import type { AutomationPreferences } from './student-preferences.js';
 import { consumeEntitlement, entitlementUsage, resolveStudentEntitlements, type StudentEntitlements } from './student-entitlements.js';
+import { createNotificationRecord } from './notification-platform.js';
 import { renderAts } from './ats-cv.js';
+import { applicationMethod, safeApplicationReason, submissionState } from './application-routing.js';
 
 export type ApplicationEvent = { status: ApplicationStatus; at: string; actorId: string; reasonCode?: string };
 export type ApplicationRecord = {
@@ -22,6 +24,9 @@ export type ApplicationRecord = {
   leaseOwner?: string; leaseUntil?: string; providerMessageId?: string; lastErrorCode?: string;
   job: { title: string; country: string; city: string }; events: ApplicationEvent[]; snapshot: unknown;
   automated?: boolean;
+  updatedAt?: string; submittedAt?: string; sentAt?: string; confirmedAt?: string;
+  reviewReasons?: string[]; submissionEvidence?: 'provider' | 'platform' | 'candidate_reported';
+  creditUsageIds?: string[]; creditsReleasedAt?: string;
   delivery?: { destination: string };
 };
 type Template = { id: string; subject: string; body: string; signature: string; updatedAt?: string };
@@ -83,6 +88,10 @@ function render(template: Template, user: User, job: Job) {
 }
 async function prerequisites(r: Repository, user: User, job: Job, entitlements: StudentEntitlements, automation: boolean) {
   const reasons: string[] = [];
+  const method = applicationMethod(job.method);
+  if (method === 'UNSUPPORTED') reasons.push('METHOD_UNSUPPORTED');
+  if (method === 'ATS') reasons.push('ATS_UNSUPPORTED');
+  if (process.env.DEMO_MODE !== 'true' && process.env.ENABLE_APPLICATION_ENGINE !== 'true' && ['EMAIL','SKILLONIT'].includes(method)) reasons.push('APPLICATION_ENGINE_DISABLED');
   if (!user.verified) reasons.push('EMAIL_UNVERIFIED');
   // A source-owned external form receives no candidate data from SkillOnIT, so
   // opening it must not depend on profile completion. Native/email delivery still
@@ -114,7 +123,7 @@ async function prerequisites(r: Repository, user: User, job: Job, entitlements: 
     // A later explicit platform-level revocation still blocks delivery.
     if (mailConsent?.granted === false) reasons.push('MAILBOX_CONSENT_REQUIRED');
     const destinationRisk = await assessDestination(r, job);
-    if (!job.email || destinationRisk.riskLevel !== 'low') reasons.push('DESTINATION_UNVERIFIED');
+    if (!z.email().safeParse(job.email).success || destinationRisk.riskLevel !== 'low') reasons.push('DESTINATION_UNVERIFIED');
     if (!cv?.documentId && !cv?.content && !cv?.profile) reasons.push('CV_ATTACHMENT_UNAVAILABLE');
   }
   if (job.method === 'external' && !externalApplicationUrl(job)) reasons.push('CANONICAL_ATS_URL_REQUIRED');
@@ -163,7 +172,7 @@ export async function applicationEligibility(userId: string, input: unknown, aut
     const currentPolicy = (await policy(r)).value;
     const planDelays=currentPolicy.delaysMinutes[plan.code as keyof typeof currentPolicy.delaysMinutes]??currentPolicy.delaysMinutes.basic;
     const planPriority=currentPolicy.priorities[plan.code as keyof typeof currentPolicy.priorities]??currentPolicy.priorities.basic;
-    return { eligible: result.reasons.length === 0, reasons: [...new Set(result.reasons)], quota: { used: usage.used, cap: usage.cap }, planCode: plan.code, subscriptionStatus: entitlements.subscriptionStatus, scheduledAt: new Date(now.getTime() + planDelays[job.method] * 60000).toISOString(), priority: planPriority };
+    return { eligible: result.reasons.length === 0, applicationMethod: applicationMethod(job.method), automaticSubmissionSupported: job.method === 'direct' || job.method === 'email', reasons: [...new Set(result.reasons)], quota: { used: usage.used, cap: usage.cap }, planCode: plan.code, subscriptionStatus: entitlements.subscriptionStatus, scheduledAt: new Date(now.getTime() + (planDelays[job.method] ?? 0) * 60000).toISOString(), priority: planPriority };
   });
 }
 
@@ -177,7 +186,7 @@ export async function createApplication(userId: string, input: unknown, automati
     const job = await r.get<Job>('jobs', jobId); if (!job) throw new ApiError(404, 'NOT_FOUND', 'Job not found.');
     const externalUrl = externalApplicationUrl(job);
     const existing = (await r.find<ApplicationRecord>('applications', { userId, jobId }, 1))[0];
-    if (existing) return { application: existing, created: false, externalUrl };
+    if (existing && (automation || !['NEEDS_REVIEW', 'FAILED'].includes(existing.status) || existing.lastErrorCode === 'MAIL_SEND_UNCERTAIN')) return { application: existing, created: false, externalUrl };
     const entitlements = await resolveStudentEntitlements(r, user, plans, now), plan = entitlements.plan;
     const required = await prerequisites(r, user, job, entitlements, automation), usage = await entitlementUsage(r, user, entitlements, automation ? 'auto_apply' : 'applications', now);
     if (usage.used >= usage.cap) required.reasons.push('DAILY_CAP_REACHED');
@@ -188,36 +197,74 @@ export async function createApplication(userId: string, input: unknown, automati
       if (!automationRecord) required.reasons.push('AUTOMATION_PREFERENCES_REQUIRED');
       else required.reasons.push(...automationReasons(job, automationRecord.preferences, now));
     }
-    if (required.reasons.length) throw new ApiError(409, 'NOT_ELIGIBLE', [...new Set(required.reasons)].join(' '));
+    if (job.method === 'external') required.reasons.push('EXTERNAL_FORM_UNSUPPORTED');
     const currentPolicy = (await policy(r)).value, planDelays=currentPolicy.delaysMinutes[plan.code as keyof typeof currentPolicy.delaysMinutes]??currentPolicy.delaysMinutes.basic, delay = planDelays[job.method], planPriority=currentPolicy.priorities[plan.code as keyof typeof currentPolicy.priorities]??currentPolicy.priorities.basic;
-    const eligibleAt = new Date(Math.max(now.getTime(), Date.parse(job.discoveredAt))), scheduledAt = new Date(eligibleAt.getTime() + delay * 60000).toISOString();
+    const eligibleAt = new Date(Math.max(now.getTime(), Date.parse(job.discoveredAt))), scheduledAt = new Date(eligibleAt.getTime() + (delay ?? 0) * 60000).toISOString();
     const production = process.env.DEMO_MODE !== 'true';
+    if (existing && existing.attempts >= currentPolicy.maxSendAttempts) required.reasons.push('MAX_SEND_ATTEMPTS_REACHED');
     // Discovery automation may prepare a record, but never opens or submits it.
-    const status: ApplicationStatus = automation ? 'NEEDS_REVIEW' : job.method === 'external' ? 'EXTERNAL_STARTED' : production ? 'QUEUED' : 'DIRECT_SUBMITTED';
+    const status: ApplicationStatus = required.reasons.length || automation ? 'NEEDS_REVIEW' : production || job.method === 'email' ? 'QUEUED' : 'DIRECT_SUBMITTED';
     const message = required.template ? render(required.template, user, job) : { subject: '', text: '' }, application: ApplicationRecord = {
-      id: randomUUID(), userId, jobId, employerId: job.employerId, method: job.method, status,
-      priority: planPriority, createdAt: now.toISOString(), scheduledAt, jobVerifiedAt: eligibleAt.toISOString(), attempts: 0, maxAttempts: currentPolicy.maxSendAttempts, automated: automation,
-      job: { title: job.title, country: job.country, city: job.city }, events: [{ status, at: now.toISOString(), actorId: userId }],
+      id: existing?.id ?? createHash('sha256').update(JSON.stringify([userId, jobId])).digest('hex'), userId, jobId, employerId: job.employerId, method: job.method, status,
+      priority: planPriority, createdAt: existing?.createdAt ?? now.toISOString(), scheduledAt, jobVerifiedAt: eligibleAt.toISOString(), attempts: existing?.attempts ?? 0, maxAttempts: currentPolicy.maxSendAttempts, automated: automation,
+      updatedAt: now.toISOString(), reviewReasons: [...new Set(required.reasons)],
+      ...(status === 'DIRECT_SUBMITTED' ? { submittedAt: now.toISOString(), submissionEvidence: 'platform' as const } : {}),
+      job: { title: job.title, country: job.country, city: job.city }, events: [...(existing?.events ?? []), { status, at: now.toISOString(), actorId: userId }],
       ...(job.method === 'email' ? { delivery: { destination: job.email! } } : {}),
-      snapshot: { version: 'application-v3', profileRevision: user.profileRevision ?? 0, profile: user.profile, cvVersion: required.cv, template: required.template, rendered: message, job: publicJob(job, user, [plan]), policyVersion: currentPolicy.version, entitlement: { planCode: plan.code, subscriptionId: entitlements.subscription?.id, subscriptionRevision: entitlements.subscription?.revision ?? 0 } },
+      snapshot: { version: 'application-v4', applicationUrl: externalUrl, profileRevision: user.profileRevision ?? 0, profile: user.profile, cvVersion: required.cv, template: required.template, rendered: message, job: publicJob(job, user, [plan]), policyVersion: currentPolicy.version, entitlement: { planCode: plan.code, subscriptionId: entitlements.subscription?.id, subscriptionRevision: entitlements.subscription?.revision ?? 0 } },
     };
+    if (existing?.creditUsageIds?.length && !existing.creditsReleasedAt) application.creditUsageIds = existing.creditUsageIds;
+    if (status !== 'NEEDS_REVIEW' && !application.creditUsageIds?.length) {
+      application.creditUsageIds = [(await consumeEntitlement(r, user, entitlements, 'applications', now)).id];
+      if (automation) application.creditUsageIds.push((await consumeEntitlement(r, user, entitlements, 'auto_apply', now)).id);
+    }
     await r.put('applications', application);
-    await consumeEntitlement(r, user, entitlements, 'applications', now);
-    if (automation) await consumeEntitlement(r, user, entitlements, 'auto_apply', now);
+    await audit(r, userId, existing ? 'APPLICATION_RETRY' : 'APPLICATION_CREATED', application.id);
+    await audit(r, userId, status === 'NEEDS_REVIEW' ? 'APPLICATION_NEEDS_REVIEW' : 'APPLICATION_READY', application.id);
     await audit(r, userId, 'application.' + status.toLowerCase(), application.id);
-    return { application, created: true, externalUrl };
+    if (status === 'DIRECT_SUBMITTED') await createNotificationRecord(r, { userId: application.employerId, type: 'application_status', title: 'New application', message: `A candidate applied to ${application.job.title}.`, href: '/employer/applicants', dedupeKey: `employer-application:${application.id}` });
+    return { application, created: !existing, externalUrl: required.reasons.every(code => code === 'EXTERNAL_FORM_UNSUPPORTED') ? externalUrl : undefined };
   });
 }
 
 /** Removes immutable application inputs and delivery coordinates from API output. */
 export function publicApplication(application: ApplicationRecord) {
-  const { snapshot: _snapshot, delivery: _delivery, leaseOwner: _leaseOwner, leaseUntil: _leaseUntil, providerMessageId: _providerMessageId, ...safe } = application;
-  return safe;
+  const { id, userId, jobId, employerId, method, status, createdAt, scheduledAt, job, attempts, maxAttempts } = application;
+  const company = (application.snapshot as {job?: {company?: string}})?.job?.company ?? null;
+  const updatedAt = [application.updatedAt, application.events.at(-1)?.at, createdAt].filter((value): value is string => !!value).sort().at(-1)!;
+  return { id, userId, jobId, employerId, method, applicationMethod: applicationMethod(method), status, submissionState: submissionState(status), createdAt, updatedAt, scheduledAt, job, company, attempts, maxAttempts,
+    submittedAt: application.submittedAt ?? application.events.find(e => ['SENT','DIRECT_SUBMITTED','EXTERNAL_SUBMITTED'].includes(e.status))?.at ?? null,
+    submissionEvidence: application.submissionEvidence ?? (status === 'EXTERNAL_SUBMITTED' ? 'candidate_reported' : null),
+    reasons: [...new Set([...(application.reviewReasons ?? []), ...(application.lastErrorCode ? [application.lastErrorCode] : [])])].map(code => ({ code, message: safeApplicationReason(code) })),
+    events: application.events.map(({ status, at, reasonCode }) => ({ status, at, ...(reasonCode ? { reason: safeApplicationReason(reasonCode) } : {}) })),
+  };
+}
+
+/** Owner/admin-only details: explicit metadata allowlist, never raw snapshots or CV URLs. */
+export function applicationDetails(application: ApplicationRecord) {
+  const snapshot = application.snapshot as { applicationUrl?: string; profileRevision?: number; cvVersion?: { id?: string; name?: string }; template?: { id?: string; updatedAt?: string }; rendered?: { subject?: string }; job?: { company?: string; url?: string } };
+  return { ...publicApplication(application), company: snapshot?.job?.company ?? null,
+    profileRevision: snapshot?.profileRevision ?? null, cv: snapshot?.cvVersion ? { id: snapshot.cvVersion.id, name: snapshot.cvVersion.name } : null,
+    template: snapshot?.template ? { id: snapshot.template.id, version: snapshot.template.updatedAt } : null,
+    email: application.method === 'email' ? { recipient: application.delivery?.destination ?? null, subject: snapshot?.rendered?.subject ?? null, provider: 'gmail', sentAt: application.sentAt ?? null, providerMessageId: application.providerMessageId ? `…${application.providerMessageId.slice(-6)}` : null } : null,
+    external: application.method === 'external' ? { url: externalApplicationUrl({ method: 'external', url: snapshot?.applicationUrl ?? snapshot?.job?.url }), fieldsSubmitted: [], automatedSubmissionSupported: false } : null,
+    retryEligible: application.status === 'FAILED' && application.attempts < application.maxAttempts && application.lastErrorCode !== 'MAIL_SEND_UNCERTAIN',
+  };
+}
+
+export async function releaseApplicationCredits(r: Repository, application: ApplicationRecord, at: string) {
+  if (application.creditsReleasedAt || !application.creditUsageIds?.length) return application;
+  for (const id of application.creditUsageIds) {
+    const usage = await r.get<{ id: string; count: number }>('entitlementUsage', id);
+    if (usage) await r.put('entitlementUsage', { ...usage, count: Math.max(0, usage.count - 1), updatedAt: at });
+  }
+  return { ...application, creditsReleasedAt: at };
 }
 
 /** Candidate-approved fields visible only to the owning employer for direct applications. */
 export function employerApplication(application: ApplicationRecord) {
-  const safe = publicApplication(application);
+  const { id, jobId, status, createdAt, job, events } = application;
+  const safe = { id, jobId, status, createdAt, job, allowedTransitions: (transitions[status] || []).filter(next => ['VIEWED','SHORTLISTED','INTERVIEW','OFFER','REJECTED'].includes(next)), events: events.map(({ status, at }) => ({ status, at })) };
   const snapshot = application.snapshot as { profile?: User['profile']; cvVersion?: { id?: string; name?: string } };
   return { ...safe, candidate: snapshot.profile ? { name: snapshot.profile.name, headline: snapshot.profile.headline, skills: snapshot.profile.skills, experience: snapshot.profile.experience, education: snapshot.profile.education, country: snapshot.profile.country, city: snapshot.profile.city } : null, cv: snapshot.cvVersion ? { versionId: snapshot.cvVersion.id, name: snapshot.cvVersion.name } : null };
 }
@@ -232,7 +279,6 @@ export async function previewApplication(userId: string, input: unknown) {
     const mailboxConsent = await r.get<Consent>('candidateConsents', user.id + ':mailbox');
     const cv = user.activeCvVersionId ? await r.get<CvVersion>('cvVersions', user.activeCvVersionId) : null;
     const externalUrl = externalApplicationUrl(job);
-    if (job.method === 'external' && !externalUrl) throw new ApiError(409, 'CANONICAL_ATS_URL_REQUIRED', 'A verified source application destination is required.');
     const destinationHost = externalUrl ? new URL(externalUrl).hostname : null;
     const mailboxConnected = !!mailbox && mailbox.status === 'connected' && mailbox.email === user.email.toLowerCase() && mailbox.scopes.length === 1 && mailbox.scopes[0] === 'https://www.googleapis.com/auth/gmail.send';
     const missingRequirements: { code: string; label: string; href: string }[] = [];
@@ -246,9 +292,15 @@ export async function previewApplication(userId: string, input: unknown) {
       if (mailboxConsent?.granted === false) missingRequirements.push({ code: 'MAILBOX_CONSENT_REQUIRED', label: 'Allow Gmail applications', href: '/settings' });
       if (!job.email) missingRequirements.push({ code: 'DESTINATION_UNVERIFIED', label: 'A verified application email is required', href: `/jobs/${job.id}` });
     }
+    const entitlements = await resolveStudentEntitlements(r, user, await configuredPlans());
+    const required = await prerequisites(r, user, job, entitlements, false);
+    const usage = await entitlementUsage(r, user, entitlements, 'applications');
+    if (usage.used >= usage.cap) required.reasons.push('DAILY_CAP_REACHED');
+    for (const code of required.reasons) if (!missingRequirements.some(item => item.code === code)) missingRequirements.push({ code, label: safeApplicationReason(code), href: '/applications' });
     const rendered = template ? render(template, user, job) : null;
     return {
       jobId,
+      applicationMethod: applicationMethod(job.method),
       job: { title: job.title, company: job.company, source: job.source, method: job.method },
       action: job.method === 'external' ? 'open_source_form' : job.method === 'email' ? 'send_authorized_email' : 'submit_to_employer',
       destinationHost,
@@ -310,17 +362,39 @@ export async function scheduleAutomaticApplicationBatch(after = '', limit = 100)
   return { users: users.length, scheduled, next: users.at(-1)?.id ?? null };
 }
 
-export async function processDueEmailApplications(owner: string = randomUUID(), batch = 10, now = new Date()) {
-  const claimed: ApplicationRecord[] = [];
-  await transaction(async r => {
-    const candidates = await r.find<ApplicationRecord>('applications', { status: 'QUEUED' }, Math.min(100, batch * 5));
+export async function processDueEmailApplications(owner: string = randomUUID(), batch = 10, now = new Date(), send = sendMailboxMessage) {
+  const claimed = await transaction(async r => {
+    const claimed: ApplicationRecord[] = [];
+    // A crashed sender may have reached Gmail. Never reclaim and resend blindly.
+    const abandoned = await r.find<ApplicationRecord>('applications', { status: 'SENDING', leaseUntil: { $lt: now.toISOString() } }, 100);
+    for (const item of abandoned) {
+      const status: ApplicationStatus = item.method === 'direct' ? 'QUEUED' : 'NEEDS_REVIEW';
+      const reasonCode = item.method === 'direct' ? undefined : 'MAIL_SEND_UNCERTAIN';
+      await r.put('applications', { ...item, status, lastErrorCode: reasonCode, updatedAt: now.toISOString(), leaseOwner: undefined, leaseUntil: undefined, events: [...item.events, { status, at: now.toISOString(), actorId: 'application-sender', reasonCode }] });
+      await audit(r, item.userId, status === 'QUEUED' ? 'APPLICATION_RETRY' : 'APPLICATION_NEEDS_REVIEW', item.id);
+    }
+    const candidates = await r.page<ApplicationRecord>('applications', { status: 'QUEUED', method: { $in: ['email','direct'] }, scheduledAt: { $lte: now.toISOString() } }, { priority: -1, scheduledAt: 1, id: 1 }, 0, Math.min(100, batch * 5));
     for (const item of candidates.filter(a => ['email', 'direct'].includes(a.method) && a.scheduledAt <= now.toISOString() && (!a.leaseUntil || a.leaseUntil < now.toISOString())).sort((a,b) => b.priority-a.priority || a.scheduledAt.localeCompare(b.scheduledAt) || a.id.localeCompare(b.id)).slice(0,batch)) {
       const next = { ...item, status: 'SENDING' as const, leaseOwner: owner, leaseUntil: new Date(now.getTime()+120000).toISOString(), attempts: item.attempts + 1, events: [...item.events, { status: 'SENDING' as const, at: now.toISOString(), actorId: 'application-sender' }] };
-      await r.put('applications', next); claimed.push(next);
+      await r.put('applications', { ...next, updatedAt: now.toISOString() }); claimed.push(next);
+      await audit(r, item.userId, 'APPLICATION_SUBMISSION_STARTED', item.id);
     }
+    return claimed;
   });
   for (const item of claimed) {
+    let providerAttempted = false;
     try {
+      await read(async r => {
+        const user = await r.get<User>('users', item.userId), job = await r.get<Job>('jobs', item.jobId);
+        if (!user || user.disabled || user.role !== 'student' || !job || !isRecent(job)) throw new ApiError(409, 'JOB_UNAVAILABLE', 'Application eligibility changed.');
+        const entitlements = await resolveStudentEntitlements(r, user, await configuredPlans(), now);
+        const required = await prerequisites(r, user, job, entitlements, !!item.automated);
+        const saved = item.snapshot as { cvVersion?: { id?: string } };
+        const approvedCv = saved.cvVersion?.id ? await r.get<CvVersion>('cvVersions', saved.cvVersion.id) : null;
+        if (!approvedCv || approvedCv.userId !== user.id || approvedCv.confirmed !== true) required.reasons.push('CONFIRMED_CV_REQUIRED');
+        if (item.method === 'email' && job.email !== item.delivery?.destination) required.reasons.push('DESTINATION_UNVERIFIED');
+        if (required.reasons.length) throw new ApiError(409, required.reasons[0], safeApplicationReason(required.reasons[0]));
+      });
       if (item.automated) {
         const allowed = await read(async r => {
           const user = await r.get<User>('users', item.userId);
@@ -333,11 +407,13 @@ export async function processDueEmailApplications(owner: string = randomUUID(), 
           const current = await r.get<ApplicationRecord>('applications', item.id); if (current?.leaseOwner !== owner) return;
           const employer = await r.get<{ status: string }>('employers', item.employerId);
           if (employer?.status !== 'verified') throw new ApiError(409, 'DIRECT_EMPLOYER_REQUIRED', 'Employer verification is required.');
-          const job = await r.get<Job>('jobs', item.jobId); if (!job) throw new ApiError(409, 'JOB_UNAVAILABLE', 'Job is unavailable.');
+          const job = await r.get<Job>('jobs', item.jobId); if (!job || !isRecent(job)) throw new ApiError(409, 'JOB_UNAVAILABLE', 'Job is unavailable.');
           const fraud = await assessJob(r, job); if (fraud.riskLevel === 'high' || fraud.riskLevel === 'blocked') throw new ApiError(409, 'FRAUD_RISK', 'Job requires fraud review.');
           const at = new Date().toISOString();
-          await r.put('applications', { ...current, status: 'DIRECT_SUBMITTED', leaseOwner: undefined, leaseUntil: undefined, events: [...current.events, { status: 'DIRECT_SUBMITTED', at, actorId: 'application-scheduler' }] });
+          await r.put('applications', { ...current, status: 'DIRECT_SUBMITTED', updatedAt: at, submittedAt: at, submissionEvidence: 'platform', leaseOwner: undefined, leaseUntil: undefined, events: [...current.events, { status: 'DIRECT_SUBMITTED', at, actorId: 'application-scheduler' }] });
           await audit(r, item.userId, 'application.direct_submitted', item.id);
+          await audit(r, item.userId, 'APPLICATION_SUBMITTED', item.id);
+          await createNotificationRecord(r, { userId: current.employerId, type: 'application_status', title: 'New application', message: `A candidate applied to ${current.job.title}.`, href: '/employer/applicants', dedupeKey: `employer-application:${current.id}` });
         });
         continue;
       }
@@ -353,10 +429,23 @@ export async function processDueEmailApplications(owner: string = randomUUID(), 
       if (!['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'].includes(attachment.contentType)) throw new Error();
       const currentPolicy = await read(async r => (await policy(r)).value);
       await rateLimit('application-provider:gmail', currentPolicy.providerPerMinute);
-      const result = await sendMailboxMessage(user, { to: destination, subject: snapshot.rendered.subject, text: snapshot.rendered.text, attachment: { ...attachment, contentType: attachment.contentType as 'application/pdf' | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' | 'text/plain' } });
-      await transaction(async r => { const current = await r.get<ApplicationRecord>('applications', item.id); if (current?.leaseOwner !== owner) return; const at = new Date().toISOString(); await r.put('applications', { ...current, status: 'SENT', providerMessageId: result.providerMessageId, leaseOwner: undefined, leaseUntil: undefined, events: [...current.events, { status: 'SENT', at, actorId: 'application-sender' }] }); await audit(r, item.userId, 'application.sent', item.id); });
+      await transaction(r => audit(r, item.userId, 'GMAIL_APPLICATION_SEND_STARTED', item.id));
+      providerAttempted = true;
+      const result = await send(user, { to: destination, subject: snapshot.rendered.subject, text: `${snapshot.rendered.text}\n\nJob reference: ${item.jobId}\nApplication reference: ${item.id}`, attachment: { ...attachment, contentType: attachment.contentType as 'application/pdf' | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' | 'text/plain' } });
+      if (!result.accepted || !result.providerMessageId) throw new Error('Missing submission evidence');
+      await transaction(async r => { const current = await r.get<ApplicationRecord>('applications', item.id); if (current?.leaseOwner !== owner) return; const at = new Date().toISOString(); await r.put('applications', { ...current, status: 'SENT', submittedAt: at, sentAt: at, updatedAt: at, submissionEvidence: 'provider', providerMessageId: result.providerMessageId, leaseOwner: undefined, leaseUntil: undefined, events: [...current.events, { status: 'SENT', at, actorId: 'application-sender' }] }); await audit(r, item.userId, 'application.sent', item.id); await audit(r, item.userId, 'GMAIL_APPLICATION_SENT', item.id); await audit(r, item.userId, 'APPLICATION_SUBMITTED', item.id); });
     } catch (error) {
-      await transaction(async r => { const current = await r.get<ApplicationRecord>('applications', item.id); if (current?.leaseOwner !== owner) return; const currentPolicy = (await policy(r)).value, review = error instanceof ApiError && ['FRAUD_RISK', 'ENTITLEMENT_EXPIRED'].includes(error.code), terminal = current.attempts >= current.maxAttempts, at = new Date().toISOString(); const status: ApplicationStatus = review ? 'NEEDS_REVIEW' : terminal ? 'FAILED' : 'QUEUED', reasonCode = error instanceof ApiError && error.code === 'ENTITLEMENT_EXPIRED' ? 'ENTITLEMENT_EXPIRED' : review ? 'FRAUD_RISK' : 'MAIL_SEND_FAILED'; await r.put('applications', { ...current, status, scheduledAt: new Date(Date.now()+currentPolicy.retryMinutes*60000).toISOString(), lastErrorCode: reasonCode, leaseOwner: undefined, leaseUntil: undefined, events: [...current.events, { status, at, actorId: 'application-sender', reasonCode }] }); await audit(r, item.userId, review ? 'application.needs_review' : terminal ? 'application.failed' : 'application.retry_scheduled', item.id); });
+      await transaction(async r => {
+        const current = await r.get<ApplicationRecord>('applications', item.id); if (current?.leaseOwner !== owner) return;
+        const knownRejected = error instanceof ApiError && ['MAIL_SEND_FAILED','MAIL_AUTH_REQUIRED','MAILBOX_NOT_CONNECTED','MAIL_RATE_LIMITED','MAIL_CONFIGURATION_REQUIRED','RATE_LIMIT'].includes(error.code);
+        const uncertain = providerAttempted && !knownRejected;
+        const reasonCode = uncertain ? 'MAIL_SEND_UNCERTAIN' : error instanceof ApiError ? error.code : 'MAIL_SEND_FAILED';
+        const status: ApplicationStatus = uncertain || (error instanceof ApiError && error.status === 409) ? 'NEEDS_REVIEW' : 'FAILED';
+        const at = new Date().toISOString(), released = uncertain ? current : await releaseApplicationCredits(r, current, at);
+        await r.put('applications', { ...released, status, updatedAt: at, lastErrorCode: reasonCode, leaseOwner: undefined, leaseUntil: undefined, events: [...current.events, { status, at, actorId: 'application-sender', reasonCode }] });
+        await audit(r, item.userId, status === 'NEEDS_REVIEW' ? 'APPLICATION_NEEDS_REVIEW' : 'APPLICATION_FAILED', item.id);
+        if (item.method === 'email') await audit(r, item.userId, 'GMAIL_APPLICATION_FAILED', item.id);
+      });
     }
   }
   return { processed: claimed.length };

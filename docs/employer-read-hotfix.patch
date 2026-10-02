@@ -1,0 +1,55 @@
+--- a/backend/src/lib/postgres-store.ts
++++ b/backend/src/lib/postgres-store.ts
+@@ -1,4 +1,5 @@
+ import { Pool, type PoolClient } from 'pg';
++import { postgresReadFilter } from './postgres-read-filter.js';
+ import type { Repository, Row } from './store.js';
+ type Query = Record<string, unknown>;
+ let pool: Pool | undefined;
+@@ -22,14 +23,17 @@
+   return actual === value;
+ });
+ function repository(db: Pool | PoolClient): Repository {
+-  const rows = async <T>(collection: string) => (await db.query<{ data: T }>('SELECT data FROM app_documents WHERE collection=$1', [collection])).rows.map(row => row.data);
++  const rows = async <T>(collection: string, query: Query) => {
++    const filter = postgresReadFilter(query);
++    return (await db.query<{ data: T }>('SELECT data FROM app_documents WHERE collection=$1' + filter.sql, [collection, ...filter.values])).rows.map(row => row.data);
++  };
+   const put = async (collection: string, value: { id: string }) => db.query('INSERT INTO app_documents(collection,id,data,updated_at) VALUES($1,$2,$3::jsonb,now()) ON CONFLICT(collection,id) DO UPDATE SET data=excluded.data,updated_at=now()', [collection, value.id, JSON.stringify(value)]);
+   return {
+     async putMany(collection, values) { for (const value of values) await put(collection, value); },
+-    async page<T>(collection: string, query: Query, sort: Record<string, 1 | -1>, skip: number, limit: number) { return (await rows<Row>(collection)).filter(row => matches(row, query)).sort((a,b) => { for (const [key,direction] of Object.entries(sort)) { const av=valueAt(a,key)??'', bv=valueAt(b,key)??''; if(av!==bv) return String(av).localeCompare(String(bv),undefined,{numeric:true})*direction; } return 0; }).slice(skip,skip+limit) as T[]; },
+-    async count(collection, query={}) { return (await rows<Row>(collection)).filter(row => matches(row,query)).length; },
+-    async scan<T>(collection:string, query:Query, after='', limit=250) { return (await rows<Row>(collection)).filter(row => row.id>after && matches(row,query)).sort((a,b)=>a.id.localeCompare(b.id)).slice(0,Math.min(500,Math.max(1,limit))) as T[]; },
+-    async find<T>(collection:string, query:Query={}, limit=100) { return (await rows<Row>(collection)).filter(row=>matches(row,query)).slice(0,Math.min(limit,1000)) as T[]; },
++    async page<T>(collection: string, query: Query, sort: Record<string, 1 | -1>, skip: number, limit: number) { return (await rows<Row>(collection, query)).filter(row => matches(row, query)).sort((a,b) => { for (const [key,direction] of Object.entries(sort)) { const av=valueAt(a,key)??'', bv=valueAt(b,key)??''; if(av!==bv) return String(av).localeCompare(String(bv),undefined,{numeric:true})*direction; } return 0; }).slice(skip,skip+limit) as T[]; },
++    async count(collection, query={}) { return (await rows<Row>(collection, query)).filter(row => matches(row,query)).length; },
++    async scan<T>(collection:string, query:Query, after='', limit=250) { return (await rows<Row>(collection, query)).filter(row => row.id>after && matches(row,query)).sort((a,b)=>a.id.localeCompare(b.id)).slice(0,Math.min(500,Math.max(1,limit))) as T[]; },
++    async find<T>(collection:string, query:Query={}, limit=100) { return (await rows<Row>(collection, query)).filter(row=>matches(row,query)).slice(0,Math.min(limit,1000)) as T[]; },
+     async get<T>(collection:string,id:string) { const result=await db.query<{data:T}>('SELECT data FROM app_documents WHERE collection=$1 AND id=$2',[collection,id]); return result.rows[0]?.data??null; },
+     async put(collection,value) { await put(collection,value); },
+     async remove(collection,id) { await db.query('DELETE FROM app_documents WHERE collection=$1 AND id=$2',[collection,id]); }
+--- /dev/null
++++ b/backend/src/lib/postgres-read-filter.ts
+@@ -0,0 +1,21 @@
++// Push down only predicates whose JSON semantics match the repository matcher.
++// Remaining operators are still evaluated by that matcher after the SQL read.
++export function postgresReadFilter(query: Record<string, unknown>) {
++  const values: unknown[] = [];
++  const clauses: string[] = [];
++  const scalar = (value: unknown) => typeof value === 'string' || typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value));
++  for (const [key, value] of Object.entries(query)) {
++    if (key.startsWith('$')) continue;
++    const candidates = scalar(value) ? [value] : value && typeof value === 'object' && '$in' in value && Array.isArray(value.$in) && value.$in.every(scalar) ? value.$in : null;
++    if (!candidates) continue;
++    if (!candidates.length) { clauses.push('FALSE'); continue; }
++    values.push(key.split('.'));
++    const field = `(data #> $${values.length + 1}::text[])`;
++    const alternatives = candidates.map(candidate => {
++      values.push(JSON.stringify(candidate));
++      return `${field} = $${values.length + 1}::jsonb`;
++    });
++    clauses.push(`(${alternatives.join(' OR ')})`);
++  }
++  return { sql: clauses.length ? ' AND ' + clauses.join(' AND ') : '', values };
++}

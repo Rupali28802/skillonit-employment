@@ -2,18 +2,19 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getJob } from '@/lib/api';
 import { JobActions } from '@/components/job-actions';
+import type { Metadata } from 'next';
+import { jsonLd,siteOrigin } from '@/lib/seo';
 export const dynamic = 'force-dynamic';
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ id: string }>;
-}) {
+}):Promise<Metadata> {
   const { id } = await params;
   const j = await getJob(id);
-  return {
-    title: j?.status === 'published' ? j.title : 'Opportunity unavailable',
-    robots: { index: false, follow: true },
-  };
+  if(!j||j.status!=='published')return {title:'Opportunity unavailable',robots:{index:false,follow:true}};
+  const canonical=`/jobs/${encodeURIComponent(j.id)}`,description=`${j.title} in ${j.city}, ${j.country}. Review the role, requirements and application options on SkillOnIT Employment.`;
+  return {title:j.title,description,alternates:{canonical},robots:{index:j.seoEligible,follow:true},openGraph:{type:'article',title:j.title,description,url:canonical,siteName:'SkillOnIT Employment'}};
 }
 export default async function JobPage({
   params,
@@ -24,8 +25,12 @@ export default async function JobPage({
   const job = await getJob(id);
   if (!job || job.status !== 'published') notFound();
   const j = job;
+  const employmentType:Record<string,string>={'full-time':'FULL_TIME','part-time':'PART_TIME','contract':'CONTRACTOR','internship':'INTERN','temporary':'TEMPORARY'};
+  const jobSchema=j.seoEligible?{'@context':'https://schema.org','@type':'JobPosting',title:j.title,description:j.description,datePosted:j.sourcePostedAt,validThrough:j.expiresAt,employmentType:employmentType[j.type.toLowerCase().replace(/[ _]+/g,'-')],hiringOrganization:{'@type':'Organization',name:j.company},occupationalCategory:j.category,skills:j.skills.join(', '),url:`${siteOrigin()}/jobs/${encodeURIComponent(j.id)}`,...(j.mode==='Remote'?{jobLocationType:'TELECOMMUTE',applicantLocationRequirements:{'@type':'Country',name:j.country}}:{jobLocation:{'@type':'Place',address:{'@type':'PostalAddress',addressLocality:j.city,addressRegion:j.state,addressCountry:j.country}}}),...(j.salaryDisclosed&&j.salaryMin>=0&&j.salaryMax>=j.salaryMin?{baseSalary:{'@type':'MonetaryAmount',currency:j.currency,value:{'@type':'QuantitativeValue',minValue:j.salaryMin,maxValue:j.salaryMax,unitText:(j.normalizedFacts?.salary.period||'YEAR').toUpperCase()}}}:{})}:null;
   return (
     <div className="page-wrap">
+      {jobSchema&&<script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(jobSchema)}/>}
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd({'@context':'https://schema.org','@type':'BreadcrumbList',itemListElement:[{'@type':'ListItem',position:1,name:'Home',item:siteOrigin()+'/'},{'@type':'ListItem',position:2,name:'Jobs',item:siteOrigin()+'/'},{'@type':'ListItem',position:3,name:j.title,item:`${siteOrigin()}/jobs/${encodeURIComponent(j.id)}`}]})}/>
       <Link href="/">← Back to opportunities</Link>
       <div className="detail-grid" style={{ marginTop: 25 }}>
         <div>
