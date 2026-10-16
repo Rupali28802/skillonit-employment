@@ -19,6 +19,7 @@ import { AdminRolesPanel } from './admin-roles-panel';
 import { AdminResponsiveLayout } from './admin-responsive-layout';
 import { ApplicationDetails } from './application-details';
 import { JobActions } from './job-actions';
+import { ApplicationTemplates, type ApplicationTemplate } from './application-templates';
 type RecordRow = { id: string; [key: string]: unknown };
 const candidateLinks = [
   ['dashboard', 'Overview'],
@@ -26,6 +27,7 @@ const candidateLinks = [
   ['preferences', 'Job preferences'],
   ['saved', 'Saved jobs'],
   ['applications', 'Applications'],
+  ['applications/templates', 'Application templates'],
   ['cvs', 'CV manager'],
   ['alerts', 'Job alerts'],
   ['assistant', 'AI assistant'],
@@ -285,9 +287,11 @@ async function Candidate({ section, user }: { section: string; user: User }) {
     return <div className="stack"><div className="panel"><h2>Create an ATS-friendly CV version</h2><p>This uses only your confirmed profile. Review the summary before saving.</p><SmartForm endpoint="me/cv-versions" preservedFields={{profile:user.profile,confirmed:true}} fields={[{name:'name',label:'Version name'},{name:'targetRole',label:'Target role',required:false},{name:'summary',label:'Professional summary',type:'textarea',hint:'At least 20 characters; use confirmed facts only.'}]} submit="Save CV version" /></div>{versions.length ? versions.map(version=><div className="panel" key={version.id}><span className="pill">{display(version.source)}</span><h2 style={{marginTop:12}}>{display(version.name)}</h2><p>{display(version.targetRole)}</p><p>{display(version.summary)}</p><Action endpoint={`me/cv-versions/${version.id}`} method="DELETE" label="Delete version" confirm /></div>):<div className="panel"><h2>No saved versions</h2><p>Create a version after confirming your candidate profile.</p></div>}</div>;
   }
   if (section === 'applications') {
-    const apps = await api<RecordRow[]>('applications');
+    const [apps,subscription] = await Promise.all([api<RecordRow[]>('applications'),api<{plan:{name:string};usage:{applications:{used:number;cap:number;period:string}}}>('me/subscription')]);
+    const daily=subscription.usage.applications;
     return (
       <>
+        <div className="panel"><span className="pill">{subscription.plan.name} Plan</span><h2 style={{marginTop:12}}>Applications today: {daily.used} / {daily.cap}</h2><p>Remaining: {Math.max(0,daily.cap-daily.used)}</p>{daily.used>=daily.cap&&<p className="notice">Daily application limit reached. You have used all {daily.cap} {subscription.plan.name} applications for today. Your daily application limit will reset tomorrow.</p>}<p className="small">Daily allowance period: {daily.period} UTC</p></div>
         <p>
           Your application record distinguishes platform submissions, external
           progress and email delivery.
@@ -356,38 +360,19 @@ async function Candidate({ section, user }: { section: string; user: User }) {
       </>
     );
   }
-  if (section === 'templates') {
-    const saved = await api<RecordRow | null>('me/templates');
-    return (
-      <div className="panel">
-        <h2>A message that sounds like you</h2>
-        <p>
-          Supported fields: {'{{name}}'} and {'{{job_title}}'}. Review the text
-          and never include claims you cannot substantiate.
-        </p>
-        <SmartForm
-          endpoint="me/templates"
-          method="PUT"
-          initial={
-            saved || {
-              subject: 'Application for {{job_title}}',
-              body: 'Hello,\nI would like to apply for {{job_title}}. Please consider my confirmed profile.\nThank you,\n{{name}}',
-              signature: user.name,
-            }
-          }
-          fields={[
-            { name: 'subject', label: 'Subject' },
-            { name: 'signature', label: 'Signature' },
-            { name: 'body', label: 'Message', type: 'textarea' },
-          ]}
-        />
-      </div>
-    );
+  if (section === 'templates' || section === 'applications/templates' || section === 'applications/templates/new' || /^applications\/templates\/[^/]+\/edit$/.test(section)) {
+    const saved = await api<ApplicationTemplate[]>('me/templates');
+    const editId=section.match(/^applications\/templates\/([^/]+)\/edit$/)?.[1];
+    return <ApplicationTemplates initial={saved} initialCreate={section==='applications/templates/new'} initialEditId={editId}/>;
   }
   if (section === 'automation') {
-    const automation = await api<RecordRow & { revision: number; executionAvailable: boolean }>('me/automation-preferences');
-    const mailbox = await api<MailboxStatus>('mail/status');
-    return <div className="stack"><GmailConnection initial={mailbox} compact /><div className="panel"><span className="pill">{automation.executionAvailable && mailbox.connected ? 'Execution available' : 'Execution paused'}</span><h2 style={{marginTop: 15}}>Application automation controls</h2><p>Automation uses only confirmed facts, eligible jobs, your consent, a connected email account, and the daily cap you choose. Development testing never sends a real job application automatically.</p><SmartForm endpoint="me/automation-preferences" method="PUT" initial={automation} expectedRevision={automation.revision} requirements={[{field:'enabled',satisfied:mailbox.connected,message:'Connect your email account first to enable automatic applications.',href:'/mail',action:'Connect Email'}]} fields={[{name:'enabled',label:'Enable Automatic Job Applications',type:'checkbox'},{name:'paused',label:'Pause all automated applications',type:'checkbox'},{name:'dailyCap',label:'Maximum applications per day',type:'number'},{name:'allowedRoleFamilies',label:'Allowed occupation IDs',type:'list',required:false},{name:'excludedRoles',label:'Excluded role names',type:'list',required:false},{name:'allowedLocations',label:'Allowed location IDs',type:'list',required:false},{name:'excludedLocations',label:'Excluded location IDs',type:'list',required:false},{name:'workModes',label:'Work arrangements',type:'list',required:false},{name:'employmentTypes',label:'Employment types',type:'list',required:false}]} /></div></div>;
+    const [automation, mailbox, subscription] = await Promise.all([
+      api<RecordRow & { revision: number; executionAvailable: boolean }>('me/automation-preferences'),
+      api<MailboxStatus>('mail/status'),
+      api<{plan:{name:string};usage:{autoApply:{used:number;cap:number;period:string}}}>('me/subscription'),
+    ]);
+    const autoUsage=subscription.usage.autoApply;
+    return <div className="stack"><GmailConnection initial={mailbox} compact /><div className="panel"><span className="pill">{subscription.plan.name} · {automation.executionAvailable && mailbox.connected ? 'Execution available' : 'Execution paused'}</span><h2 style={{marginTop: 15}}>Auto Apply today: {autoUsage.used} / {autoUsage.cap}</h2><p>Remaining: {Math.max(0,autoUsage.cap-autoUsage.used)} · resets each {autoUsage.period} UTC period.</p>{autoUsage.used>=autoUsage.cap&&<p className="notice">Daily Auto Apply limit reached. Automatic applications will resume after the daily reset.</p>}<p>Automation uses only confirmed facts, eligible jobs, your consent, a connected email account, and the daily cap you choose. External forms remain assisted unless a supported integration exists.</p><SmartForm endpoint="me/automation-preferences" method="PUT" initial={automation} expectedRevision={automation.revision} requirements={[{field:'enabled',satisfied:mailbox.connected,message:'Connect your email account first to enable automatic applications.',href:'/mail',action:'Connect Email'}]} fields={[{name:'enabled',label:'Enable Automatic Job Applications',type:'checkbox'},{name:'paused',label:'Pause all automated applications',type:'checkbox'},{name:'dailyCap',label:'Maximum applications per day',type:'number'},{name:'allowedRoleFamilies',label:'Allowed occupation IDs',type:'list',required:false},{name:'excludedRoles',label:'Excluded role names',type:'list',required:false},{name:'allowedLocations',label:'Allowed location IDs',type:'list',required:false},{name:'excludedLocations',label:'Excluded location IDs',type:'list',required:false},{name:'workModes',label:'Work arrangements',type:'list',required:false},{name:'employmentTypes',label:'Employment types',type:'list',required:false}]} /></div></div>;
   }
   if (section === 'cvs') {
     const documents = await api<RecordRow[]>('me/cv');
@@ -454,7 +439,7 @@ async function Candidate({ section, user }: { section: string; user: User }) {
       job: PublicJob;
       match: { score: number; reasons: (string | null)[] };
     }[];
-  }>('me/dashboard'), api<{percentage:number;missingFields:string[];readinessStatus:string}>('me/profile/completion'), api<{completeness:number;completed:boolean;steps:{name:string;complete:boolean;optional:boolean}[]}>('me/onboarding'), api<MailboxStatus>('mail/status'), api<{plan:{name:string};subscriptionStatus:string;limits:{applicationsPerDay:number;autoApplyPerDay:number;cvVersions:number}}>('me/subscription'), api<{id:string;title:string;message:string;href:string;read:boolean;createdAt:string}[]>('me/notifications'), api<RecordRow[]>('me/cv')]);
+  }>('me/dashboard'), api<{percentage:number;missingFields:string[];readinessStatus:string}>('me/profile/completion'), api<{completeness:number;completed:boolean;steps:{name:string;complete:boolean;optional:boolean}[]}>('me/onboarding'), api<MailboxStatus>('mail/status'), api<{plan:{name:string};subscriptionStatus:string;limits:{applicationsPerDay:number;autoApplyPerDay:number;cvVersions:number};usage:{autoApply:{used:number;cap:number;period:string}}}>('me/subscription'), api<{id:string;title:string;message:string;href:string;read:boolean;createdAt:string}[]>('me/notifications'), api<RecordRow[]>('me/cv')]);
   return <CandidateDashboard user={user} dashboard={dashboard as never} completion={completion} onboarding={onboarding} mailboxConnected={mailbox.connected} subscription={subscription} notifications={notifications} cvCount={documents.filter(document => document.status === 'confirmed').length} />;
 }
 async function Admin({

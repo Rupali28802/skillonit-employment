@@ -27,8 +27,8 @@ import {
   contactSchema,
   employerSchema,
   jobSchema,
-  templateSchema,
 } from "./lib/schemas.js";
+import { applicationTemplateSchema, createApplicationTemplate, deleteApplicationTemplate, duplicateApplicationTemplate, listApplicationTemplates, renderApplicationTemplate, updateApplicationTemplate } from './lib/application-templates.js';
 import {
   type User,
   type Job,
@@ -546,36 +546,22 @@ export async function handle(
     }
     if (p === "me/templates") {
       const u = await requireUser("student");
-      if (method === "GET") return ok(await read((r) => r.get("applicationTemplates", u.id)));
-      if (method === "PUT") {
-        const template = templateSchema.parse(await body());
-        const allowed = ["name", "job_title"];
-        for (const t of [
-          ...template.subject.matchAll(/\{\{(.*?)\}\}/g),
-          ...template.body.matchAll(/\{\{(.*?)\}\}/g),
-          ...template.signature.matchAll(/\{\{(.*?)\}\}/g),
-        ])
-          if (!allowed.includes(t[1]))
-            throw new ApiError(
-              400,
-              "INVALID_VARIABLE",
-              "Only {{name}} and {{job_title}} are supported.",
-            );
-        await transaction(async (r) => {
-          await r.put("templateVersions", {
-            id: id(),
-            userId: u.id,
-            ...template,
-            createdAt: new Date().toISOString(),
-          });
-          await r.put("applicationTemplates", {
-            id: u.id,
-            ...template,
-            updatedAt: new Date().toISOString(),
-          });
-          await audit(r, u.id, "template.updated", u.id);
-        });
-        return ok(template);
+      if (method === "GET") return ok(await listApplicationTemplates(u.id));
+      if (method === "POST") return ok(await createApplicationTemplate(u,await body()),201);
+      if(method==='PUT'){
+        const legacy=z.object({subject:z.string().min(1).max(300),body:z.string().min(10).max(6000),signature:z.string().max(1000)}).strict().parse(await body());
+        const rows=await listApplicationTemplates(u.id),current=rows.find(row=>row.isDefault)??rows[0],data={templateName:current?.templateName??'Default application',applicationType:'email' as const,subjectTemplate:legacy.subject,bodyTemplate:legacy.body,signature:legacy.signature,attachCv:true,attachCoverLetter:false,aiPersonalizationEnabled:true,isDefault:true,status:'enabled' as const};
+        return ok(current?await updateApplicationTemplate(u,current.id,data):await createApplicationTemplate(u,data));
+      }
+    }
+    if(parts[0]==='me'&&parts[1]==='templates'&&parts[2]){
+      const u=await requireUser('student'),templateId=parts[2];
+      if(parts.length===3&&method==='PUT')return ok(await updateApplicationTemplate(u,templateId,await body()));
+      if(parts.length===3&&method==='DELETE')return ok(await deleteApplicationTemplate(u,templateId));
+      if(parts.length===4&&parts[3]==='duplicate'&&method==='POST')return ok(await duplicateApplicationTemplate(u,templateId),201);
+      if(parts.length===4&&parts[3]==='preview'&&method==='POST'){
+        const template=(await listApplicationTemplates(u.id)).find(row=>row.id===templateId);if(!template)throw new ApiError(404,'TEMPLATE_NOT_FOUND','Application template not found.');
+        const input=z.object({jobId:z.string().min(1).max(100)}).strict().parse(await body()),job=await read(r=>r.get<Job>('jobs',input.jobId));if(!job)throw new ApiError(404,'NOT_FOUND','Job not found.');return ok(renderApplicationTemplate(template,u,job));
       }
     }
     if (p === "me/export" && method === "GET") {
@@ -1115,6 +1101,7 @@ export async function handle(
             : validation
               ? error.issues.map((i) => i.path.join(".") + ": " + i.message).join("; ")
               : "This service is temporarily unavailable. Please try again later.",
+          ...(known && error.details ? error.details : {}),
         },
         correlationId,
       },

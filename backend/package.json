@@ -30,6 +30,7 @@
     "build": "tsc",
     "start": "node scripts/start-with-discovery.mjs",
     "worker": "node --env-file-if-exists=.env dist/workers/index.js",
+    "worker:application-sender": "node --env-file-if-exists=.env dist/workers/application-sender.js",
     "worker:job-verification": "node --env-file-if-exists=.env dist/workers/job-verification.js",
     "worker:module2": "node --env-file-if-exists=.env dist/workers/module2.js",
     "module2:check": "node --env-file-if-exists=.env --import tsx src/module2-production-check.ts",

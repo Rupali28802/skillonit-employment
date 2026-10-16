@@ -14,6 +14,8 @@ test('canonical routing and confirmed semantic mapping never invent candidate fi
   const mapping = mapConfirmedFields(user, [{name:'name',label:'Full Name',required:true},{name:'phone',label:'Mobile',required:true},{name:'salary',label:'Expected salary',required:true},{name:'exp',label:'Experience',required:true},{name:'cv',label:'Resume',required:true}], {id:'cv-approved',userId:user.id,confirmed:true});
   assert.equal(mapping.fields[0].value,'Candidate'); assert.equal(mapping.fields[3].value,0);
   assert.deepEqual(mapping.missingFields,['Mobile','Expected salary']); assert.equal(mapping.submissionSupported,false);
+  const protectedMapping=mapConfirmedFields(user,[{name:'captcha',label:'CAPTCHA',required:true},{name:'email',label:'Email address',required:true}]);
+  assert.deepEqual(protectedMapping.protectedFields,['CAPTCHA']);assert.deepEqual(protectedMapping.missingFields,['CAPTCHA']);assert.equal(protectedMapping.mode,'ASSISTED_APPLICATION');assert.equal(protectedMapping.fields[1].value,user.email);
   assert.equal(mapConfirmedFields({...user,profile:{...user.profile,confirmed:false}},[{name:'name',label:'Name',required:true}]).missingFields.length,1);
 });
 
@@ -51,7 +53,7 @@ test('universal application integration: durable reviews, delivery evidence, cre
     process.env.DEMO_MODE='false'; process.env.ENABLE_APPLICATION_ENGINE='true';
     let disconnected=await engine.createApplication(user.id,{jobId:job.id,confirmed:true});
     assert.equal(disconnected.application.status,'NEEDS_REVIEW'); assert.ok(disconnected.application.reviewReasons?.includes('MAILBOX_REQUIRED')); assert.equal(await used(),0);
-    await store.transaction(r=>r.put('mailboxConnections',{id:user.id,status:'connected',email:user.email,scopes:['https://www.googleapis.com/auth/gmail.send'],refreshToken:'secret-never-return'}));
+    await store.transaction(r=>r.put('mailboxConnections',{id:user.id,userId:user.id,provider:'google',providerSubject:user.id,status:'connected',email:user.email,scopes:['https://www.googleapis.com/auth/gmail.send'],refreshToken:'secret-never-return'}));
     const ready=await engine.createApplication(user.id,{jobId:job.id,confirmed:true});
     assert.equal(ready.application.id,disconnected.application.id); assert.equal(ready.application.status,'QUEUED'); assert.equal(await used(),1);
     const duplicates=await Promise.all(Array.from({length:4},()=>engine.createApplication(user.id,{jobId:job.id,confirmed:true})));
@@ -102,5 +104,21 @@ test('universal application integration: durable reviews, delivery evidence, cre
     assert.equal((await load(authExpired.id))?.status,'NEEDS_REVIEW');assert.equal((await load(authExpired.id))?.lastErrorCode,'MAIL_AUTH_REQUIRED');assert.equal(await used(),beforeAuth-1);
     await store.transaction(async r=>{const row=await r.get<engine.ApplicationRecord>('applications',failed.id);await r.put('applications',{...row!,attempts:3});});
     const limited=await engine.createApplication(user.id,{jobId:'send-failed',confirmed:true});assert.ok(limited.application.reviewReasons?.includes('MAX_SEND_ATTEMPTS_REACHED'));assert.equal(limited.application.attempts,3);
+    const freeAutoUser={...user,id:'free-auto',email:'free-auto@example.test',plan:'basic' as const};
+    await store.transaction(async r=>{
+      await r.put('users',freeAutoUser);
+      await r.put('cvVersions',{id:'cv-free-auto',userId:freeAutoUser.id,confirmed:true,name:'Approved resume',createdAt:stamp,profile:freeAutoUser.profile,content:'Confirmed CV content'});
+      await r.put('users',{...freeAutoUser,activeCvVersionId:'cv-free-auto'});
+      await r.put('applicationTemplates',{id:freeAutoUser.id,userId:freeAutoUser.id,templateName:'Default',subject:'Application for {{job_title}}',body:'Please consider my application.',signature:'{{name}}',attachCv:true,attachCoverLetter:false,isDefault:true,createdAt:stamp,updatedAt:stamp});
+      await r.put('mailboxConnections',{id:freeAutoUser.id,userId:freeAutoUser.id,provider:'google',providerSubject:freeAutoUser.id,status:'connected',email:freeAutoUser.email,scopes:['https://www.googleapis.com/auth/gmail.send'],refreshToken:'test-only'});
+      await r.put('candidateConsents',{id:freeAutoUser.id+':automation',userId:freeAutoUser.id,purpose:'automation',granted:true,policyVersion:'test',updatedAt:stamp});
+      await r.put('automationPreferences',{id:freeAutoUser.id,userId:freeAutoUser.id,revision:1,preferences:{enabled:true,paused:false,dailyCap:5,allowedRoleFamilies:[],excludedRoles:[],allowedLocations:[],excludedLocations:[],workModes:[],employmentTypes:[]}});
+      for(let index=1;index<=6;index++)await r.put('jobs',{...job,id:`free-auto-${index}`});
+    });
+    for(let index=1;index<=5;index++)assert.equal((await engine.createApplication(freeAutoUser.id,{jobId:`free-auto-${index}`},true,now)).application.status,'QUEUED');
+    const freeAutoUsage=await store.read(r=>r.find<{metric:string;count:number}>('entitlementUsage',{userId:freeAutoUser.id}));
+    assert.equal(freeAutoUsage.filter(row=>row.metric==='auto_apply').reduce((sum,row)=>sum+row.count,0),5);
+    assert.equal(freeAutoUsage.filter(row=>row.metric==='applications').reduce((sum,row)=>sum+row.count,0),0,'Auto Apply must not consume the manual allowance');
+    await assert.rejects(engine.createApplication(freeAutoUser.id,{jobId:'free-auto-6'},true,now),(error:any)=>error?.code==='FREE_AUTO_APPLY_DAILY_LIMIT_REACHED'&&error?.details?.usedToday===5&&error?.details?.remainingToday===0);
   } finally {await new Promise<void>(resolve=>server.close(()=>resolve()));await store.closeStore();await replica.stop();process.env=old;}
 });

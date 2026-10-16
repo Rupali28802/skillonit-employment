@@ -1,5 +1,6 @@
 import type { Job, Profile, Preferences, User } from './domain.js';
 import type { Repository } from './store.js';
+import { suggestRolesFromSkills } from './role-suggestions.js';
 
 export const normalize = (value: string) => value.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
 export const unique = (values: string[]) => [...new Set(values.map(normalize).filter(Boolean))];
@@ -116,6 +117,10 @@ export async function matchingInputs(r: Repository, user: User) {
       else if (field === 'matching') delete profile.matching;
       else profile.employmentHistory = [];
     }
+  }
+  if (profile.confirmed) {
+    const suggested = suggestRolesFromSkills(profile.skills);
+    preferences.relatedRoles = [...new Set([...preferences.relatedRoles, ...suggested])];
   }
   return { profile, preferences };
 }

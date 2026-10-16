@@ -42,6 +42,7 @@ export interface PaymentProvider {
   payment(paymentId: string): Promise<{ id: string; orderId: string; amount: number; amountRefunded: number; currency: string; status: string }>;
   createPlan(input:{period:string;interval:number;item:{name:string;amount:number;currency:string;description?:string};notes:Record<string,string>}):Promise<{id:string;period:string;interval:number;amount:number;currency:string}>;
   createSubscription(input:{planId:string;totalCount:number;notes:Record<string,string>}):Promise<{id:string;planId:string;status:string;shortUrl:string|null;currentStart:number|null;currentEnd:number|null;chargeAt:number|null;customerId:string|null}>;
+  subscription(subscriptionId:string):Promise<{id:string;planId:string;status:string;shortUrl:string|null}>;
   cancelSubscription(subscriptionId:string,cancelAtCycleEnd:boolean):Promise<{id:string;status:string;endedAt:number|null}>;
 }
 export class RazorpayProvider implements PaymentProvider {
@@ -106,6 +107,10 @@ export class RazorpayProvider implements PaymentProvider {
   async createSubscription(input:{planId:string;totalCount:number;notes:Record<string,string>}) {
     const value=await this.request('subscriptions',{method:'POST',body:JSON.stringify({plan_id:input.planId,total_count:input.totalCount,quantity:1,customer_notify:true,notes:input.notes})});
     return {id:String(value.id),planId:String(value.plan_id),status:String(value.status),shortUrl:typeof value.short_url==='string'?value.short_url:null,currentStart:typeof value.current_start==='number'?value.current_start:null,currentEnd:typeof value.current_end==='number'?value.current_end:null,chargeAt:typeof value.charge_at==='number'?value.charge_at:null,customerId:typeof value.customer_id==='string'?value.customer_id:null};
+  }
+  async subscription(subscriptionId:string){
+    const value=await this.request(`subscriptions/${encodeURIComponent(subscriptionId)}`);
+    return {id:String(value.id),planId:String(value.plan_id),status:String(value.status),shortUrl:typeof value.short_url==='string'?value.short_url:null};
   }
   async cancelSubscription(subscriptionId:string,cancelAtCycleEnd:boolean){
     const value=await this.request(`subscriptions/${encodeURIComponent(subscriptionId)}/cancel`,{method:'POST',body:JSON.stringify({cancel_at_cycle_end:cancelAtCycleEnd?1:0})});

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { Repository, Row } from '../src/lib/store.ts';
 import type { User } from '../src/lib/domain.ts';
 import { plans } from '../src/lib/domain.ts';
+import { ApiError } from '../src/lib/security.ts';
 import {
   activatePaidSubscription,
   consumeEntitlement,
@@ -43,7 +44,8 @@ test('missing or expired paid subscription safely falls back to Basic', async ()
   const r = repository({ users: [user as unknown as Row] });
   const missing = await resolveStudentEntitlements(r, user, plans, new Date('2026-02-01T00:00:00Z'));
   assert.equal(missing.plan.code, 'basic');
-  assert.equal(missing.features.autoApply, false);
+  assert.equal(missing.features.autoApply, true);
+  assert.equal(missing.limits.autoApplyPerDay, 5);
   await r.put('studentSubscriptions', {
     id: user.id, userId: user.id, planCode: 'premium', status: 'active', currentPeriodStart: '2026-01-01T00:00:00Z', currentPeriodEnd: '2026-01-31T00:00:00Z',
     autoRenew: false, cancelAtPeriodEnd: false, revision: 1, source: 'admin', planSnapshot: plans[2], createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z', activatedAt: '2026-01-01T00:00:00Z',
@@ -51,6 +53,14 @@ test('missing or expired paid subscription safely falls back to Basic', async ()
   const expired = await resolveStudentEntitlements(r, user, plans, new Date('2026-02-01T00:00:00Z'));
   assert.equal(expired.subscriptionStatus, 'expired');
   assert.equal(expired.plan.code, 'basic');
+});
+
+test('Free plan includes five automatic applications per UTC day', async () => {
+  const user = student('free-auto-apply');
+  const entitlements = await resolveStudentEntitlements(repository({}), user, plans);
+  assert.equal(entitlements.plan.name, 'Free');
+  assert.equal(entitlements.features.autoApply, true);
+  assert.equal(entitlements.limits.autoApplyPerDay, 5);
 });
 
 test('active subscription resolves immutable plan snapshot and separate quota caps', async () => {
@@ -91,6 +101,16 @@ test('quota consumption rejects at the enforced cap', async () => {
   const entitlements = await resolveStudentEntitlements(r, user, plans, new Date('2026-02-01T00:00:00Z'));
   await consumeEntitlement(r, user, entitlements, 'applications', new Date('2026-02-01T00:00:00Z'));
   await assert.rejects(() => consumeEntitlement(r, user, entitlements, 'applications', new Date('2026-02-01T00:00:00Z')), /allowance has been reached/i);
+});
+
+test('Free plan fifth application is accepted, sixth is blocked with reset metadata, and the next UTC day resets', async () => {
+  const freePlan={...plans.find(plan=>plan.code==='basic')!,dailyCap:5};
+  const freeUser=student({plan:'basic',preferences:{...student().preferences,dailyCap:5}});
+  const r=repository({users:[freeUser as unknown as Row]});
+  const entitlements=await resolveStudentEntitlements(r,freeUser,[freePlan],new Date('2026-02-01T12:00:00Z'));
+  for(let count=1;count<=5;count++) assert.equal((await consumeEntitlement(r,freeUser,entitlements,'applications',new Date('2026-02-01T12:00:00Z'))).used,count);
+  await assert.rejects(async()=>consumeEntitlement(r,freeUser,entitlements,'applications',new Date('2026-02-01T12:00:00Z')),error=>error instanceof ApiError&&error.code==='FREE_DAILY_APPLICATION_LIMIT_REACHED'&&error.details?.limit===5&&error.details?.remaining===0&&error.details?.resetAt==='2026-02-02T00:00:00.000Z');
+  assert.equal((await entitlementUsage(r,freeUser,entitlements,'applications',new Date('2026-02-02T00:00:00Z'))).used,0);
 });
 
 test('expiry worker revokes paid entitlement and returns the user to Basic', async () => {

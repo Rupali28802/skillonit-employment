@@ -38,6 +38,11 @@ export async function createRecurringSubscription(user:User,input:unknown,idempo
   if(prior?.userId&&prior.userId!==user.id)throw new ApiError(409,'IDEMPOTENCY_CONFLICT','Subscription request conflict.');
   if(prior?.providerSubscriptionId){if(!await razorpayVersionMatches(prior.razorpayConfigVersion,provider.configVersion))throw new ApiError(409,'CHECKOUT_CONFIGURATION_CHANGED','Start a new checkout after the payment configuration change.');const existing=await read(r=>r.get<StudentSubscription>('studentSubscriptions',user.id));return {subscriptionId:prior.providerSubscriptionId,keyId:provider.keyId,shortUrl:null,status:existing?.status??'created',reused:true};}
   const existing=await read(r=>r.get<StudentSubscription>('studentSubscriptions',user.id));
+  if(existing?.providerSubscriptionId&&existing.status==='created'&&existing.planCode===plan.code&&await razorpayVersionMatches(existing.razorpayConfigVersion,provider.configVersion)){
+    const remote=await provider.subscription(existing.providerSubscriptionId);
+    if(remote.id!==existing.providerSubscriptionId||remote.planId!==plan.razorpayPlanId||remote.status!=='created'||!remote.shortUrl)throw new ApiError(409,'SUBSCRIPTION_RETRY_UNAVAILABLE','The existing checkout can no longer be resumed. Contact support to clear it safely.');
+    return {subscriptionId:remote.id,keyId:provider.keyId,shortUrl:remote.shortUrl,status:remote.status,reused:true};
+  }
   if(existing?.providerSubscriptionId&&['created','authenticated','active','pending','halted'].includes(existing.status))throw new ApiError(409,'ACTIVE_SUBSCRIPTION_EXISTS','Cancel the existing recurring subscription before creating another.');
   await transaction(r=>r.put('subscriptionCheckoutRequests',{id:requestId,userId:user.id,planCode,status:'creating',createdAt:now.toISOString()}));
   const remote=await provider.createSubscription({planId:plan.razorpayPlanId!,totalCount,notes:{skillonit_user:user.id,skillonit_plan:plan.code}});

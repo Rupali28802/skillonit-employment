@@ -23,6 +23,8 @@ type ApplicationPreview = {
     cv: { id: string; name: string; attached: boolean } | null;
     message: { subject: string; text: string } | null;
   };
+  templates:{id:string;name:string;isDefault:boolean}[];
+  selectedTemplateId:string|null;
 };
 
 export function JobActions({
@@ -38,15 +40,16 @@ export function JobActions({
     [open, setOpen] = useState(false),
     [report, setReport] = useState(false),
     [busy, setBusy] = useState(false),
-    [preview, setPreview] = useState<ApplicationPreview | null>(null);
-  async function review() {
+    [preview, setPreview] = useState<ApplicationPreview | null>(null),
+    [subject,setSubject]=useState(''),[emailBody,setEmailBody]=useState('');
+  async function review(templateId?:string) {
     setBusy(true);
     setMessage('');
     try {
       const response = await fetch('/api/v1/applications/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId }),
+        body: JSON.stringify({ jobId, ...(templateId?{templateId}:{}) }),
       });
       const result = await response.json();
       if (response.status === 401) {
@@ -55,6 +58,7 @@ export function JobActions({
       }
       if (!response.ok) throw Error(result.error?.message || 'Application details could not be loaded.');
       setPreview(result.data);
+      setSubject(result.data.review?.message?.subject||'');setEmailBody(result.data.review?.message?.text||'');
       setOpen(true);
     } catch (error) {
       setMessage((error as Error).message);
@@ -68,7 +72,7 @@ export function JobActions({
       const r = await fetch('/api/v1/applications', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId, confirmed: true }),
+        body: JSON.stringify({ jobId, confirmed: true,...(preview?.selectedTemplateId?{templateId:preview.selectedTemplateId}:{}),...(preview?.action==='send_authorized_email'&&subject&&emailBody?{subject,body:emailBody}:{}) }),
       });
       const j = await r.json();
       if (r.status === 401) {
@@ -137,6 +141,7 @@ export function JobActions({
               From: {preview.email.connected ? preview.email.address : 'Connect Gmail before sending.'}<br />
               To: {preview.email.destination || 'Verified recruitment email unavailable'}
             </div>}
+            {!!preview.templates.length&&preview.action!=='open_source_form'&&<label>Application template<select value={preview.selectedTemplateId||''} onChange={event=>void review(event.target.value)}>{preview.templates.map(template=><option value={template.id} key={template.id}>{template.name}{template.isDefault?' (Default)':''}</option>)}</select></label>}
             {preview.review && <div className="application-review-details">
               <h3>Details reused for this application</h3>
               <p className="small"><strong>Candidate:</strong> {preview.review.profile.name} · {preview.review.profile.email}</p>
@@ -144,8 +149,10 @@ export function JobActions({
               {!!preview.review.profile.skills.length && <p className="small"><strong>Skills:</strong> {preview.review.profile.skills.join(', ')}</p>}
               <p className="small"><strong>CV:</strong> {preview.review.cv?.attached ? preview.review.cv.name : 'No confirmed CV selected'}</p>
               {preview.review.message && <div className="application-message-preview">
-                <p className="small"><strong>Subject:</strong> {preview.review.message.subject}</p>
-                <pre>{preview.review.message.text}</pre>
+                <label>Subject<input value={subject} onChange={event=>setSubject(event.target.value)} maxLength={300}/></label>
+                <label>Email body<textarea value={emailBody} onChange={event=>setEmailBody(event.target.value)} rows={12}/></label>
+                <button className="secondary" type="button" disabled={busy} onClick={()=>void review(preview.selectedTemplateId||undefined)}>Regenerate personalization</button>
+                <p className="small">Edits apply only to this application and do not change the saved master template.</p>
               </div>}
             </div>}
             {!!preview.missingRequirements.length && <div className="notice small">

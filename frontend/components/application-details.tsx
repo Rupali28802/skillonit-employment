@@ -10,6 +10,7 @@ type Details = {
   reasons: { code: string; message: string }[]; events: { status: string; at: string; reason?: string }[];
   email?: { recipient: string; subject: string; provider: string; sentAt?: string; providerMessageId?: string };
   external?: { url?: string; fieldsSubmitted: string[] };
+  roleEvidence?: { roles?: string[]; matchedRole?: string | null; matchedSkills?: string[]; source?: string };
 };
 const text = (value: unknown) => typeof value === 'string' ? value || '—' : typeof value === 'number' ? String(value) : '—';
 export function ApplicationDetails({ id, admin = false }: { id: string; admin?: boolean }) {
@@ -28,6 +29,7 @@ export function ApplicationDetails({ id, admin = false }: { id: string; admin?: 
     {busy && <output>Loading application…</output>}{error && <p role="alert">{error}</p>}
     {data && <><dl className="application-detail-grid">{Object.entries({ 'Application ID': data.id, ...(admin ? {Candidate:data.candidate, 'Candidate email':data.candidateEmail, Employer:data.employer} : {}), Job:data.jobTitle ?? data.job?.title, Company: data.company, Method: data.applicationMethod, 'Submission state': data.submissionState, 'Recruiter status': data.status, 'Created at': data.createdAt, 'Submitted at': data.submittedAt, 'Updated at': data.updatedAt, Evidence: data.submissionEvidence, 'Profile revision': data.profileRevision, CV: data.cv?.name, 'CV version': data.cv?.id, Template:data.template?.id, 'Template version': data.template?.version }).map(([key,value]) => <div key={key}><dt>{key}</dt><dd>{text(value)}</dd></div>)}</dl>
     {data.reasons.map(reason => <p className="notice" key={reason.code}>{reason.message}</p>)}
+    {data.roleEvidence && <section><h3>Role match evidence</h3><dl className="application-detail-grid"><div><dt>Matched role</dt><dd>{text(data.roleEvidence.matchedRole)}</dd></div><div><dt>Confirmed skills</dt><dd>{data.roleEvidence.matchedSkills?.join(', ') || '—'}</dd></div><div><dt>Suggested related roles</dt><dd>{data.roleEvidence.roles?.join(', ') || '—'}</dd></div></dl></section>}
     {data.email && <section><h3>Gmail submission</h3><dl className="application-detail-grid">{Object.entries(data.email).map(([key,value]) => <div key={key}><dt>{key}</dt><dd>{text(value)}</dd></div>)}</dl><p className="small">A Gmail acceptance records submission, not recruiter receipt or a reply.</p></section>}
     {data.external && <section><h3>External application</h3>{data.external.url && <a href={data.external.url} target="_blank" rel="noopener noreferrer">Open source application</a>}<p>No fields were submitted automatically. Any confirmation is reported by you, not verified by the external provider.</p></section>}
     <h3>History</h3><ol>{data.events.map((event,index) => <li key={index}>{event.status.replaceAll('_',' ')} · {event.at}{event.reason && <p>{event.reason}</p>}</li>)}</ol></>}

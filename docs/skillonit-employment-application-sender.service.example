@@ -1,0 +1,19 @@
+[Unit]
+Description=SkillOnIT isolated email application sender
+After=network-online.target skillonit-employment-backend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/skillonit-employment/backend
+EnvironmentFile=/home/ubuntu/skillonit-employment/backend/.env
+ExecStart=/usr/bin/node dist/workers/application-sender.js
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

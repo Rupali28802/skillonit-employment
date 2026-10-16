@@ -25,7 +25,7 @@ type Match = { job: PublicJob; match: { score: number; reasons: (string | null)[
 type DashboardData = { apps: Application[]; saved: unknown[]; matches: Match[] };
 type Completion = { percentage: number; missingFields: string[]; readinessStatus: string };
 type Onboarding = { completeness: number; completed: boolean; steps: { name: string; complete: boolean; optional: boolean }[] };
-type Subscription = { plan: { name: string }; subscriptionStatus: string; limits: { applicationsPerDay: number; autoApplyPerDay: number; cvVersions: number } };
+type Subscription = { plan: { name: string }; subscriptionStatus: string; limits: { applicationsPerDay: number; autoApplyPerDay: number; cvVersions: number }; usage?: { autoApply?: { used: number; cap: number; period: string } } };
 type Notification = { id: string; title: string; message: string; href: string; read: boolean; createdAt: string };
 
 const human = (value: string) => value.replaceAll('_', ' ').replaceAll('-', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
@@ -170,7 +170,7 @@ export function CandidateDashboard({ user, dashboard, completion, onboarding, ma
           <h2>{subscription.plan.name}</h2>
           <p>Tools and limits available in your current workspace.</p>
           <div><span>Daily applications</span><strong>{subscription.limits.applicationsPerDay}</strong></div>
-          <div><span>Auto-apply limit</span><strong>{subscription.limits.autoApplyPerDay}</strong></div>
+          <div><span>Auto Apply today</span><strong>{subscription.usage?.autoApply ? `${subscription.usage.autoApply.used} / ${subscription.usage.autoApply.cap}` : subscription.limits.autoApplyPerDay}</strong></div>
           <div><span>CV versions</span><strong>{subscription.limits.cvVersions}</strong></div>
           <Link className="secondary full" href="/billing">Manage plan</Link>
         </motion.section>

@@ -106,7 +106,15 @@ export async function consumeEntitlement(
   r: Repository, user: User, entitlements: StudentEntitlements, metric: EntitlementMetric, at = new Date(),
 ) {
   const usage = await entitlementUsage(r, user, entitlements, metric, at);
-  if (usage.used >= usage.cap) throw new ApiError(409, metric === 'auto_apply' ? 'AUTO_APPLY_CAP_REACHED' : 'DAILY_CAP_REACHED', 'The subscription allowance has been reached.');
+  if (usage.used >= usage.cap) {
+    const freeDailyLimit = metric === 'applications' && entitlements.plan.code === 'basic' && usage.cap === 5;
+    const freeAutoApplyLimit = metric === 'auto_apply' && entitlements.plan.code === 'basic' && usage.cap === 5;
+    const resetAt = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate() + 1)).toISOString();
+    throw new ApiError(409,
+      freeAutoApplyLimit ? 'FREE_AUTO_APPLY_DAILY_LIMIT_REACHED' : metric === 'auto_apply' ? 'AUTO_APPLY_CAP_REACHED' : freeDailyLimit ? 'FREE_DAILY_APPLICATION_LIMIT_REACHED' : 'DAILY_CAP_REACHED',
+      freeAutoApplyLimit ? 'You have used all 5 Free Auto Apply applications for today. Auto Apply resets tomorrow.' : freeDailyLimit ? 'You have used all 5 Free applications for today. Your daily application limit will reset tomorrow.' : 'The subscription allowance has been reached.',
+      freeAutoApplyLimit ? { currentPlan: entitlements.plan.name, dailyLimit: 5, usedToday: usage.used, remainingToday: 0, resetAt } : freeDailyLimit ? { limit: 5, used: usage.used, remaining: 0, resetAt, currentPlan: entitlements.plan.name } : undefined);
+  }
   await r.put<EntitlementUsage>('entitlementUsage', {
     id: usage.id, userId: user.id, metric, period: usage.period, count: usage.used + 1,
     cap: usage.cap, planCode: entitlements.plan.code, subscriptionId: entitlements.subscription?.id, updatedAt: at.toISOString(),
