@@ -201,7 +201,7 @@ export async function handle(
       const input = z
         .object({
           token: z.string().min(20).max(200),
-          password: z.string().min(12).max(128),
+          password: z.string().min(6).max(128),
         })
         .parse(await body());
       await resetPassword(input.token, input.password);

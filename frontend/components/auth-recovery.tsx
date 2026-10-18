@@ -37,7 +37,7 @@ export function AuthRecovery({ mode }: { mode: RecoveryMode }) {
     <section className="auth-form-panel">
       <div className="auth-form-heading"><div className="auth-heading-row"><div className="eyebrow">YOUR ACCOUNT</div><Link className="auth-back" href="/login"><ArrowLeft size={15} />Back</Link></div>
         <h1>{verify ? 'Verify your email' : reset ? 'Choose a new password' : mode === 'forgot-password' ? 'Forgot your password?' : 'Request a new code'}</h1>
-        <p>{verify ? 'Enter the six-digit code from your email. It expires in five minutes.' : reset ? 'Choose a password with at least 12 characters.' : 'Enter the email address you used to create your account.'}</p>
+        <p>{verify ? 'Enter the six-digit code from your email. It expires in five minutes.' : reset ? 'Choose a password with at least 6 characters.' : 'Enter the email address you used to create your account.'}</p>
       </div>
       {!complete && <form onSubmit={async event => {
         event.preventDefault(); setBusy(true); setMessage('');
@@ -53,7 +53,7 @@ export function AuthRecovery({ mode }: { mode: RecoveryMode }) {
       }}>
         {!reset && <label>Email address<input type="email" name="email" autoComplete="email" required value={email} onChange={event => setEmail(event.target.value)} /></label>}
         {verify && <label>Verification code<input name="otp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength={6} maxLength={6} placeholder="Six-digit code" required /></label>}
-        {reset && <><label>New password<input type="password" name="password" autoComplete="new-password" minLength={12} maxLength={128} required /></label><label>Confirm password<input type="password" name="confirmPassword" autoComplete="new-password" minLength={12} maxLength={128} required /></label></>}
+        {reset && <><label>New password<input type="password" name="password" autoComplete="new-password" minLength={6} maxLength={128} required /></label><label>Confirm password<input type="password" name="confirmPassword" autoComplete="new-password" minLength={6} maxLength={128} required /></label></>}
         <button className="primary full" disabled={busy}>{busy ? 'Please wait…' : verify ? 'Verify email' : reset ? 'Save password' : 'Send email'}</button>
       </form>}
       {message && <output className="notice">{message}</output>}

@@ -5,7 +5,7 @@ const list = z.array(text).max(50);
 export const registerSchema = z.object({
   name: text,
   email: z.email().toLowerCase(),
-  password: z.string().min(12).max(128),
+  password: z.string().min(6).max(128),
   role: z.enum(['student', 'employer']).default('student'),
 });
 export const loginSchema = z.object({

@@ -467,7 +467,7 @@ export function AuthForm({
                     register ? 'Create a password' : 'Enter your password'
                   }
                   autoComplete={register ? 'new-password' : 'current-password'}
-                  minLength={register ? 12 : undefined}
+                  minLength={register ? 6 : undefined}
                   maxLength={128}
                   required
                 />
@@ -484,7 +484,7 @@ export function AuthForm({
             {register && (
               <>
                 <p className="auth-password-hint">
-                  Use at least 12 characters.
+                  Use at least 6 characters.
                 </p>
                 <label>
                   Confirm password
@@ -493,7 +493,7 @@ export function AuthForm({
                     type={showPassword ? 'text' : 'password'}
                     placeholder="Re-enter your password"
                     autoComplete="new-password"
-                    minLength={12}
+                    minLength={6}
                     maxLength={128}
                     required
                   />

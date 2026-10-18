@@ -1,6 +1,5 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { randomBytes } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -28,8 +27,8 @@ test('auth lifecycle: reset, replay, ownership, expiry, sessions and production 
     const address = server.address();
     assert.ok(address && typeof address !== 'string');
     const base = `http://127.0.0.1:${address.port}/api/v1/`;
-    const password = randomBytes(24).toString('base64url');
-    const replacement = randomBytes(24).toString('base64url');
+    const password = 'six123';
+    const replacement = 'new123';
     async function call(route: string, body?: object, cookie = '') {
       const response = await fetch(base + route, {
         method: body ? 'POST' : 'GET',
@@ -46,6 +45,15 @@ test('auth lifecycle: reset, replay, ownership, expiry, sessions and production 
         cookie: response.headers.get('set-cookie')?.split(';')[0] || '',
       };
     }
+    assert.equal(
+      (await call('auth/register', {
+        name: 'Too Short',
+        email: 'too-short@example.test',
+        password: 'short',
+      })).status,
+      400,
+      'Five-character signup passwords must remain rejected',
+    );
     const registration = await call('auth/register', {
       name: 'Auth Test',
       email: 'auth@example.test',
@@ -110,6 +118,7 @@ test('auth lifecycle: reset, replay, ownership, expiry, sessions and production 
     assert.equal(
       (await call('auth/reset-password', { token, password: 'short' })).status,
       400,
+      'Five-character passwords must remain rejected',
     );
     assert.equal(
       (await call('auth/reset-password', { token, password: replacement }))
