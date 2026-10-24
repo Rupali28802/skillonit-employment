@@ -36,7 +36,7 @@ jobs:
         working-directory: backend
       - name: Verify backend independently and through frontend proxy
         run: |
-          (cd backend && npm start) > /tmp/skillonit-api.log 2>&1 &
+          (cd backend && node dist/index.js) > /tmp/skillonit-api.log 2>&1 &
           API_PID=$!
           (cd frontend && npm start) > /tmp/skillonit-ui.log 2>&1 &
           UI_PID=$!
@@ -50,7 +50,7 @@ jobs:
           kill "$API_PID"
           wait "$API_PID" || true
           rm -rf .data
-          npm start > /tmp/skillonit-api.log 2>&1 &
+          node dist/index.js > /tmp/skillonit-api.log 2>&1 &
           API_PID=$!
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://localhost:4000/api/v1/health > /dev/null; then break; fi
