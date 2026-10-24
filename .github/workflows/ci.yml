@@ -36,21 +36,24 @@ jobs:
         working-directory: backend
       - name: Verify backend independently and through frontend proxy
         run: |
-          (cd backend && node dist/index.js) > /tmp/skillonit-api.log 2>&1 &
+          # Start each service in its own process group.  The API launcher owns
+          # worker children, so a group stop prevents a prior test run from
+          # retaining the demo data store or the API port.
+          setsid bash -c 'cd backend && npm start' > /tmp/skillonit-api.log 2>&1 &
           API_PID=$!
-          (cd frontend && npm start) > /tmp/skillonit-ui.log 2>&1 &
+          setsid bash -c 'cd frontend && npm start' > /tmp/skillonit-ui.log 2>&1 &
           UI_PID=$!
-          trap 'kill "$API_PID" "$UI_PID"' EXIT
+          trap 'kill -- -"$API_PID" -"$UI_PID" 2>/dev/null || true' EXIT
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://localhost:3100/api/v1/health > /dev/null; then break; fi
             sleep 2
           done
           cd backend
           TEST_ORIGIN=http://localhost:3100 npm run test:integration
-          kill "$API_PID"
+          kill -- -"$API_PID"
           wait "$API_PID" || true
           rm -rf .data
-          node dist/index.js > /tmp/skillonit-api.log 2>&1 &
+          setsid npm start > /tmp/skillonit-api.log 2>&1 &
           API_PID=$!
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://localhost:4000/api/v1/health > /dev/null; then break; fi
