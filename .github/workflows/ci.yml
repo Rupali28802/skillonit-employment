@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DEMO_MODE: 'true'
-      APP_URL: http://localhost:3000
+      APP_URL: http://localhost:3100
       BACKEND_URL: http://127.0.0.1:4000
     steps:
       - uses: actions/checkout@v4
@@ -42,10 +42,10 @@ jobs:
           UI_PID=$!
           trap 'kill "$API_PID" "$UI_PID"' EXIT
           for attempt in $(seq 1 60); do
-            if curl --fail --silent http://localhost:3000/api/v1/health > /dev/null; then break; fi
+            if curl --fail --silent http://localhost:3100/api/v1/health > /dev/null; then break; fi
             sleep 2
           done
           cd backend
-          npm run test:integration
-          TEST_URL=http://localhost:3000 npm run test:integration
+          TEST_ORIGIN=http://localhost:3100 npm run test:integration
+          TEST_URL=http://localhost:3100 TEST_ORIGIN=http://localhost:3100 npm run test:integration
           npm run test:architecture
