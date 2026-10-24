@@ -1,11 +1,12 @@
 'use client';
 import { display } from '@/lib/display';
+import { readBrowserApiPayload } from '@/lib/browser-api';
 import { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   ArrowLeft,
   ArrowRight,
-  BriefcaseBusiness,
   Check,
   Eye,
   EyeOff,
@@ -85,13 +86,13 @@ export function SmartForm({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
           });
-          const j = await r.json();
+          const j = await readBrowserApiPayload<Record<string, unknown>>(r);
           if (!r.ok)
             throw Error(j.error?.message || 'Could not save your changes.');
           setError(false);
           if (revision !== undefined)
             setRevision(typeof j.data?.revision === 'number' ? j.data.revision : revision + 1);
-          setMessage(successMessage || j.data?.message || 'Your changes have been saved.');
+          setMessage(successMessage || (typeof j.data?.message === 'string' ? j.data.message : '') || 'Your changes have been saved.');
           onSuccess?.();
         } catch (e) {
           setError(true);
@@ -210,7 +211,18 @@ export function Action({
               headers,
               body: JSON.stringify(payload),
             });
-            const j = await r.json();
+            // A reverse-proxy/upstream failure can return an HTML error page.
+            // Never surface a JSON parser exception ("Unexpected token '<'") to
+            // someone completing a form or starting checkout.
+            const contentType = r.headers.get('content-type') || '';
+            if (!contentType.includes('application/json'))
+              throw Error('The service is temporarily unavailable. Please try again.');
+            let j: { data?: Record<string, unknown>; error?: { message?: string } };
+            try {
+              j = await r.json() as { data?: Record<string, unknown>; error?: { message?: string } };
+            } catch {
+              throw Error('The service returned an invalid response. Please try again.');
+            }
             if (!r.ok)
               throw Error(
                 j.error?.message || 'The action could not be completed.',
@@ -226,7 +238,7 @@ export function Action({
               window.location.assign(destination.href);
             } else if (redirect) window.location.href = redirect;
             else {
-              setMessage(j.data?.message || 'Updated successfully.');
+              setMessage(typeof j.data?.message === 'string' ? j.data.message : 'Updated successfully.');
               window.location.reload();
             }
           } catch (e) {
@@ -268,11 +280,7 @@ export function AuthForm({
           aria-label="Welcome to SkillonIT Employment"
         >
           <Link className="brand auth-brand" href="/">
-            <span className="brand-icon">
-              <BriefcaseBusiness size={24} />
-            </span>
-            Skillon<span>IT</span>
-            <small>EMPLOYMENT</small>
+            <Image className="auth-brand-logo" src="/skillonit-employment-logo.png" alt="SkillOnIT Employment" width={720} height={240} priority />
           </Link>
           <div className="auth-welcome-copy">
             <span className="auth-welcome-badge">
@@ -381,14 +389,14 @@ export function AuthForm({
               setBusy(true); setMessage('');
               try {
                 const response = await fetch('/api/v1/auth/google/status');
-                const result = await response.json();
-                if (!response.ok || !result.data?.available) throw Error('Google sign-in is not available yet. Please use email sign-in.');
+                const result = await readBrowserApiPayload<{ available?: boolean; startUrl?: string }>(response);
+                if (!response.ok || !result.data?.available || !result.data.startUrl) throw Error('Google sign-in is not available yet. Please use email sign-in.');
                 const destination = new URL(result.data.startUrl, window.location.origin);
                 if (nextPath) destination.searchParams.set('next', nextPath);
                 if (register) destination.searchParams.set('role', accountType);
                 window.location.assign(destination.href);
               } catch (error) { setMessage(error instanceof Error ? error.message : 'Google sign-in is unavailable.'); setBusy(false); }
-            }}><span className="auth-google-mark" aria-hidden="true">G</span>Continue with Google</button>
+            }}><Image className="auth-google-mark" src="/google-sign-in-mark.png" alt="" aria-hidden="true" width={22} height={22} />Continue with Google</button>
             <div className="auth-divider"><span>or continue with email</span></div>
           </>
           <form
@@ -415,16 +423,18 @@ export function AuthForm({
                     body: JSON.stringify(data),
                   },
                 );
-                const j = await r.json();
+                const j = await readBrowserApiPayload<{ user?: { verified?: boolean; role?: string } }>(r);
                 if (!r.ok) throw Error(j.error?.message);
-                if (register && !j.data.user.verified) {
+                const user = j.data?.user;
+                if (!user) throw Error('The sign-in response was incomplete. Please try again.');
+                if (register && !user.verified) {
                   sessionStorage.setItem('skillonit-verification-email', typeof data.email === 'string' ? data.email : '');
                   window.location.assign('/verify-email');
                 } else
                   window.location.href = nextPath ||
-                    (j.data.user.role === 'employer'
+                    (user.role === 'employer'
                       ? '/employer'
-                      : j.data.user.role === 'admin'
+                      : user.role === 'admin'
                         ? '/admin'
                         : '/dashboard');
               } catch (e) {

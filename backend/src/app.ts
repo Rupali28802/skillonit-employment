@@ -13,6 +13,9 @@ import { subscribeJobs } from './job-engine/events.js';
 
 export const app = express();
 app.disable('x-powered-by');
+export function shouldSetHsts(env: NodeJS.ProcessEnv = process.env) {
+  return env.APP_URL?.startsWith('https://') === true;
+}
 const proxyHops = Number(process.env.TRUST_PROXY_HOPS || 0);
 if (Number.isInteger(proxyHops) && proxyHops > 0 && proxyHops <= 3) app.set('trust proxy', proxyHops);
 app.use((req, res, next) => {
@@ -29,7 +32,11 @@ app.use((req, res, next) => {
     'Cross-Origin-Opener-Policy': 'same-origin',
     'Cross-Origin-Resource-Policy': 'same-origin',
   });
-  if (process.env.NODE_ENV === 'production' && process.env.APP_URL?.startsWith('https://')) res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  // TLS termination is configured by the public application URL, not by the
+  // Node environment label.  Some production deployments deliberately retain
+  // a non-"production" NODE_ENV while their public edge is HTTPS; withholding
+  // HSTS in that case weakens the actual public site.
+  if (shouldSetHsts()) res.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   res.on('finish', () => {
     const durationMs = Math.max(0, Math.round(performance.now() - requestStarted)), group = routeGroup(req.originalUrl.split('?')[0]);
     recordHttpObservation(req.method, group, res.statusCode, durationMs);

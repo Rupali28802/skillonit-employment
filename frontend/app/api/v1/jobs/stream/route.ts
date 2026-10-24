@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-  const backend = process.env.BACKEND_URL || 'http://127.0.0.1:4000';
+  const backend = process.env.BACKEND_URL || 'http://127.0.0.1:4100';
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {

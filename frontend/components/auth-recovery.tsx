@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, BriefcaseBusiness } from 'lucide-react';
+import Image from 'next/image';
+import { ArrowLeft } from 'lucide-react';
+import { readBrowserApiPayload } from '@/lib/browser-api';
 
 export type RecoveryMode = 'verify-email' | 'resend-verification' | 'forgot-password' | 'reset-password';
 const noStorageSubscription = () => () => {};
@@ -28,12 +30,12 @@ export function AuthRecovery({ mode }: { mode: RecoveryMode }) {
   const reset = mode === 'reset-password';
   async function send(endpoint: string, data: Record<string, unknown>) {
     const response = await fetch('/api/v1/auth/' + endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-    const result = await response.json();
+    const result = await readBrowserApiPayload<{ message?: string }>(response);
     if (!response.ok) throw Error(result.error?.message || 'Please try again later.');
-    return result.data;
+    return result.data || {};
   }
   return <div className="auth-page"><div className="auth-card auth-recovery-card">
-    <section className="auth-welcome"><Link className="brand auth-brand" href="/"><span className="brand-icon"><BriefcaseBusiness size={24} /></span>Skillon<span>IT</span><small>EMPLOYMENT</small></Link></section>
+    <section className="auth-welcome"><Link className="brand auth-brand" href="/"><Image className="auth-brand-logo" src="/skillonit-employment-logo.png" alt="SkillOnIT Employment" width={720} height={240} priority /></Link></section>
     <section className="auth-form-panel">
       <div className="auth-form-heading"><div className="auth-heading-row"><div className="eyebrow">YOUR ACCOUNT</div><Link className="auth-back" href="/login"><ArrowLeft size={15} />Back</Link></div>
         <h1>{verify ? 'Verify your email' : reset ? 'Choose a new password' : mode === 'forgot-password' ? 'Forgot your password?' : 'Request a new code'}</h1>
@@ -59,7 +61,7 @@ export function AuthRecovery({ mode }: { mode: RecoveryMode }) {
       {message && <output className="notice">{message}</output>}
       {verify && <button type="button" className="auth-resend" disabled={busy || !!cooldown || !email} onClick={async () => {
         setBusy(true); setMessage('');
-        try { const data = await send('resend-verification', { email }); setMessage(data.message); setCooldown(60); }
+        try { const data = await send('resend-verification', { email }); setMessage(data.message || 'Verification email requested.'); setCooldown(60); }
         catch (error) { setMessage(error instanceof Error ? error.message : 'Please try again.'); }
         finally { setBusy(false); }
       }}>{cooldown ? `Resend in ${cooldown}s` : 'Resend verification code'}</button>}

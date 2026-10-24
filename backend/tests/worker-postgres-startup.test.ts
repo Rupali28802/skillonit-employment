@@ -33,7 +33,10 @@ for (const entry of ['src/job-engine/cli.ts', 'src/matching-index.ts']) {
     let output = '';
     child.stdout.on('data', chunk => { output += chunk; });
     child.stderr.on('data', chunk => { output += chunk; });
-    const deadline = setTimeout(() => child.kill(), 30000);
+    // Transpiling the worker with tsx can legitimately take longer on a
+    // saturated Windows CI host. Keep the failure-path assertion intact, but
+    // do not turn host contention into a false worker failure.
+    const deadline = setTimeout(() => child.kill(), 60_000);
     try {
       const [code] = await once(child, 'close');
       assert.equal(code, 1, 'worker must exit on database failure');

@@ -42,24 +42,44 @@ function within(child: CatalogEntry, parent: CatalogEntry, rows: CatalogEntry[])
 export function locationFit(job: Job, preferences: Preferences, catalogs: MatchingCatalogs): number | null {
   const ids = (preferences as Preferences & { locationIds?: string[] }).locationIds ?? [];
   const jobLocation = job.matching?.locationId ? resolveEntry(job.matching.locationId, catalogs.locations) : undefined;
-  const groups: [string[], string][] = [
-    [preferences.countries, job.country], [preferences.regions ?? [], job.state],
-    [preferences.indiaStates ?? [], job.state], [preferences.cities ?? [], job.city],
-  ];
-  const selected = groups.filter(([values]) => values.length);
-  if (!ids.length && !selected.length) return null;
+  const countries = preferences.countries ?? [];
+  const regions = [...(preferences.regions ?? []), ...(preferences.indiaStates ?? [])];
+  const cities = preferences.cities ?? [];
+  if (!ids.length && !countries.length && !regions.length && !cities.length) return null;
   const fits = (value: string, actual: string) => {
     const desired = resolveEntry(value, catalogs.locations);
     if (desired && jobLocation) return within(jobLocation, desired, catalogs.locations);
     if (desired?.countryCode && jobLocation?.countryCode && desired.countryCode !== jobLocation.countryCode) return false;
     return normalize(desired?.displayName ?? value) === normalize(actual);
   };
-  return Number(selected.every(([values, actual]) => values.some(value => fits(value, actual))) &&
-    (!ids.length || ids.some(value => {
+  // Country and region preferences describe the eligible pool. Cities are a
+  // preference inside that pool: city matches receive the full location score,
+  // while other jobs in an eligible country remain discoverable and rank after
+  // them. A city-only legacy preference remains a strict city filter.
+  if (countries.length && !countries.some(value => fits(value, job.country))) return 0;
+  if (regions.length && !regions.some(value => fits(value, job.state))) return 0;
+  if (ids.length && !ids.some(value => {
       const desired = resolveEntry(value, catalogs.locations);
       if (!desired) return false;
       return jobLocation ? within(jobLocation, desired, catalogs.locations) : fits(value, desired.type === 'country' ? job.country : desired.type === 'city' ? job.city : job.state);
-    })));
+    })) return 0;
+  if (cities.length) {
+    if (cities.some(value => fits(value, job.city))) return 1;
+    return countries.length || regions.length ? 0.75 : 0;
+  }
+  return 1;
+}
+
+/** Sort selected-city results ahead of other eligible country-level results. */
+export function locationPreferenceTier(job: Job, preferences: Preferences, catalogs: MatchingCatalogs): number {
+  const cities = preferences.cities ?? [];
+  if (!cities.length) return 0;
+  const jobLocation = job.matching?.locationId ? resolveEntry(job.matching.locationId, catalogs.locations) : undefined;
+  return cities.some(value => {
+    const desired = resolveEntry(value, catalogs.locations);
+    if (desired && jobLocation) return within(jobLocation, desired, catalogs.locations);
+    return normalize(desired?.displayName ?? value) === normalize(job.city);
+  }) ? 1 : 0;
 }
 export function occupationFit(job: Job, profile: Profile, preferences: Preferences, catalogs: MatchingCatalogs): number | null {
   const explicit = [...preferences.roles, ...preferences.relatedRoles, ...((preferences as Preferences & { occupationIds?: string[] }).occupationIds ?? [])];

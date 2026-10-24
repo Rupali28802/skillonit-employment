@@ -169,9 +169,12 @@ export async function listAdminEmployers(actor: User, params: URLSearchParams): 
       const owner = await r.get<User>('users', employer.ownerId);
       if (!owner) return null;
       const subscription = await r.get<{ planCode?: string }>('studentSubscriptions', owner.id);
+      const verification = await r.get<EmployerVerification>('employerVerifications', employer.id);
       return {
         ...employer,
         hasEmployerProfile: true,
+        verificationStatus: verification?.status ?? 'pending',
+        verificationEvidenceCount: verification?.evidence.length ?? 0,
         ownerUserId: owner.id,
         userName: owner.name,
         email: owner.email,

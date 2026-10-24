@@ -12,9 +12,10 @@ import { publicJob, type Job } from '../src/lib/domain.ts';
 import { sourceSchema, publicSources, type FeedSource } from '../src/job-engine/sources.ts';
 import { canonicalUrl, normalize, categoryFor } from '../src/job-engine/normalize.ts';
 import { fetchFeed, FeedError, type Candidate, type FeedBatch } from '../src/job-engine/adapters.ts';
-import { runEngine, upsertSource, setEmployerRefresh } from '../src/job-engine/engine.ts';
+import { engineLeaseDurationMs, runEngine, upsertSource, setEmployerRefresh } from '../src/job-engine/engine.ts';
 import { searchJobs } from '../src/lib/search.ts';
 import { expireJobs, expectedJobExpiry } from '../src/lib/lifecycle.ts';
+import { minimumFastSources } from '../src/job-engine/discovery-health.ts';
 
 let replica: MongoMemoryReplSet, client: MongoClient;
 const source: FeedSource = { id: 'test-board', type: 'ashby', name: 'Test employer', company: 'Example Employer', board: 'example',
@@ -36,6 +37,28 @@ test('jobs expire 90 days after posting or at an earlier employer close date', (
 
   const withoutPostedDate = normalize(candidate({ postedAt: undefined }), source, now);
   assert.equal(withoutPostedDate.expiresAt, new Date(now + 90 * 86400000).toISOString());
+});
+
+test('discovery lease spans the configured cycle with a bounded handoff margin', () => {
+  const prior = process.env.JOB_ENGINE_CYCLE_MAX_MS;
+  try {
+    delete process.env.JOB_ENGINE_CYCLE_MAX_MS;
+    assert.equal(engineLeaseDurationMs(), 540_000);
+    process.env.JOB_ENGINE_CYCLE_MAX_MS = '60000';
+    assert.equal(engineLeaseDurationMs(), 300_000);
+    process.env.JOB_ENGINE_CYCLE_MAX_MS = '1200000';
+    assert.equal(engineLeaseDurationMs(), 1_260_000);
+  } finally {
+    if (prior === undefined) delete process.env.JOB_ENGINE_CYCLE_MAX_MS;
+    else process.env.JOB_ENGINE_CYCLE_MAX_MS = prior;
+  }
+});
+
+test('discovery health requires an explicit valid fast-source floor outside local defaults', () => {
+  assert.equal(minimumFastSources({}), 1);
+  assert.equal(minimumFastSources({ DISCOVERY_MIN_FAST_SOURCES: '22' }), 22);
+  assert.throws(() => minimumFastSources({ DISCOVERY_MIN_FAST_SOURCES: '0' }), /DISCOVERY_HEALTH_MIN_FAST_SOURCES_INVALID/);
+  assert.throws(() => minimumFastSources({ DISCOVERY_MIN_FAST_SOURCES: 'two' }), /DISCOVERY_HEALTH_MIN_FAST_SOURCES_INVALID/);
 });
 
 test('expiry scans past a full fresh page and closes only expired jobs', async () => {

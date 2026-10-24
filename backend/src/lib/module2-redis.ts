@@ -26,10 +26,25 @@ export function createModule2Redis(env = process.env) {
   redis.on('error', () => {});
   return redis;
 }
+export function module2RedisFailureCode(error: unknown) {
+  // Provider replies can contain endpoints or account details. Preserve only a
+  // small allowlist of actionable, credential-safe conditions for operators.
+  const message = error instanceof Error ? error.message.toLowerCase() : '';
+  if (message.includes('max requests limit') || message.includes('request quota'))
+    return 'REDIS_REQUEST_QUOTA_EXCEEDED';
+  if (message.includes('max number of clients') || message.includes('connection limit'))
+    return 'REDIS_CONNECTION_LIMIT';
+  if (message.includes('wrongpass') || message.includes('noauth'))
+    return 'REDIS_AUTH_FAILED';
+  if (message.includes('noperm')) return 'REDIS_COMMAND_NOT_PERMITTED';
+  return 'REDIS_UNAVAILABLE';
+}
 export async function deadline<T>(work: Promise<T>, ms: number, code: string) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try { return await Promise.race([work, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(code)), ms); })]); }
-  catch { throw new Error(code); }
+  catch (error) {
+    throw new Error(code === 'REDIS_UNAVAILABLE' ? module2RedisFailureCode(error) : code);
+  }
   finally { clearTimeout(timer); }
 }
 export async function checkModule2Redis(env = process.env) {

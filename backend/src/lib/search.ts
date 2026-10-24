@@ -3,6 +3,35 @@ import { publicJob } from './domain.js';
 import { read, configuredPlans, demoMode } from './store.js';
 import { normalizeCountry } from './countries.js';
 import { semanticMatches } from '../job-engine/semantic.js';
+import { postgresConfigured, postgresPublicCountrySearch, postgresPublicFacetSearch, postgresPublicKeywordSearch, postgresPublicTypeSearch, postgresReadWithTimeout } from './postgres-store.js';
+
+type RawSearchResult = { jobs: Job[]; total: number };
+
+// The public landing page and its live-discovery panel can request the same first
+// page at once. Coalesce that work for a few seconds so concurrent visitors do
+// not queue identical database count queries behind each other. The cache keeps
+// only public job documents; user-specific shaping still happens below.
+const publicFeedRequests = new Map<string, { expiresAt: number; value: Promise<RawSearchResult> }>();
+// Discovery refreshes on a multi-minute cadence. Keeping an anonymous default
+// page for one minute avoids repeated full exact-count scans while still
+// surfacing newly discovered jobs promptly and without changing any filters.
+const PUBLIC_FEED_TTL_MS = 60_000;
+
+function publicFeedCacheKey(params: URLSearchParams) {
+  return [...params.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${key}=${value}`).join('&');
+}
+
+function cachedPublicFeed(key: string, load: () => Promise<RawSearchResult>) {
+  const now = Date.now();
+  const cached = publicFeedRequests.get(key);
+  if (cached && cached.expiresAt > now) return cached.value;
+  const value = load().catch(error => {
+    if (publicFeedRequests.get(key)?.value === value) publicFeedRequests.delete(key);
+    throw error;
+  });
+  publicFeedRequests.set(key, { expiresAt: now + PUBLIC_FEED_TTL_MS, value });
+  return value;
+}
 
 export async function searchJobs(params: URLSearchParams, user: User | null = null) {
   const query = (params.get('q') || '').slice(0, 200).toLowerCase();
@@ -74,7 +103,75 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
   const limit = Math.max(10, Math.min(25, requestedLimit));
   const sort: Record<string, 1 | -1> = params.get('sort') === 'salary'
     ? { currency: 1, salaryMin: -1, id: 1 } : params.get('sort') === 'discovered' ? {discoveredAt:-1,id:1} : { sourcePostedAt: -1, discoveredAt: -1, id: 1 };
-  const result = await read(async r => ({ jobs: await r.page<Job>('jobs', filter, sort, (page - 1) * limit, limit), total: await r.count('jobs', filter) }));
+  // Keep the new SQL projections that need specialised index coverage behind
+  // an explicit release flag. Category and work-mode already have matching
+  // ordered partial indexes and retain exact repository equality semantics,
+  // so they can use the bounded PostgreSQL path unconditionally.
+  const optimizedPublicSearch = process.env.ENABLE_POSTGRES_PUBLIC_SEARCH_OPTIMIZATION === 'true';
+  // Keep the common search-box query on the database. Facets, semantic search,
+  // and non-default ordering retain the existing repository matcher because
+  // they carry more detailed Mongo-compatible semantics.
+  const simpleKeywordSearch = optimizedPublicSearch && postgresConfigured() && words.length > 0 && !semantic &&
+    [...params.keys()].every(key => ['q', 'page', 'limit', 'sort'].includes(key)) &&
+    params.get('sort') !== 'salary';
+  if (simpleKeywordSearch) {
+    const result = await postgresPublicKeywordSearch<Job>(words, params.get('sort') === 'discovered' ? 'discovered' : 'posted', (page - 1) * limit, limit);
+    const plans = await configuredPlans();
+    return { jobs: result.jobs.map(job => publicJob(job, user, plans)), total: result.total, page, limit, hasMore: page * limit < result.total };
+  }
+  const simpleCountrySearch = optimizedPublicSearch && postgresConfigured() && !query && !semantic && Boolean(params.get('country')) &&
+    [...params.keys()].every(key => ['country', 'page', 'limit', 'sort'].includes(key)) &&
+    params.get('sort') !== 'salary';
+  if (simpleCountrySearch) {
+    const country = normalizeCountry(params.get('country')!) || params.get('country')!.slice(0, 120);
+    const result = await postgresPublicCountrySearch<Job>(country, params.get('sort') === 'discovered' ? 'discovered' : 'posted', (page - 1) * limit, limit);
+    const plans = await configuredPlans();
+    return { jobs: result.jobs.map(job => publicJob(job, user, plans)), total: result.total, page, limit, hasMore: page * limit < result.total };
+  }
+  const simpleFacetSearch = postgresConfigured() && !query && !semantic &&
+    ['category', 'mode'].filter(key => Boolean(params.get(key))).length === 1 &&
+    [...params.keys()].every(key => ['category', 'mode', 'page', 'limit', 'sort'].includes(key)) &&
+    params.get('sort') !== 'salary';
+  if (simpleFacetSearch) {
+    const field = params.get('category') ? 'category' : 'mode';
+    const result = await postgresPublicFacetSearch<Job>(field, params.get(field)!, params.get('sort') === 'discovered' ? 'discovered' : 'posted', (page - 1) * limit, limit);
+    const plans = await configuredPlans();
+    return { jobs: result.jobs.map(job => publicJob(job, user, plans)), total: result.total, page, limit, hasMore: page * limit < result.total };
+  }
+  const requestedType = params.get('type') || '';
+  const normalizedType = requestedType.toLowerCase().replace(/[ _-]+/g, '');
+  const selectableTypes = new Set(['fulltime', 'parttime', 'permanent', 'contract', 'temporary', 'internship', 'apprenticeship', 'freelance', 'volunteer']);
+  const simpleTypeSearch = optimizedPublicSearch && postgresConfigured() && !query && !semantic && selectableTypes.has(normalizedType) &&
+    [...params.keys()].every(key => ['type', 'page', 'limit', 'sort'].includes(key)) &&
+    params.get('sort') !== 'salary';
+  if (simpleTypeSearch) {
+    const result = await postgresPublicTypeSearch<Job>(normalizedType, params.get('sort') === 'discovered' ? 'discovered' : 'posted', (page - 1) * limit, limit);
+    const plans = await configuredPlans();
+    return { jobs: result.jobs.map(job => publicJob(job, user, plans)), total: result.total, page, limit, hasMore: page * limit < result.total };
+  }
+  const load = () => {
+    const run = async (r: Parameters<Parameters<typeof read>[0]>[0]) => ({
+      jobs: await r.page<Job>('jobs', filter, sort, (page - 1) * limit, limit), total: await r.count('jobs', filter),
+    });
+    return postgresConfigured() ? postgresReadWithTimeout(8000, run) : read(run);
+  };
+  // Cache only the anonymous/default public listing in production. Faceted and
+  // semantic searches remain live, while repeated homepage refreshes share one
+  // read instead of overwhelming the API/database connection pool.
+  const emptyHomepageFilters = new Set(['q', 'category', 'country', 'mode', 'type', 'experience', 'state']);
+  const isDefaultPublicFeed = !query && !semantic && [...params.entries()].every(([key, value]) =>
+    ['page', 'limit', 'sort', 'searchMode'].includes(key) || (emptyHomepageFilters.has(key) && value === ''),
+  );
+  // Workers run in separate processes in production, so an in-memory cache
+  // cannot observe a discovery write by itself. The engine advances this
+  // durable version after each visible feed change; include it in the cache
+  // key so a new job is visible on the very next public request.
+  const feedVersion = isDefaultPublicFeed
+    ? await read(r => r.get<{ version?: string }>('jobEngineState', 'feed-version'))
+    : null;
+  const result = postgresConfigured() && isDefaultPublicFeed
+    ? await cachedPublicFeed(`${publicFeedCacheKey(params)}:${feedVersion?.version || 'initial'}`, load)
+    : await load();
   const plans = await configuredPlans();
   if (semantic) {
     // Apply every eligibility/facet filter before ranking or pagination.

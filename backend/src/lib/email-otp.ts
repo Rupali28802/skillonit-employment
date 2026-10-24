@@ -2,6 +2,7 @@ import { createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto
 import { demoMode, transaction, type Repository } from "./store.js";
 import { ApiError, audit } from "./security.js";
 import type { User } from "./domain.js";
+import { qualifyVerifiedReferral } from './referrals.js';
 
 const demoKey = randomBytes(32).toString("hex");
 const lifetime = 5 * 60_000;
@@ -74,6 +75,7 @@ export async function verifyEmailOtp(email: string, otp: string) {
       return false; // Commit the attempt before returning an error to the caller.
     }
     await r.put("users", { ...user, verified: true });
+    await qualifyVerifiedReferral(r, user.id);
     await r.remove("verifications", row.id);
     await audit(r, user.id, "email.verified", user.id);
     return true;

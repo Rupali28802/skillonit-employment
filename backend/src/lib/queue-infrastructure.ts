@@ -38,7 +38,10 @@ export function configuredSchedules(env = process.env): QueueSchedule[] {
   add(env.ENABLE_CV_UPLOADS === 'true', 'cv-process', 60_000); add(env.ENABLE_CV_UPLOADS === 'true', 'cv-maintenance', 3_600_000);
   add(env.ENABLE_APPLICATION_ENGINE === 'true', 'application-sender', 60_000); add(env.ENABLE_APPLICATION_ENGINE === 'true', 'auto-apply-scheduler', 300_000); add(env.ENABLE_APPLICATION_ENGINE === 'true', 'subscription-expiry', 3_600_000);
   add((env.ENABLE_JOB_DISCOVERY_ENGINE ?? env.ENABLE_JOB_SOURCE_STRATEGY) === 'true', 'source-scheduler', 60_000);
-  add(env.ENABLE_JOB_INGESTION_PIPELINE === 'true', 'job-ingestion', 60_000); add(env.ENABLE_JOB_VERIFICATION === 'true', 'job-verify', 300_000); add(env.ENABLE_FRAUD_RECHECK === 'true', 'fraud-recheck', 3_600_000);
+  add(env.ENABLE_JOB_INGESTION_PIPELINE === 'true', 'job-ingestion', 60_000);
+  // Job verification is scheduled only by its isolated worker. Keeping it out
+  // of this shared queue prevents a future enablement from running two cycles.
+  add(env.ENABLE_FRAUD_RECHECK === 'true', 'fraud-recheck', 3_600_000);
   add(env.ENABLE_JOB_LIFECYCLE === 'true', 'job-retention', 3_600_000); add(env.ENABLE_NOTIFICATION_PLATFORM === 'true', 'notification-dispatch', 60_000);
   add(env.ENABLE_ANALYTICS === 'true', 'analytics-rollup', Math.min(86_400_000, Math.max(300_000, Number(env.ANALYTICS_ROLLUP_INTERVAL_MS || 3_600_000) || 3_600_000)));
   // PostgreSQL needs the worker to replace MongoDB's background TTL monitor.

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { WHATSAPP_SUPPORT_MESSAGE, whatsappSupportUrl } from '@/lib/frontend-config';
+import { readBrowserApiPayload } from '@/lib/browser-api';
 
 function WhatsAppIcon() {
   return (
@@ -27,11 +28,8 @@ export function WhatsAppSupport() {
           credentials: 'include',
           signal: controller.signal,
         });
-        if (!response.ok) throw new Error('Support configuration is unavailable.');
-
-        const payload = (await response.json()) as {
-          data?: { whatsapp?: { enabled?: boolean; phone?: string; message?: string } };
-        };
+        const payload = await readBrowserApiPayload<{ whatsapp?: { enabled?: boolean; phone?: string; message?: string } }>(response);
+        if (!response.ok) throw new Error(payload.error?.message || 'Support configuration is unavailable.');
         const whatsapp = payload.data?.whatsapp;
         if (!whatsapp?.enabled || whatsapp.message !== WHATSAPP_SUPPORT_MESSAGE) {
           setHref(null);

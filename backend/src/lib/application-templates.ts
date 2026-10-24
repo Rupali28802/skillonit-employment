@@ -22,6 +22,10 @@ export type ApplicationTemplate = z.infer<typeof applicationTemplateSchema> & {
   id: string; userId: string; createdAt: string; updatedAt: string;
 };
 
+type TemplateVersion = Pick<ApplicationTemplate, 'userId'|'templateName'|'applicationType'|'subjectTemplate'|'bodyTemplate'|'signature'|'attachCv'|'attachCoverLetter'|'aiPersonalizationEnabled'|'isDefault'|'status'> & {
+  id: string; templateId: string; createdAt: string;
+};
+
 const placeholders = ['jobTitle','companyName','candidateName','candidateEmail','candidatePhone','candidateLocation','relevantSkills','location','candidateHeadline'] as const;
 const legacy: Record<string, typeof placeholders[number]> = { name: 'candidateName', job_title: 'jobTitle' };
 export const supportedApplicationPlaceholders = placeholders.map(value => `{{${value}}}`);
@@ -66,14 +70,25 @@ export async function resolveApplicationTemplate(r:Repository,userId:string,temp
   return selected??null;
 }
 
+async function recordTemplateVersion(r:Repository,template:ApplicationTemplate) {
+  const version:TemplateVersion={
+    id:randomUUID(),templateId:template.id,userId:template.userId,templateName:template.templateName,
+    applicationType:template.applicationType,subjectTemplate:template.subjectTemplate,bodyTemplate:template.bodyTemplate,
+    signature:template.signature,attachCv:template.attachCv,attachCoverLetter:template.attachCoverLetter,
+    aiPersonalizationEnabled:template.aiPersonalizationEnabled,isDefault:template.isDefault,status:template.status,
+    createdAt:template.updatedAt,
+  };
+  await r.put('templateVersions',version);
+}
+
 export async function createApplicationTemplate(user:User,input:unknown){
   const data=applicationTemplateSchema.parse(input);assertSafeTemplate(data as ApplicationTemplate);
-  return transaction(async r=>{const existing=await listApplicationTemplates(user.id,r),now=new Date().toISOString();const row:ApplicationTemplate={...data,id:randomUUID(),userId:user.id,isDefault:data.isDefault||existing.length===0,createdAt:now,updatedAt:now};if(row.isDefault)for(const item of existing.filter(v=>v.isDefault))await r.put('applicationTemplates',{...item,isDefault:false,updatedAt:now});await r.put('applicationTemplates',row);await audit(r,user.id,'application_template.created',row.id);return row;});
+  return transaction(async r=>{const existing=await listApplicationTemplates(user.id,r),now=new Date().toISOString();const row:ApplicationTemplate={...data,id:randomUUID(),userId:user.id,isDefault:data.isDefault||existing.length===0,createdAt:now,updatedAt:now};if(row.isDefault)for(const item of existing.filter(v=>v.isDefault))await r.put('applicationTemplates',{...item,isDefault:false,updatedAt:now});await r.put('applicationTemplates',row);await recordTemplateVersion(r,row);await audit(r,user.id,'application_template.created',row.id);return row;});
 }
 
 export async function updateApplicationTemplate(user:User,id:string,input:unknown){
   const data=applicationTemplateSchema.parse(input);assertSafeTemplate(data as ApplicationTemplate);
-  return transaction(async r=>{const rows=await listApplicationTemplates(user.id,r),current=rows.find(row=>row.id===id);if(!current)throw new ApiError(404,'TEMPLATE_NOT_FOUND','Application template not found.');const now=new Date().toISOString(),next={...current,...data,updatedAt:now};if(next.isDefault)for(const item of rows.filter(v=>v.id!==id&&v.isDefault))await r.put('applicationTemplates',{...item,isDefault:false,updatedAt:now});await r.put('applicationTemplates',next);await audit(r,user.id,'application_template.updated',id);return next;});
+  return transaction(async r=>{const rows=await listApplicationTemplates(user.id,r),current=rows.find(row=>row.id===id);if(!current)throw new ApiError(404,'TEMPLATE_NOT_FOUND','Application template not found.');const now=new Date().toISOString(),next={...current,...data,updatedAt:now};if(next.isDefault)for(const item of rows.filter(v=>v.id!==id&&v.isDefault))await r.put('applicationTemplates',{...item,isDefault:false,updatedAt:now});await r.put('applicationTemplates',next);await recordTemplateVersion(r,next);await audit(r,user.id,'application_template.updated',id);return next;});
 }
 
 export async function deleteApplicationTemplate(user:User,id:string){

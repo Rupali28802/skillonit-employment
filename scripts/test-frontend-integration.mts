@@ -82,7 +82,14 @@ try {
     await delay(500);
   }
   assert.ok(ready, 'Test frontend started');
-  const homepage = await (await request('/')).text();
+  const homepageResponse = await request('/');
+  const contentSecurityPolicy = homepageResponse.headers.get('content-security-policy') || '';
+  assert.match(contentSecurityPolicy, /default-src 'self'/, 'Homepage has a Content-Security-Policy');
+  assert.match(contentSecurityPolicy, /script-src 'self' 'nonce-[^']+' 'strict-dynamic'/, 'Homepage scripts require a per-request nonce');
+  const scriptPolicy = contentSecurityPolicy.split(';').find(directive => directive.trim().startsWith('script-src')) || '';
+  assert.ok(!scriptPolicy.includes("'unsafe-inline'"), 'Script policy does not allow arbitrary inline scripts');
+  const homepage = await homepageResponse.text();
+  assert.match(homepage, /<script nonce=\"[^\"]+\" type=\"application\/ld\+json\"/, 'Structured data receives the request nonce');
   assert.ok(homepage.includes('Find the Right Job.') && homepage.includes('live-discovery-heading'), 'Job-hunting homepage preserved');
   const styles = [...homepage.matchAll(/href="([^"\s]+\.css(?:\?[^"\s]*)?)"/g)].map(match => match[1]);
   const css = (await Promise.all(styles.map(async path => (await request(path.replaceAll('&amp;', '&'))).text()))).join('\n');
@@ -94,12 +101,24 @@ try {
   const fakeFeed = async () => ({ complete: true, snapshot: true, requests: 0, jobs: [{ externalId: 'nurse-1', title: 'Integration clinical nurse',
     company: 'Fixture Company', url: 'https://careers.example.com/nurse-1', description: 'A clinical role supporting patients and the nursing team.',
     location: 'Worldwide', postedAt: new Date().toISOString() }] });
-  await runEngine(fakeFeed);
-  const feedPage = await (await request('/')).text();
-  assert.ok(feedPage.includes('Integration clinical nurse') && feedPage.includes('Salary not specified') && feedPage.includes('Experience not specified'));
-  const feedJob = (await read(r => r.find<any>('jobs', { title: 'Integration clinical nurse' })))[0];
+  const engineRun = await runEngine(fakeFeed);
+  assert.equal(engineRun.status, 'completed', 'Fixture discovery cycle completed');
+  assert.deepEqual(engineRun.results.map(result => result.status), ['completed'], 'Fixture source accepted and published its job');
+  const ingestedJob = (await read(r => r.find<any>('jobs', { title: 'Integration clinical nurse' })))[0];
+  assert.equal(ingestedJob?.status, 'published', 'Fixture job persisted as a public listing');
+  // The production App Router can keep an in-flight server render while the
+  // discovery transaction commits. Poll the public page briefly so this test
+  // verifies the observable feed, rather than a race between those two steps.
+  let feedPage = '';
+  for (let attempt = 0; attempt < 10; attempt++) {
+    feedPage = await (await request('/')).text();
+    if (feedPage.includes('Integration clinical nurse')) break;
+    await delay(250);
+  }
+  assert.ok(feedPage.includes('Integration clinical nurse') && feedPage.includes('Not specified') && feedPage.includes('Experience not specified'));
+  const feedJob = ingestedJob;
   const detail = await (await request('/jobs/' + feedJob.id)).text();
-  assert.ok(detail.includes('View original job from') && detail.includes('https://careers.example.com/nurse-1'));
+  assert.ok(detail.includes('Source:') && detail.includes('Fixture careers') && detail.includes('https://careers.example.com/nurse-1'));
   await request('/api/v1/admin/job-engine', 401);
   const live = await fetch(origin + '/api/v1/jobs/stream', { signal: AbortSignal.timeout(20000) });
   const reader = live.body!.getReader();

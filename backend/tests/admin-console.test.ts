@@ -61,6 +61,7 @@ test('admin console securely manages and oversees existing backend resources', a
     assert.ok(employerRows.items.length >= 2);
     const employerRow = employerRows.items.find(row => (row as Record<string, unknown>).ownerUserId === employerUser.id) as Record<string, unknown>;
     assert.equal(employerRow.ownerUserId, employerUser.id); assert.equal(employerRow.email, employerUser.email); assert.equal(employerRow.role, 'employer');
+    assert.equal(employerRow.verificationStatus, 'verified'); assert.equal(employerRow.verificationEvidenceCount, 1);
     const onboardingRow = employerRows.items.find(row => (row as Record<string, unknown>).ownerUserId === onboardingEmployer.id) as Record<string, unknown>;
     assert.equal(onboardingRow.status, 'onboarding_required'); assert.equal(onboardingRow.hasEmployerProfile, false);
     await adminConsole.setAdminUserRole(admin, employerUser.id, { role: 'student', reason: 'Employer owner role review.' });

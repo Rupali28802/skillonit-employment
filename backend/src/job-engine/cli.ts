@@ -7,7 +7,24 @@ import { coverageReport, saveCoverageAudit } from './coverage.js';
 import { indexSemantic } from './semantic.js';
 
 let stopping = false;
+let coverageAuditRunning = false;
+let nextCoverageAuditAt = 0;
 for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => { stopping = true; });
+function scheduleCoverageAudit() {
+  // Coverage is a full-inventory report. It is useful operationally, but it
+  // must be scheduled as explicit maintenance rather than competing with the
+  // public jobs feed after every discovery change. The most recent completed
+  // report remains available through discovery status.
+  if (process.env.ENABLE_COVERAGE_AUDIT !== 'true') return;
+  if (coverageAuditRunning || Date.now() < nextCoverageAuditAt) return;
+  coverageAuditRunning = true;
+  nextCoverageAuditAt = Date.now() + 60 * 60 * 1000;
+  // Coverage scans the full live inventory. It is useful monitoring, but it
+  // must never hold the ten-minute ingestion loop hostage.
+  void saveCoverageAudit()
+    .catch(() => console.error('COVERAGE_AUDIT_FAILED: ingestion result preserved; retry coverage export.'))
+    .finally(() => { coverageAuditRunning = false; });
+}
 try {
   if (!process.env.DATABASE_URL?.trim() && !process.env.MONGODB_URI?.trim()) throw Error('DATABASE_REQUIRED');
   await bootstrapIndexes();
@@ -60,10 +77,18 @@ try {
   else if (command === 'status') console.log(JSON.stringify(await engineStatus(), null, 2));
   else if (command === 'once' || command === 'once-jooble' || command === 'watch') {
     let recordingHeartbeat=false;
-    const heartbeat=async()=>{
+    const heartbeat=async(extra: Record<string, unknown> = {})=>{
       if(recordingHeartbeat)return;
       recordingHeartbeat=true;
-      try {await transaction(r=>r.put('jobEngineState',{id:'discovery-heartbeat',updatedAt:new Date().toISOString(),status:'running'}));}
+      try {await transaction(async r=>{
+        const current = await r.get<Record<string, unknown>>('jobEngineState','discovery-heartbeat');
+        await r.put('jobEngineState',{
+          ...current,
+          id:'discovery-heartbeat',
+          updatedAt:new Date().toISOString(),
+          ...extra,
+        });
+      });}
       catch {console.error('DISCOVERY_HEARTBEAT_FAILED');}
       finally {recordingHeartbeat=false;}
     };
@@ -71,12 +96,19 @@ try {
     heartbeatTimer?.unref();
     try {
     do {
-      if(command==='watch') await heartbeat();
+      if(command==='watch') await heartbeat({status:'running',lastCycleStartedAt:new Date().toISOString()});
       const result = await runEngine(undefined, command === 'once-jooble' ? 'jooble' : undefined);
+      if(command==='watch') await heartbeat({
+        status: result.status === 'completed' ? 'idle' : result.status,
+        lastCycleCompletedAt: new Date().toISOString(),
+        lastCycleStatus: result.status,
+        lastCycleSourcesProcessed: result.results.length,
+        lastCycleChangedSources: result.results.filter(r => r.counts || r.status === 'failed' || r.status === 'invalid_configuration').length,
+      });
       const changed = result.results.filter(r => r.counts || r.status === 'failed' || r.status === 'invalid_configuration');
       if (changed.length || result.expired) {
-        try { await saveCoverageAudit(); }
-        catch { console.error('COVERAGE_AUDIT_FAILED: ingestion result preserved; retry coverage export.'); }
+        if (command === 'watch') scheduleCoverageAudit();
+        else await saveCoverageAudit();
       }
       if (command !== 'watch') console.log(JSON.stringify(result));
       else if (changed.length || result.expired) console.log(JSON.stringify({ ...result, results: changed }));
@@ -85,7 +117,9 @@ try {
     } while (!stopping);
     } finally {if(heartbeatTimer)clearInterval(heartbeatTimer);}
   } else throw Error('UNKNOWN_COMMAND');
-} catch {
-  console.error('Job engine failed. Check database, source configuration and saved source status; private connection details withheld.');
+} catch (error) {
+  // Keep the production log actionable without printing configuration values.
+  const message = error instanceof Error ? error.message.replace(/(?:mongodb(?:\+srv)?:\/\/|postgres(?:ql)?:\/\/)[^\s]+/gi, '[connection-string-redacted]') : 'Unknown worker error';
+  console.error(`Job engine failed: ${message}`);
   process.exitCode = 1;
 } finally { await closeStore(); }

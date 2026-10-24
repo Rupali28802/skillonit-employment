@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { read, transaction, type Repository } from '../lib/store.js';
-import { expireJobs } from '../lib/lifecycle.js';
+import { expireJobsBatch } from '../lib/lifecycle.js';
 import type { Job } from '../lib/domain.js';
 import { fetchFeed, FeedError, type FeedBatch } from './adapters.js';
 import { normalize, duplicateKey, hash } from './normalize.js';
@@ -11,12 +11,21 @@ type Variant = { id: string; sourceId: string; jobId: string; lastSeenRun: strin
 export type SourceState = { id: string; nextRunAt: number; failures: number; status: string; lastSuccessAt?: string; lastAttemptAt?: string; errorCode?: string; counts?: Counts };
 type Counts = { fetched: number; added: number; updated: number; duplicates: number; rejected: number; closed: number; requests: number; complete: boolean };
 const leaseId = 'job-engine';
+const cycleBudgetMs = () => {
+  const configured = Number(process.env.JOB_ENGINE_CYCLE_MAX_MS || 480_000);
+  return Number.isFinite(configured) ? Math.min(1_200_000, Math.max(60_000, Math.floor(configured))) : 480_000;
+};
+// A lease must outlive a healthy bounded cycle. A fixed five-minute lease can
+// expire while the default eight-minute cycle is still processing a slow feed,
+// allowing a second worker to acquire it and race the same sources. Keep a
+// short handoff margin, while retaining a finite recovery window after a crash.
+export const engineLeaseDurationMs = () => Math.min(1_260_000, Math.max(300_000, cycleBudgetMs() + 60_000));
 const verificationContentUnchanged = (left: Job, right: Job) => ['title', 'company', 'description', 'requirements', 'method', 'url', 'email', 'expiresAt', 'sourcePostedAt']
   .every(key => left[key as keyof Job] === right[key as keyof Job]) && left.feed?.sourceId === right.feed?.sourceId && left.feed?.externalId === right.feed?.externalId;
 async function fence(r: Repository, owner: string) {
   const lease = await r.get<Lease>('jobEngineState', leaseId);
   if (lease?.owner !== owner || lease.until < Date.now()) throw new FeedError('LEASE_LOST');
-  await r.put('jobEngineState', { ...lease, until: Date.now() + 300000 });
+  await r.put('jobEngineState', { ...lease, until: Date.now() + engineLeaseDurationMs() });
 }
 async function refreshFeed(r: Repository) {
   await r.put('jobEngineState', { id: 'feed-version', version: randomUUID(), updatedAt: new Date().toISOString() });
@@ -133,12 +142,13 @@ async function ingest(source: FeedSource, batch: FeedBatch, owner: string, runId
 }
 export async function runEngine(discover: (source: FeedSource) => Promise<FeedBatch> = fetchFeed, sourceType?: FeedSource['type']) {
   const owner = randomUUID();
+  const cycleDeadline = Date.now() + cycleBudgetMs();
   let acquired = false;
   try {
     acquired = await transaction(async r => {
       const old = await r.get<Lease>('jobEngineState', leaseId);
       if (old && old.until > Date.now()) return false;
-      await r.put('jobEngineState', { id: leaseId, owner, until: Date.now() + 300000 }); return true;
+      await r.put('jobEngineState', { id: leaseId, owner, until: Date.now() + engineLeaseDurationMs() }); return true;
     });
   } catch (e) { if ((e as { code?: number }).code !== 11000) throw e; }
   if (!acquired) return { status: 'busy', results: [] };
@@ -146,11 +156,23 @@ export async function runEngine(discover: (source: FeedSource) => Promise<FeedBa
   try {
     const knownStates = new Map((await read(r => r.find<SourceState>('jobFeedStates', {}, 1000))).map(s => [s.id, s]));
     const providerBlocks = new Map<string, number>();
-    let cursor = '';
-    for (;;) {
-      const sources = await read(r => r.scan<FeedSource>('jobFeedSources', {}, cursor, 50));
-      if (!sources.length) break;
-      for (const raw of sources) {
+    // Do not let slow, low-frequency feeds delay the short-interval employer
+    // boards that power the "new in ten minutes" experience. A bounded cycle
+    // releases its lease so the watch loop can immediately schedule the next
+    // fair batch instead of keeping the worker occupied for hours.
+    const sources = await read(r => r.find<FeedSource>('jobFeedSources', {}, 1000));
+    sources.sort((left, right) => {
+      const a = sourceSchema.safeParse(left), b = sourceSchema.safeParse(right);
+      if (!a.success || !b.success) return a.success === b.success ? left.id.localeCompare(right.id) : a.success ? -1 : 1;
+      const aState = knownStates.get(a.data.id), bState = knownStates.get(b.data.id);
+      const aDue = (aState?.nextRunAt || 0) <= Date.now(), bDue = (bState?.nextRunAt || 0) <= Date.now();
+      if (aDue !== bDue) return aDue ? -1 : 1;
+      return a.data.intervalMinutes - b.data.intervalMinutes
+        || String(aState?.lastSuccessAt || '').localeCompare(String(bState?.lastSuccessAt || ''))
+        || a.data.id.localeCompare(b.data.id);
+    });
+    for (const raw of sources) {
+      if (Date.now() >= cycleDeadline) break;
         if (sourceType && raw.type !== sourceType) continue;
         const parsed = sourceSchema.safeParse(raw);
         if (!parsed.success) { results.push({ source: raw.id, status: 'invalid_configuration' }); continue; }
@@ -200,10 +222,18 @@ export async function runEngine(discover: (source: FeedSource) => Promise<FeedBa
           });
           results.push({ source: source.id, status: 'failed', errorCode });
         }
-      }
-      cursor = sources[sources.length - 1].id;
     }
-    const expired = await expireJobs();
+    // Expiry is maintenance, not a prerequisite for a newly discovered job.
+    // Persist its cursor and handle one slice per cycle so it cannot starve the
+    // employer boards that are scheduled every ten minutes.
+    const expiryState = await read(r => r.get<{ cursor?: string }>('jobEngineState', 'job-expiry-cursor'));
+    const expiry = await expireJobsBatch(new Date(), expiryState?.cursor || '');
+    await transaction(async r => r.put('jobEngineState', {
+      id: 'job-expiry-cursor',
+      cursor: expiry.complete ? '' : expiry.nextCursor,
+      updatedAt: new Date().toISOString(),
+    }));
+    const expired = expiry.expired;
     if (expired) await transaction(refreshFeed);
     return { status: 'completed', results, expired };
   } finally {

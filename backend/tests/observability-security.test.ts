@@ -23,15 +23,18 @@ test('structured logging and process metrics retain operational fields without s
 });
 
 test('security headers, global abuse controls, incident telemetry and admin overview are enforced', async () => {
-  const replica = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
+  // A replica-set member can need longer than the library's 10-second default
+  // on a busy Windows host. This is test-only and does not affect production.
+  const replica = await MongoMemoryReplSet.create({ replSet: { count: 1 }, instanceOpts: [{ launchTimeout: 30_000 }] });
   process.env.MONGODB_URI = replica.getUri(); process.env.MONGODB_DATABASE = 'observability_security_test'; process.env.DEMO_MODE = 'true'; process.env.NODE_ENV = 'test'; process.env.APP_URL = 'http://localhost:3000'; process.env.ABUSE_REQUESTS_PER_MINUTE = '30'; process.env.ABUSE_READS_PER_MINUTE = '30'; process.env.TRUST_PROXY_HOPS = '0'; process.env.OBSERVABILITY_METRICS_TOKEN = 'test-metrics-token-with-at-least-32-characters';
-  const store = await import('../src/lib/store.ts'), observability = await import('../src/lib/observability.ts'), security = await import('../src/lib/security.ts'), { app } = await import('../src/app.ts');
+  const store = await import('../src/lib/store.ts'), observability = await import('../src/lib/observability.ts'), security = await import('../src/lib/security.ts'), { app, shouldSetHsts } = await import('../src/app.ts');
   const admin = user('observability-admin', 'admin'), student = user('observability-student', 'student');
   const server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
   try {
     await store.bootstrapIndexes(); await store.transaction(async r => { await r.put('users', admin); await r.put('users', student); await r.put('queueExecutions', { id: 'slow-task', status: 'processing', startedAt: '2026-01-01T00:00:00.000Z' }); await r.put('deadLetterJobs', { id: 'dead-task', status: 'pending' }); });
     const address = server.address(); if (!address || typeof address === 'string') throw new Error('server'); const base = `http://127.0.0.1:${address.port}`;
-    const first = await fetch(`${base}/api/v1/health`); assert.equal(first.status, 200); assert.equal(first.headers.get('x-content-type-options'), 'nosniff'); assert.equal(first.headers.get('x-frame-options'), 'DENY'); assert.match(first.headers.get('content-security-policy') || '', /default-src 'none'/); assert.equal(first.headers.get('referrer-policy'), 'no-referrer'); assert.equal(first.headers.get('permissions-policy'), 'camera=(), microphone=(), geolocation=(), payment=()'); assert.ok(first.headers.get('x-request-id'));
+    assert.equal(shouldSetHsts({ APP_URL: 'https://employment.example.test', NODE_ENV: 'test' }), true); assert.equal(shouldSetHsts({ APP_URL: 'http://localhost:3000', NODE_ENV: 'production' }), false);
+    const first = await fetch(`${base}/api/v1/health`); assert.equal(first.status, 200); const health = await first.clone().json() as { data: unknown }; assert.deepEqual(health.data, { status: 'ok' }); assert.equal(first.headers.get('x-content-type-options'), 'nosniff'); assert.equal(first.headers.get('x-frame-options'), 'DENY'); assert.match(first.headers.get('content-security-policy') || '', /default-src 'none'/); assert.equal(first.headers.get('referrer-policy'), 'no-referrer'); assert.equal(first.headers.get('permissions-policy'), 'camera=(), microphone=(), geolocation=(), payment=()'); assert.equal(first.headers.get('strict-transport-security'), null); assert.ok(first.headers.get('x-request-id'));
     assert.equal((await fetch(`${base}/api/v1/health/live`)).status, 200); assert.equal((await fetch(`${base}/api/v1/health/ready`)).status, 200);
     assert.equal((await fetch(`${base}/internal/metrics`)).status, 401); const metrics = await fetch(`${base}/internal/metrics`, { headers: { Authorization: `Bearer ${process.env.OBSERVABILITY_METRICS_TOKEN}` } }); assert.equal(metrics.status, 200); assert.match(await metrics.text(), /skillonit_http_requests_total/);
     let last = first; for (let index = 1; index <= 30; index++) last = await fetch(`${base}/api/v1/health`); assert.equal(last.status, 429); assert.equal(last.headers.get('retry-after'), '60');

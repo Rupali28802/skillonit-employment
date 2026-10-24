@@ -93,13 +93,15 @@ export async function transitionJobLifecycle(r: Repository, jobId: string, targe
   return next;
 }
 
-export async function expireJobs(now = new Date()) {
+export type ExpiryBatchResult = { expired: number; nextCursor: string; complete: boolean };
+
+// Processes one bounded slice so a background caller can interleave expiry
+// maintenance with latency-sensitive discovery work.
+export async function expireJobsBatch(now = new Date(), cursor = ''): Promise<ExpiryBatchResult> {
   const config = await read(async r => (await policy(r)).value);
-  let cursor = '', expired = 0;
-  for (;;) {
-    const batch = await read(r => r.scan<LifecycleJob>('jobs', { status: 'published' }, cursor, config.batchSize));
-    if (!batch.length) return expired;
-    expired += await transaction(async r => {
+  const batch = await read(r => r.scan<LifecycleJob>('jobs', { status: 'published' }, cursor, config.batchSize));
+  if (!batch.length) return { expired: 0, nextCursor: '', complete: true };
+  const expired = await transaction(async r => {
       let changed = 0;
       for (const item of batch) {
         let latest = await r.get<LifecycleJob>('jobs', item.id);
@@ -118,8 +120,17 @@ export async function expireJobs(now = new Date()) {
         }
       }
       return changed;
-    });
-    cursor = batch.at(-1)!.id;
+  });
+  return { expired, nextCursor: batch.at(-1)!.id, complete: batch.length < config.batchSize };
+}
+
+export async function expireJobs(now = new Date()) {
+  let cursor = '', expired = 0;
+  for (;;) {
+    const result = await expireJobsBatch(now, cursor);
+    expired += result.expired;
+    if (result.complete) return expired;
+    cursor = result.nextCursor;
   }
 }
 

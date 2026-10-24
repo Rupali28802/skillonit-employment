@@ -6,6 +6,7 @@ import { currentUser } from '@/lib/api';
 import { api, configuredPlans, demoMode } from '@/lib/api';
 import { type PublicJob, type User } from '@/lib/domain';
 import { SmartForm, Action } from './forms';
+import { MatchPreferencesForm } from './match-preferences';
 import { PlanEditor } from './admin-config';
 import { RazorpayConfiguration } from './razorpay-configuration';
 import { AdminBillingPanel } from './admin-billing-panel';
@@ -17,6 +18,8 @@ import { AdminConsolePanel } from './admin-console-panel';
 import { AdminSeoPanel } from './admin-seo-panel';
 import { AdminRolesPanel } from './admin-roles-panel';
 import { AdminResponsiveLayout } from './admin-responsive-layout';
+import { ReferralDashboard } from './referral-dashboard';
+import { AdminReferralPanel } from './admin-referral-panel';
 import { ApplicationDetails } from './application-details';
 import { JobActions } from './job-actions';
 import { ApplicationTemplates, type ApplicationTemplate } from './application-templates';
@@ -33,6 +36,7 @@ const candidateLinks = [
   ['assistant', 'AI assistant'],
   ['mail', 'Connected email'],
   ['billing', 'Plan & billing'],
+  ['referrals', 'Refer & earn'],
   ['settings', 'Settings'],
 ];
 const employerLinks = [
@@ -63,6 +67,7 @@ const adminLinks = [
   ['admin/privacy', 'Privacy requests'],
   ['admin/roles', 'Roles & permissions'],
   ['admin/settings', 'Settings'],
+  ['admin/referrals', 'Referral & rewards'],
 ];
 const adminLinkPermission: Record<string, string> = {
   'admin/users':'users.read','admin/employers':'employers.read','admin/jobs':'jobs.read','admin/sources':'sources.read',
@@ -70,6 +75,7 @@ const adminLinkPermission: Record<string, string> = {
   'admin/queues':'system.read','admin/notifications':'notifications.read','admin/health':'system.read','admin/matching':'configuration.read',
   'admin/leads':'configuration.read','admin/content':'configuration.read','admin/flags':'configuration.read',
   'admin/audit':'audit.read','admin/privacy':'privacy.read','admin/roles':'admin.roles.manage','admin/settings':'configuration.read',
+  'admin/referrals':'referrals.read',
 };
 export async function Workspace({ section }: { section: string }) {
   const user = await currentUser();
@@ -190,51 +196,7 @@ async function Candidate({ section, user }: { section: string; user: User }) {
           Keep your preferences current to improve your matches. Automation
           remains off until all required services and consents are ready.
         </p>
-        <SmartForm
-          endpoint="me/preferences"
-          method="PUT"
-          key={preferences.revision}
-          initial={preferences}
-          expectedRevision={preferences.revision}
-          fields={[
-            { name: 'roles', label: 'Target job titles', type: 'list' },
-            {
-              name: 'relatedRoles',
-              label: 'Accepted related roles',
-              type: 'list',
-              required: false,
-            },
-            {
-              name: 'countries',
-              label: 'Preferred countries',
-              type: 'list',
-              required: false,
-            },
-            {
-              name: 'modes',
-              label: 'Work arrangements',
-              type: 'list',
-              hint: 'Remote, Hybrid, On-site',
-              required: false,
-            },
-            {
-              name: 'exclusions',
-              label: 'Excluded titles or employers',
-              type: 'list',
-              required: false,
-            },
-            {
-              name: 'dailyCap',
-              label: 'Your daily application cap',
-              type: 'number',
-            },
-            {
-              name: 'automation',
-              label: 'Enable automatic applications with my explicit consent',
-              type: 'checkbox',
-            },
-          ]}
-        />
+        <MatchPreferencesForm key={preferences.revision} initial={preferences} />
       </div>
     );
   }
@@ -403,6 +365,16 @@ async function Candidate({ section, user }: { section: string; user: User }) {
       </div>
     );
   }
+  if (section === 'referrals') {
+    const referrals = await api<{
+      code:string; link:string; totals:{referrals:number;emailVerified:number;qualifyingConversions:number;pendingPaise:number;availablePaise:number;paidPaise:number};
+      campaign:{active:boolean;minimumWithdrawalPaise:number;qualifyingAction:string};
+      referrals:{id:string;name:string;registeredAt:string;emailVerified:boolean;qualifying:boolean}[];
+      rewards:{id:string;amountPaise:number;status:string;action:string;createdAt:string;availableAt:string}[];
+      withdrawals:{id:string;amountPaise:number;status:string;payoutHandleMasked:string;createdAt:string;updatedAt:string;payoutReference:string|null}[];
+    }>('me/referrals');
+    return <ReferralDashboard initial={referrals} />;
+  }
   if (section === 'settings') {
     const consents = await api<{ purpose: string; granted: boolean; policyVersion: string; updatedAt: string }[]>('me/consents');
     return (
@@ -456,6 +428,14 @@ async function Admin({
     return <AdminConsolePanel section="overview" />;
   }
   if (segment === 'roles') return <AdminRolesPanel />;
+  if (segment === 'referrals') {
+    const referrals = await api<{
+      campaign:{name:string;active:boolean;amountPaise:number;qualifyingAction:'email_verified_registration'|'paid_subscription';eligiblePlanCodes:string[];startsAt:string|null;endsAt:string|null;maxRewardsPerReferrer:number|null;refundWaitDays:number;minimumWithdrawalPaise:number};
+      totals:{referrals:number;rewards:number;pendingPaise:number;availablePaise:number;withdrawalRequests:number};
+      withdrawals:{id:string;userId:string;amountPaise:number;status:string;payoutHandleMasked:string;createdAt:string}[];
+    }>('admin/referrals');
+    return <AdminReferralPanel initial={referrals} canManage={permissions.includes('referrals.manage')} />;
+  }
   if (segment === 'content') return <AdminSeoPanel />;
   if (['users', 'employers', 'jobs', 'sources', 'applications', 'fraud', 'audit'].includes(segment))
     return <AdminConsolePanel section={segment} />;

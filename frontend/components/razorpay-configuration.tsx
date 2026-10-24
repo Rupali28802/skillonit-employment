@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import styles from './razorpay-configuration.module.css';
+import { readBrowserApiPayload } from '@/lib/browser-api';
 
 type Environment = 'test' | 'live';
 type Metadata = {
@@ -37,11 +38,13 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },
   });
-  const payload = await response.json();
+  const payload = await readBrowserApiPayload<T>(response);
   if (!response.ok)
     throw new Error(
       payload.error?.message || 'Payment configuration could not be updated.',
     );
+  if (payload.data === undefined)
+    throw new Error('Payment configuration returned an incomplete response.');
   return payload.data;
 }
 const date = (value: string | null) =>

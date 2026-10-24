@@ -19,6 +19,23 @@ async function validateProductionLabels(r: Repository, patch: Record<string, unk
     const entry = await r.get<{ active: boolean; type?: string; countryCode?: string }>(collection, value) ?? (await r.find<{ active: boolean; type?: string; countryCode?: string }>(collection, { displayName: value, active: true }, 1))[0];
     if (!entry?.active || (field === 'countries' && entry.type !== 'country') || (field === 'cities' && entry.type !== 'city') || (field === 'regions' && !['region', 'state', 'province', 'union_territory'].includes(entry.type ?? '')) || (field === 'indiaStates' && (entry.countryCode !== 'IN' || !['state', 'union_territory'].includes(entry.type ?? '')))) throw new ApiError(400, 'PREFERENCE_REFERENCE', 'Select an active catalog entry.');
   }
+  // A city selection is scoped to the country choices sent in the same update.
+  // This rejects cross-country IDs instead of silently retaining an unrelated
+  // city preference. Legacy label-only preferences remain supported.
+  const countries = (patch.countries ?? []) as string[];
+  const cities = (patch.cities ?? []) as string[];
+  if (countries.length && cities.length) {
+    const selectedCountryCodes = new Set<string>();
+    for (const value of countries) {
+      const country = await r.get<{ countryCode?: string; type?: string }>('locations', value);
+      if (country?.type === 'country' && country.countryCode) selectedCountryCodes.add(country.countryCode);
+    }
+    if (selectedCountryCodes.size) for (const value of cities) {
+      const city = await r.get<{ countryCode?: string; type?: string }>('locations', value);
+      if (city?.type === 'city' && city.countryCode && !selectedCountryCodes.has(city.countryCode))
+        throw new ApiError(400, 'PREFERENCE_LOCATION_SCOPE', 'Select cities from one of your preferred countries.');
+    }
+  }
 }
 export const automationSchema = z.object({
   enabled: z.boolean().default(false), dailyCap: z.number().int().min(0).max(100).default(5),

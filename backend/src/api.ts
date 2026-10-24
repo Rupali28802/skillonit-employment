@@ -84,6 +84,8 @@ import { listEmployerJobs, createEmployerJob, employerPage, employerOverview, ad
 import { adminConsoleRoute } from './lib/admin-console.js';
 import { runSupportChat } from './lib/support-chatbot.js';
 import { publicWhatsAppSupportConfig } from './lib/direct-whatsapp-support.js';
+import { adminReferralOverview, adminReferralPayoutDetails, attachRegistrationReferral, backfillReferralProfiles, createReferralAttribution, getReferralCampaign, referralAttributionCookie, referralDashboard, requestReferralWithdrawal, reviewReferralWithdrawal, updateReferralCampaign, ensureReferralProfile } from './lib/referrals.js';
+import { cookies } from './request-context.js';
 export async function handle(
   request: Request,
   { params }: { params: Promise<{ path: string[] }> },
@@ -132,6 +134,16 @@ export async function handle(
     if (p === 'support/config' && method === 'GET') {
       return ok(publicWhatsAppSupportConfig());
     }
+    if (p === 'referrals/track' && method === 'POST') {
+      await rateLimit(`referral-track:${requester}`, 20);
+      const current = await currentUser();
+      const attribution = await createReferralAttribution((await body()).code, current?.id);
+      (await cookies()).set(referralAttributionCookie, attribution.token, {
+        httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' || process.env.APP_URL?.startsWith('https://') === true,
+        path: '/', expires: new Date(attribution.expiresAt),
+      });
+      return ok({ tracked: true, expiresAt: attribution.expiresAt });
+    }
     if (p === "me/dashboard" && method === "GET") {
       const user = await requireUser("student");
       await rateLimit('matching:' + user.id, 30);
@@ -160,12 +172,10 @@ export async function handle(
       await read(r => r.count('systemConfig', {}));
       return ok({ status: 'ready' });
     }
-    if (p === "health")
-      return ok({
-        status: "ok",
-        mode: demoMode() ? "demo" : "production",
-        providers: providerHealth(),
-      });
+    // Public health is deliberately minimal. Provider state belongs to the
+    // authenticated admin observability surface and must not disclose which
+    // integrations are configured or temporarily unavailable to the internet.
+    if (p === "health") return ok({ status: "ok" });
     if (method !== "GET" && p !== 'webhooks/razorpay')
       await rateLimit(
         (p.startsWith("auth/") ? "auth:" : "write:") +
@@ -258,6 +268,8 @@ export async function handle(
           if ((await r.find<User>("users", { email: user.email })).length)
             throw new ApiError(409, "ACCOUNT_EXISTS", "An account already exists for this email.");
           await r.put("users", user);
+          await ensureReferralProfile(r, user);
+          await attachRegistrationReferral(r, user, (await cookies()).get(referralAttributionCookie)?.value);
           otp = await createEmailOtp(r, user.id);
           await audit(r, user.id, "account.registered", user.id);
         });
@@ -282,6 +294,7 @@ export async function handle(
         }
       }
       await signIn(user);
+      (await cookies()).delete(referralAttributionCookie);
       return ok(
         {
           user: safeUser(user),
@@ -304,6 +317,14 @@ export async function handle(
       await signIn(user);
       await transaction((r) => audit(r, user.id, "auth.login_succeeded", user.id));
       return ok({ user: safeUser(user) });
+    }
+    if (p === 'me/referrals' && method === 'GET') {
+      return ok(await referralDashboard(await requireUser(), new Date()));
+    }
+    if (p === 'me/referrals/withdrawals' && method === 'POST') {
+      const user = await requireUser();
+      await rateLimit(`referral-withdrawal:${user.id}`, 5);
+      return ok(await requestReferralWithdrawal(user, await body()), 201);
     }
     if (p === "auth/logout" && method === "POST") {
       await signOut();
@@ -414,14 +435,55 @@ export async function handle(
       const since = sinceValue ? Date.parse(sinceValue) : NaN;
       return ok(await read(async r=> {
         const sources = await r.find<{id:string;intervalMinutes:number}>('jobFeedSources',{enabled:true,approved:true},1000);
-        const states = new Map((await r.find<{id:string;lastSuccessAt?:string;failures:number}>('jobFeedStates',{},1000)).map(s=>[s.id,s]));
+        const states = new Map((await r.find<{id:string;lastSuccessAt?:string;failures:number;status?:string;errorCode?:string}>('jobFeedStates',{},1000)).map(s=>[s.id,s]));
         const audit = await r.get<{countries:{indexedListings:number}[];generatedAt:string}>('jobEngineState','coverage-latest');
-        const heartbeat = await r.get<{updatedAt:string}>('jobEngineState','discovery-heartbeat');
+        const heartbeat = await r.get<{
+          updatedAt:string;
+          status?:string;
+          lastCycleStartedAt?:string;
+          lastCycleCompletedAt?:string;
+          lastCycleStatus?:string;
+          lastCycleSourcesProcessed?:number;
+          lastCycleChangedSources?:number;
+        }>('jobEngineState','discovery-heartbeat');
         const base={status:'published',sample:{$ne:true},expiresAt:{$gt:now.toISOString()}};
-        return {sourcesOnline:sources.filter(s=>{const state=states.get(s.id);return state?.lastSuccessAt && !state.failures && now.getTime()-Date.parse(state.lastSuccessAt)<s.intervalMinutes*120000;}).length,
+        const isFresh = (source:{id:string;intervalMinutes:number}) => {
+          const state = states.get(source.id);
+          return Boolean(state?.lastSuccessAt && !state.failures && now.getTime() - Date.parse(state.lastSuccessAt) < source.intervalMinutes * 120000);
+        };
+        const freshSources = sources.filter(isFresh);
+        const fastSources = sources.filter(source => source.intervalMinutes <= 10);
+        // A source can still be generally fresh after its expected cadence has
+        // slipped. Keep that distinction visible to the public live-feed UI:
+        // “online” uses the tolerant health window, while “on cadence” allows
+        // only a small scheduler/transport grace period.
+        const isOnCadence = (source:{id:string;intervalMinutes:number}) => {
+          const state = states.get(source.id);
+          return Boolean(state?.lastSuccessAt && !state.failures && now.getTime() - Date.parse(state.lastSuccessAt) <= (source.intervalMinutes + 2) * 60000);
+        };
+        const fastSourcesOnCadence = fastSources.filter(isOnCadence);
+        // This endpoint powers the candidate-facing discovery indicator and
+        // the independent cadence probe.  Keep provider-specific failure
+        // codes on the authenticated admin observability surface: exposing
+        // them publicly would disclose which integrations are configured or
+        // missing credentials without helping a job seeker.
+        return {sourcesConfigured:sources.length,
+          sourcesOnline:freshSources.length,
+          sourcesDegraded:sources.length-freshSources.length,
+          tenMinuteSourcesConfigured:fastSources.length,
+          tenMinuteSourcesOnline:fastSources.filter(isFresh).length,
+          tenMinuteSourcesDegraded:fastSources.filter(source=>!isFresh(source)).length,
+          tenMinuteSourcesOnCadence:fastSourcesOnCadence.length,
+          tenMinuteSourcesOverdue:fastSources.length-fastSourcesOnCadence.length,
           totalJobs:await r.count('jobs'),
           workerOnline: !!heartbeat && now.getTime()-Date.parse(heartbeat.updatedAt)<600000,
           workerLastSeenAt: heartbeat?.updatedAt ?? null,
+          workerStatus: heartbeat?.status ?? 'unknown',
+          workerCycleStartedAt: heartbeat?.lastCycleStartedAt ?? null,
+          workerCycleCompletedAt: heartbeat?.lastCycleCompletedAt ?? null,
+          workerCycleStatus: heartbeat?.lastCycleStatus ?? null,
+          workerCycleSourcesProcessed: heartbeat?.lastCycleSourcesProcessed ?? null,
+          workerCycleChangedSources: heartbeat?.lastCycleChangedSources ?? null,
           detectedToday:await r.count('jobs',{...base,discoveredAt:{$gte:today.toISOString()}}),
           newJobs:await r.count('jobs',{...base,discoveredAt:{$gte:new Date(now.getTime()-600000).toISOString()}}),
           newSince: Number.isFinite(since) && since <= now.getTime() && since >= now.getTime()-86400000
@@ -853,6 +915,30 @@ export async function handle(
     }
     if (parts[0] === "admin") {
       const u = await requireUser("admin");
+      if (p === 'admin/referrals' && method === 'GET') {
+        await read(r => requireAdminPermission(r, u, 'referrals.read'));
+        return ok(await adminReferralOverview());
+      }
+      if (p === 'admin/referrals/campaign' && method === 'GET') {
+        await read(r => requireAdminPermission(r, u, 'referrals.read'));
+        return ok(await getReferralCampaign(u));
+      }
+      if (p === 'admin/referrals/campaign' && method === 'PUT') {
+        await read(r => requireAdminPermission(r, u, 'referrals.manage'));
+        return ok(await updateReferralCampaign(u, await body()));
+      }
+      if (p === 'admin/referrals/backfill' && method === 'POST') {
+        await read(r => requireAdminPermission(r, u, 'referrals.manage'));
+        return ok(await backfillReferralProfiles(u, await body()));
+      }
+      if (parts[1] === 'referrals' && parts[2] === 'withdrawals' && parts.length === 5 && parts[4] === 'payout' && method === 'GET') {
+        await read(r => requireAdminPermission(r, u, 'referrals.manage'));
+        return ok(await adminReferralPayoutDetails(parts[3]!));
+      }
+      if (parts[1] === 'referrals' && parts[2] === 'withdrawals' && parts.length === 4 && method === 'POST') {
+        await read(r => requireAdminPermission(r, u, 'referrals.manage'));
+        return ok(await reviewReferralWithdrawal(u, parts[3]!, await body()));
+      }
       if (p === 'admin/seo' && method === 'GET') {
         await read(r => requireAdminPermission(r, u, 'configuration.read'));
         const registry = await seoRegistry(url.searchParams.get('refresh') === 'true');

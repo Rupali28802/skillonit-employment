@@ -13,6 +13,7 @@ import { CV_MAX_BYTES, uploadCv, getCv, listCvs, deleteCv, confirmCv, retryCv, d
 import { configuredCvProviders, type CvProviders } from './lib/cv-providers.js';
 
 const unavailable = () => new ApiError(503, 'CV_PROVIDER_UNAVAILABLE', 'Private CV storage, scanning and parsing are not configured. Use manual profile entry.');
+const uploadsDisabled = () => new ApiError(503, 'CV_UPLOADS_DISABLED', 'CV uploads are temporarily unavailable while secure processing is being restored. You can continue using manual profile entry.');
 export function createCvUploadRouter(resolveProviders: () => CvProviders | undefined = configuredCvProviders) {
   const router = Router();
   router.post('/api/v1/me/cv', (req, res, next) => requestContext.run({ request: req, response: res }, next),
@@ -22,8 +23,12 @@ export function createCvUploadRouter(resolveProviders: () => CvProviders | undef
       try {
         sameOrigin(new Request('http://localhost/api/v1/me/cv', { method: 'POST', headers: { ...(req.get('origin') ? { origin: req.get('origin')! } : {}), 'sec-fetch-site': req.get('sec-fetch-site') || '' } }));
         const user = await requireUser('student');
+        // A deliberately disabled upload path must not consume a rate-limit
+        // slot or imply that credentials are absent. This preserves the safe
+        // production gate while giving candidates an actionable message.
+        if (process.env.ENABLE_CV_UPLOADS !== 'true') throw uploadsDisabled();
+        if (!resolveProviders()) throw unavailable();
         await module2Limit(user.id, 'upload');
-        if (process.env.ENABLE_CV_UPLOADS !== 'true' || !resolveProviders()) throw unavailable();
         res.locals.cvUserId = user.id;
         next();
       } catch (e) { next(e); }

@@ -8,6 +8,7 @@ import { configuredPlans, read, transaction } from './store.js';
 import { ApiError, audit, digest } from './security.js';
 import { activatePaidSubscription, type StudentSubscription } from './student-entitlements.js';
 import { processRecurringEvent } from './recurring-billing.js';
+import { qualifyPaidReferral, reverseReferralRewardsForPayment } from './referrals.js';
 
 export type PaymentStatus = 'created' | 'authorized' | 'captured' | 'failed' | 'partially_refunded' | 'refunded';
 export type PaymentRecord = {
@@ -112,6 +113,7 @@ export async function processRazorpayWebhook(r: Repository, eventId: string, inp
     if (order.status !== 'captured') {
       await r.put('payments', { ...order, status: 'captured', providerPaymentId: payment.id, paymentMethod: typeof payment.method === 'string' ? payment.method.slice(0, 40) : undefined, capturedAt: now.toISOString(), updatedAt: now.toISOString() });
       await activatePaidSubscription(r, { userId: order.userId, planCode: order.planCode, providerPaymentId: payment.id }, plans, now);
+      await qualifyPaidReferral(r, order.userId, order.id, order.planCode, now);
       await billing(r, { userId: order.userId, orderId: order.id, paymentId: payment.id, type: 'payment_captured', amount: order.amount, currency: order.currency }, now);
       await audit(r, 'razorpay', 'payment.captured', order.id);
     }
@@ -142,6 +144,7 @@ export async function processRazorpayWebhook(r: Repository, eventId: string, inp
             await r.put('studentSubscriptions', cancelled);
           }
           if (user) await r.put('users', { ...user, plan: 'basic' });
+          await reverseReferralRewardsForPayment(r, paymentOrder.userId, paymentOrder.id, now);
         }
         await billing(r, { userId: paymentOrder.userId, orderId: paymentOrder.id, paymentId: refund.payment_id, refundId, type: 'refund_processed', amount, currency: paymentOrder.currency }, now);
         outcome = status;
@@ -189,6 +192,7 @@ export async function reconcilePayment(actor: User, orderId: string, provider: P
     if (remote.status === 'captured' && payment.status !== 'captured') {
       await r.put('payments', { ...payment, status: 'captured', updatedAt: new Date().toISOString() });
       await activatePaidSubscription(r, { userId: payment.userId, planCode: payment.planCode, providerPaymentId: payment.providerPaymentId! }, plans);
+      await qualifyPaidReferral(r, payment.userId, payment.id, payment.planCode);
       await billing(r, { userId: payment.userId, orderId, paymentId: payment.providerPaymentId, type: 'payment_captured', amount: payment.amount, currency: payment.currency });
     }
     await audit(r, actor.id, 'payment.reconciled', orderId);

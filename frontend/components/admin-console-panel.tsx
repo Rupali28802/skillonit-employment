@@ -64,19 +64,30 @@ async function request(path: string, init?: RequestInit) {
   return payload.data;
 }
 
-function AdminAction({ section, row, onDone }: { section: string; row: Row; onDone: () => void }) {
+function AdminAction({ section, row, onDone, permissions }: { section: string; row: Row; onDone: () => void; permissions: string[] }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
   const actions = section === 'users'
     ? [row.disabled ? 'enable' : 'disable']
     : section === 'employers' && row.hasEmployerProfile ? ['verified', 'rejected']
     : section === 'jobs' ? ['publish', 'review', 'close', 'remove']
     : section === 'fraud' ? ['resolved', 'rejected'] : [];
   if (!actions.length) return null;
-  async function run(action: string) {
-    const reason = window.prompt(`Reason for ${action} (required for the audit record):`);
-    if (!reason || reason.trim().length < 3) return;
-    if (!window.confirm(`Confirm ${action} for this ${section.slice(0, -1)}?`)) return;
+  const permissionFor = (action: string) => section === 'employers'
+    ? action === 'rejected' ? 'employers.reject' : 'employers.verify'
+    : null;
+  const evidenceCount = typeof row.verificationEvidenceCount === 'number' ? row.verificationEvidenceCount : 0;
+  const disabledReason = (action: string) => {
+    const permission = permissionFor(action);
+    if (permission && !permissions.includes(permission)) return 'Your admin role does not have permission for this action.';
+    if (section === 'employers' && action === 'verified' && evidenceCount === 0) return 'Verification evidence is required before approval.';
+    return '';
+  };
+  async function run() {
+    if (!pendingAction) return;
+    const action = pendingAction;
     setBusy(true); setMessage('');
     try {
       let endpoint = '', method = 'POST', body: Record<string, unknown> = {};
@@ -94,13 +105,17 @@ function AdminAction({ section, row, onDone }: { section: string; row: Row; onDo
         body = { status: action, note: reason };
       }
       await request(endpoint, { method, body: JSON.stringify(body) });
-      setMessage('Saved and audited.'); onDone();
+      setMessage('Saved and audited.'); setPendingAction(null); setReason(''); onDone();
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Operation failed.'); }
     finally { setBusy(false); }
   }
   return <div className="admin-actions" aria-live="polite">
-    {actions.map(action => <button key={action} disabled={busy} onClick={() => void run(action)}>{label(action)}</button>)}
+    {actions.map(action => {
+      const blocked = disabledReason(action);
+      return <button key={action} type="button" disabled={busy || Boolean(blocked)} title={blocked} onClick={() => { setMessage(''); setReason(''); setPendingAction(action); }}>{label(action)}</button>;
+    })}
     {message && <span>{message}</span>}
+    {pendingAction && <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) { setPendingAction(null); setReason(''); } }}><dialog className="admin-role-modal" open aria-labelledby="employer-verification-title"><p className={`eyebrow ${pendingAction === 'rejected' ? 'danger-text' : ''}`}>EMPLOYER VERIFICATION</p><h2 id="employer-verification-title">{pendingAction === 'verified' ? 'Verify employer?' : 'Reject employer?'}</h2><p>{pendingAction === 'verified' ? 'This confirms the submitted company evidence has been reviewed.' : 'This records a rejection and notifies the employer.'}</p><label>Reason for this decision<textarea autoFocus value={reason} maxLength={2000} onChange={event => setReason(event.target.value)} placeholder="Enter an audit reason (required)" /></label><div className="admin-modal-actions"><button type="button" disabled={busy} onClick={() => { setPendingAction(null); setReason(''); }}>Cancel</button><button className={pendingAction === 'rejected' ? 'admin-danger' : 'primary'} type="button" disabled={busy || reason.trim().length < 3} onClick={() => void run()}>{busy ? 'Saving…' : pendingAction === 'verified' ? 'Verify employer' : 'Reject employer'}</button></div></dialog></div>}
   </div>;
 }
 
@@ -217,7 +232,7 @@ export function AdminConsolePanel({ section }: { section: string }) {
     </form>
     {notice && <div className={`admin-notice is-${notice.tone}`} role={notice.tone === 'error' ? 'alert' : 'status'}>{notice.text}</div>}
     {!rows.length ? <div className="admin-empty"><strong>No matching records</strong><p>Try clearing the filters. Synthetic records are never generated.</p></div> : <div className="table-scroll"><table className="admin-table"><thead><tr>{columns.map(column => <th key={column}>{label(column)}</th>)}<th>Actions</th></tr></thead><tbody>
-      {rows.map(row => <tr key={row.id}>{columns.map(column => <td key={column}>{['users', 'employers'].includes(section) && column === 'role' ? <select className="admin-role-select" aria-label={`Role for ${text(row.userName ?? row.name)}`} value={String(row.role)} disabled={!canManageUsers || access?.userId === managedUserId(row)} onChange={event => setPendingRole({ row, from: row.role as AccountRole, to: event.target.value as AccountRole })}>{(canManageUsers ? accountRoles : [row.role as AccountRole]).map(role => <option key={role} value={role}>{label(role)}</option>)}</select> : ['status', 'role', 'trust', 'riskLevel', 'accountStatus'].includes(column) ? <span className={`admin-badge ${tone(row[column])}`}>{text(row[column])}</span> : text(row[column])}</td>)}<td><div className="admin-user-actions">{section === 'applications' && <ApplicationDetails id={row.id} admin />}<AdminAction section={section} row={row} onDone={() => void load()} />{['users', 'employers'].includes(section) && <button className="admin-danger" type="button" disabled={!canManageUsers || access?.userId === managedUserId(row)} title={!canManageUsers ? 'Your admin role cannot delete users.' : access?.userId === managedUserId(row) ? 'You cannot delete your own account.' : 'Delete user'} onClick={() => setPendingDelete(row)}>Delete</button>}</div></td></tr>)}
+      {rows.map(row => <tr key={row.id}>{columns.map(column => <td key={column}>{['users', 'employers'].includes(section) && column === 'role' ? <select className="admin-role-select" aria-label={`Role for ${text(row.userName ?? row.name)}`} value={String(row.role)} disabled={!canManageUsers || access?.userId === managedUserId(row)} onChange={event => setPendingRole({ row, from: row.role as AccountRole, to: event.target.value as AccountRole })}>{(canManageUsers ? accountRoles : [row.role as AccountRole]).map(role => <option key={role} value={role}>{label(role)}</option>)}</select> : ['status', 'role', 'trust', 'riskLevel', 'accountStatus'].includes(column) ? <span className={`admin-badge ${tone(row[column])}`}>{text(row[column])}</span> : text(row[column])}</td>)}<td><div className="admin-user-actions">{section === 'applications' && <ApplicationDetails id={row.id} admin />}<AdminAction section={section} row={row} permissions={access?.permissions ?? []} onDone={() => void load()} />{['users', 'employers'].includes(section) && <button className="admin-danger" type="button" disabled={!canManageUsers || access?.userId === managedUserId(row)} title={!canManageUsers ? 'Your admin role cannot delete users.' : access?.userId === managedUserId(row) ? 'You cannot delete your own account.' : 'Delete user'} onClick={() => setPendingDelete(row)}>Delete</button>}</div></td></tr>)}
     </tbody></table></div>}
     <div className="admin-pagination"><button disabled={!history.length} onClick={() => { const prior = [...history]; setCursor(prior.pop() ?? ''); setHistory(prior); }}>Previous</button><span>{rows.length} records on this page</span><button disabled={!nextCursor} onClick={() => { setHistory(current => [...current, cursor]); setCursor(nextCursor ?? ''); }}>Next</button></div>
     {pendingRole && <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !roleBusy) { setPendingRole(null); setRoleReason(''); } }}><dialog className="admin-role-modal" open aria-labelledby="role-change-title"><p className="eyebrow">CONFIRM ROLE CHANGE</p><h2 id="role-change-title">Change user role</h2><p className="admin-role-change"><strong>{label(pendingRole.from)}</strong><span aria-hidden="true">→</span><strong>{label(pendingRole.to)}</strong></p><label>Reason for this change<textarea autoFocus value={roleReason} maxLength={500} onChange={event => setRoleReason(event.target.value)} placeholder="Enter an audit reason (required)" /></label><div className="admin-modal-actions"><button type="button" disabled={roleBusy} onClick={() => { setPendingRole(null); setRoleReason(''); }}>Cancel</button><button className="primary" type="button" disabled={roleBusy || roleReason.trim().length < 3} onClick={() => void updateRole()}>{roleBusy ? 'Updating…' : 'Confirm role change'}</button></div></dialog></div>}

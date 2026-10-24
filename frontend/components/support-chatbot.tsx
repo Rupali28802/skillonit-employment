@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import Link from 'next/link';
 import { Bot, MessageCircle, Minus, RotateCcw, Send, X } from 'lucide-react';
+import { readBrowserApiPayload } from '@/lib/browser-api';
 
 type SupportLink = { label: string; href: string };
 type Message = {
@@ -61,13 +62,16 @@ export function SupportChatbot() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: clean }),
       });
-      const payload = await response.json();
+      const payload = await readBrowserApiPayload<{ answer?: string; links?: SupportLink[] }>(response);
       if (!response.ok) throw new Error(payload.error?.message || 'Support is temporarily unavailable.');
+      const answer = payload.data?.answer;
+      const links = payload.data?.links;
+      if (!answer) throw new Error('Support is temporarily unavailable.');
       setMessages((current) => [...current, {
         id: ++sequence.current,
         role: 'bot',
-        text: payload.data.answer,
-        links: payload.data.links,
+        text: answer,
+        links,
       }]);
     } catch (error) {
       setMessages((current) => [...current, {

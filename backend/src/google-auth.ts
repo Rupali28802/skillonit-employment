@@ -8,6 +8,7 @@ import { ApiError, audit, currentUser, digest, id, rateLimit, signIn } from './l
 import type { User } from './lib/domain.js';
 import { safeLog } from './lib/safe-logger.js';
 import { isTrustedAppOrigin } from './lib/public-origin.js';
+import { attachRegistrationReferral, ensureReferralProfile, qualifyVerifiedReferral, referralAttributionCookie } from './lib/referrals.js';
 
 const cookieName = 'skillonit_google_state';
 const callbackPath = '/api/v1/auth/google/callback';
@@ -25,7 +26,7 @@ type Identity = { sub: string; email: string; name: string; emailVerified: boole
 
 // Called only with a server-validated Google ID token. Google is authoritative
 // for Gmail and verified Workspace identities, not arbitrary third-party emails.
-export async function resolveGoogleUser(identity: Identity, linking?: User, registrationRole: AccountRole = 'student') {
+export async function resolveGoogleUser(identity: Identity, linking?: User, registrationRole: AccountRole = 'student', referralToken?: string) {
   if (identity.emailVerified !== true || !identity.sub)
     throw new ApiError(400, 'GOOGLE_REJECTED', 'Google sign-in could not be completed.');
   const authoritativeEmail = identity.email.endsWith('@gmail.com') || !!identity.hostedDomain;
@@ -55,6 +56,9 @@ export async function resolveGoogleUser(identity: Identity, linking?: User, regi
       preferences: { roles: [], relatedRoles: [], countries: [], modes: [], exclusions: [], automation: false, dailyCap: 5 },
     };
     await r.put('users', user);
+    await ensureReferralProfile(r, user);
+    await attachRegistrationReferral(r, user, referralToken);
+    await qualifyVerifiedReferral(r, user.id);
     await audit(r, user.id, 'auth.google_registered', user.id);
     return user;
   });
@@ -134,9 +138,11 @@ googleAuth.get('/google/callback', async (req, res) => {
       credentialUnchanged: !!allowed,
       googleEmailMatches: !!linking && linking.email === email,
     });
-    const user = await resolveGoogleUser({ sub: payload.sub, email, name: (payload.name || email.split('@')[0]).slice(0, 200), emailVerified: payload.email_verified === true, hostedDomain: payload.hd }, allowed, saved.registrationRole);
+    const referralToken = cookies().get(referralAttributionCookie)?.value;
+    const user = await resolveGoogleUser({ sub: payload.sub, email, name: (payload.name || email.split('@')[0]).slice(0, 200), emailVerified: payload.email_verified === true, hostedDomain: payload.hd }, allowed, saved.registrationRole, referralToken);
     stage = 'session_creation';
     await signIn(user);
+    cookies().delete(referralAttributionCookie);
     stage = 'login_audit';
     await transaction(r => audit(r, user.id, 'auth.google_login', user.id));
     safeLog('info', 'google_oauth.session_created');

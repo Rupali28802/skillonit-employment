@@ -7,6 +7,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { SmartForm } from './forms';
+import { readBrowserApiPayload } from '@/lib/browser-api';
 
 type ApplicationPreview = {
   job: { title: string; company: string; source: string; method: 'direct' | 'external' | 'email' };
@@ -51,12 +52,13 @@ export function JobActions({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jobId, ...(templateId?{templateId}:{}) }),
       });
-      const result = await response.json();
       if (response.status === 401) {
         window.location.href = '/login';
         return;
       }
+      const result = await readBrowserApiPayload<ApplicationPreview>(response);
       if (!response.ok) throw Error(result.error?.message || 'Application details could not be loaded.');
+      if (!result.data) throw Error('Application details could not be loaded.');
       setPreview(result.data);
       setSubject(result.data.review?.message?.subject||'');setEmailBody(result.data.review?.message?.text||'');
       setOpen(true);
@@ -74,12 +76,13 @@ export function JobActions({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jobId, confirmed: true,...(preview?.selectedTemplateId?{templateId:preview.selectedTemplateId}:{}),...(preview?.action==='send_authorized_email'&&subject&&emailBody?{subject,body:emailBody}:{}) }),
       });
-      const j = await r.json();
       if (r.status === 401) {
         window.location.href = '/login';
         return;
       }
+      const j = await readBrowserApiPayload<{ method: string; status: string; externalUrl?: string }>(r);
       if (!r.ok) throw Error(j.error?.message);
+      if (!j.data) throw Error('Application could not be completed. Please try again.');
       setMessage(
         sample
           ? 'Demo application recorded. No real employer has been contacted.'

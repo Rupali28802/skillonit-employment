@@ -18,6 +18,7 @@ import {
   UserRound,
 } from 'lucide-react';
 import type { Preferences, User } from '@/lib/domain';
+import { readBrowserApiPayload } from '@/lib/browser-api';
 import { GmailConnection, type MailboxStatus } from './candidate-tools';
 import { ProfileSetup, type ProfileEditSection } from './profile-setup';
 
@@ -97,7 +98,7 @@ export function ProfileDashboard({ user, completion, preferences, mailbox, docum
     setImageBusy(true); setImageMessage(''); setImageError(false);
     try {
       const response = await fetch(`/api/v1/me/profile-image/${imageEditor}`, { method:'PUT', headers:{'Content-Type':selectedImage.type}, body:selectedImage });
-      const result = await response.json();
+      const result = await readBrowserApiPayload(response);
       if (!response.ok) throw Error(result.error?.message || 'The image could not be saved.');
       setImageMessage(imageEditor === 'avatar' ? 'Profile photo saved.' : 'Cover photo saved.');
       window.setTimeout(() => window.location.reload(), 450);

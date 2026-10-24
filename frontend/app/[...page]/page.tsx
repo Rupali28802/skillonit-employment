@@ -5,6 +5,7 @@ import { AuthRecovery } from '@/components/auth-recovery';
 import { EmailConnectionVerification } from '@/components/email-connection';
 import { Workspace } from '@/components/workspace';
 import { PublicPricing } from '@/components/public-pricing';
+import { ReferralAttribution } from '@/components/referral-attribution';
 import { demoMode, configuredPlans, currentUser } from '@/lib/api';
 export const dynamic = 'force-dynamic';
 export async function generateMetadata({
@@ -24,16 +25,21 @@ export async function generateMetadata({
 }
 export default async function Page({
   params,
+  searchParams,
 }: {
   params: Promise<{ page: string[] }>;
+  searchParams: Promise<{ ref?: string | string[] }>;
 }) {
   const page = (await params).page.join('/');
   const applicationTemplatesPage = /^applications\/templates(?:\/new|\/[^/]+\/edit)?$/.test(page);
   if (page === 'connect-email') return <EmailConnectionVerification />;
   if (page === 'verify-email' || page === 'resend-verification' || page === 'forgot-password' || page === 'reset-password')
     return <AuthRecovery key={page} mode={page} />;
-  if (page === 'login' || page === 'register')
-    return <AuthForm key={page} register={page === 'register'} demo={await demoMode()} />;
+  if (page === 'login' || page === 'register') {
+    const referral = (await searchParams).ref;
+    const code = typeof referral === 'string' ? referral : undefined;
+    return <><ReferralAttribution code={page === 'register' ? code : undefined} /><AuthForm key={page} register={page === 'register'} demo={await demoMode()} /></>;
+  }
   if (
     applicationTemplatesPage ||
     [
@@ -54,6 +60,7 @@ export default async function Page({
       'mail',
       'automation',
       'billing',
+      'referrals',
       'settings',
       'employer',
       'employer/organization',
@@ -86,6 +93,7 @@ export default async function Page({
       'admin/roles',
       'admin/settings',
       'admin/privacy',
+      'admin/referrals',
     ].includes(page)
   )
     return <Workspace section={page} />;

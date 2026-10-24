@@ -15,6 +15,7 @@ import {
   Pencil,
 } from 'lucide-react';
 import type { User } from '@/lib/domain';
+import { readBrowserApiPayload } from '@/lib/browser-api';
 
 const themes = {
   technology: Code2,
@@ -63,8 +64,10 @@ export function ProfileSidebar({
     .join('');
   async function refresh() {
     const response = await fetch('/api/v1/session');
+    const payload = await readBrowserApiPayload<{ user: User | null }>(response);
     if (!response.ok) throw Error('Please sign in again.');
-    setUser((await response.json()).data.user);
+    if (!payload.data) throw Error('Your session could not be refreshed. Please try again.');
+    setUser(payload.data.user);
   }
   async function upload(kind: string, file?: File) {
     if (!file) return;
@@ -83,7 +86,7 @@ export function ProfileSidebar({
         headers: { 'Content-Type': file.type },
         body: file,
       });
-      const result = await response.json();
+      const result = await readBrowserApiPayload(response);
       if (!response.ok) throw Error(result.error?.message || 'Upload failed.');
       await refresh();
       setMessage('Image saved to your profile.');

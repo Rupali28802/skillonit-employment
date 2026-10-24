@@ -51,6 +51,32 @@ type VoiceRecognition = {
 
 type VoiceRecognitionConstructor = new () => VoiceRecognition;
 
+type DiscoveryStats = {
+  totalJobs: number; detectedToday: number; newJobs: number; newSince?: number; countries: number | null; measuredAt: string;
+  workerOnline?: boolean;
+  tenMinuteSourcesConfigured?: number;
+  tenMinuteSourcesOnline?: number;
+  tenMinuteSourcesOnCadence?: number;
+  tenMinuteSourcesOverdue?: number;
+};
+type JobSearchResult = { jobs: PublicJob[]; total: number; hasMore: boolean };
+type ApiPayload<T> = { data?: T; error?: { message?: string } };
+
+// A reverse proxy can return an HTML 502/504 during a deploy or a short
+// upstream outage.  Never feed that body into JSON.parse and expose its parser
+// error to a job seeker.
+async function readApiPayload<T>(response: Response): Promise<ApiPayload<T>> {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(response.ok ? 'The job service returned an unexpected response. Please retry.' : 'Job search is temporarily unavailable. Please retry.');
+  }
+  try {
+    return await response.json() as ApiPayload<T>;
+  } catch {
+    throw new Error('Job search is temporarily unavailable. Please retry.');
+  }
+}
+
 export function Discovery({
   initialJobs,
   user,
@@ -93,7 +119,7 @@ export function Discovery({
   const zeroNewJobsMeasurements = useRef(0);
   const arrivalBaseline = useRef('');
   const latestMeasurement = useRef('');
-  const [stats, setStats] = useState<{totalJobs:number;detectedToday:number;newJobs:number;countries:number|null;workerOnline?:boolean}|null>(null);
+  const [stats, setStats] = useState<DiscoveryStats|null>(null);
   const feed = useRef<HTMLDivElement>(null);
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [profileFloat, setProfileFloat] = useState({ visible: false, y: 0 });
@@ -156,8 +182,9 @@ export function Discovery({
       const baseline=arrivalBaseline.current;
       try {
         const r=await fetch(`/api/v1/jobs/discovery-status${baseline?`?since=${encodeURIComponent(baseline)}`:''}`);
-        if(!r.ok)throw Error();
-        const {data}=await r.json();
+        const {data,error}=await readApiPayload<DiscoveryStats>(r);
+        if(!r.ok)throw Error(error?.message || 'Discovery status is temporarily unavailable.');
+        if(!data) throw Error('Discovery status is temporarily unavailable.');
         if(!cancelled){setStats(data);latestMeasurement.current=data.measuredAt;
           if(!arrivalBaseline.current || Date.parse(data.measuredAt)-Date.parse(arrivalBaseline.current)>86400000)arrivalBaseline.current=data.measuredAt;
           else if(baseline===arrivalBaseline.current)setNewCount(data.newSince||0);
@@ -320,18 +347,19 @@ export function Discovery({
           if (page !== 1) { setPage(1); return; }
         }
         const response = await fetch(`/api/v1/jobs?${p}`);
-        const payload = await response.json();
+        const payload = await readApiPayload<JobSearchResult>(response);
         if (!response.ok) throw Error(payload.error?.message || 'Search unavailable');
-        const j = payload;
+        if (!payload.data) throw Error('Job search is temporarily unavailable. Please retry.');
+        const j = payload.data;
         if (requestId === sequence.current) {
-          const incoming: PublicJob[] = j.data.jobs;
+          const incoming: PublicJob[] = j.jobs;
           setJobs(current => {
             const combined = page > 1 ? [...current, ...incoming] : incoming;
             const unique = [...new Map(combined.map(job => [job.id, job])).values()];
             return unique;
           });
-          setTotal(j.data.total);
-          setHasMore(j.data.hasMore);setUpdatedAt(new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));}
+          setTotal(j.total);
+          setHasMore(j.hasMore);setUpdatedAt(new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));}
       } catch (e) {
         if(requestId===sequence.current){setMessage((e as Error).message);setLoadFailed(true);}
       } finally {
@@ -349,18 +377,18 @@ export function Discovery({
     setPage(current => current + 1);
   }, [busy, hasMore, loadFailed]);
   async function save(id: string) {
-    const r = await fetch(`/api/v1/jobs/${id}/save`, { method: 'POST' });
-    if (r.status === 401) {
-      window.location.assign('/login?next=/saved');
-      return;
+    try {
+      const r = await fetch(`/api/v1/jobs/${id}/save`, { method: 'POST' });
+      if (r.status === 401) {
+        window.location.assign('/login?next=/saved');
+        return;
+      }
+      const { error } = await readApiPayload(r);
+      if (r.ok) setSavedIds(ids => ids.includes(id) ? ids : [...ids, id]);
+      setMessage(r.ok ? 'Saved to your collection.' : error?.message || 'Could not save job.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not save job.');
     }
-    const j = await r.json();
-    if (r.ok) setSavedIds(ids => ids.includes(id) ? ids : [...ids, id]);
-    setMessage(
-      r.ok
-        ? 'Saved to your collection.'
-        : j.error?.message || 'Could not save job.',
-    );
   }
   const profileInitials = (user?.name || 'Your profile')
     .split(' ')
@@ -376,6 +404,15 @@ export function Discovery({
     { label: 'New in 10 minutes', value: displayedNewJobs, Icon: Clock3, tone: 'live' },
     { label: 'Countries / territories · includes eligibility', value: stats?.countries, Icon: Globe2, tone: 'coverage' },
   ];
+  const fastSourcesConfigured = stats?.tenMinuteSourcesConfigured;
+  const fastSourcesOnCadence = stats?.tenMinuteSourcesOnCadence;
+  const discoveryConnected = stats?.workerOnline === true &&
+    (typeof fastSourcesConfigured !== 'number' || fastSourcesConfigured === 0 || fastSourcesOnCadence === fastSourcesConfigured);
+  const discoveryStatusLabel = stats
+    ? discoveryConnected
+      ? `Live feed connected${typeof fastSourcesConfigured === 'number' ? ` · ${fastSourcesOnCadence}/${fastSourcesConfigured} fast sources on schedule` : ''}`
+      : 'Live feed is reconnecting'
+    : 'Checking live feed';
   return (
     <>
       <section className="live-discovery" aria-labelledby="live-discovery-heading">
@@ -402,7 +439,7 @@ export function Discovery({
           <div><div className="discovery-kicker"><Sparkles size={15}/> SKILLONIT EMPLOYMENT</div>
             <h1 id="live-discovery-heading">Find the Right Job. <span>Faster, Smarter, Globally.</span></h1>
             <p>Discover jobs from around the world, explore roles that match your skills and take your next step—all in one place.</p></div>
-          <span className="discovery-status is-connected"><i/>Live feed connected</span>
+          <span className={`discovery-status${discoveryConnected ? ' is-connected' : ''}`} aria-live="polite"><i/>{discoveryStatusLabel}</span>
         </div>
         <form className="discovery-search" onSubmit={event=>{event.preventDefault();void search();document.getElementById('job-results')?.scrollIntoView({behavior:'smooth',block:'start'});}}>
           <div className="discovery-query"><Search size={23}/><input aria-label="Search worldwide jobs" aria-describedby={voiceMessage?'voice-search-status':undefined} placeholder="Search worldwide jobs..." value={query} onChange={e=>{updateQuery(e.target.value);setVoiceMessage('');}}/><button type="button" className="ai-search-badge" aria-pressed={semantic} title="Toggle meaning-based search of indexed jobs; coverage is still growing" onClick={()=>{setSemantic(!semantic);setPage(1);}}><Sparkles size={13}/> AI search {semantic ? 'on' : 'off'}</button><button type="button" className={`voice-search${listening?' is-listening':''}`} aria-label={listening?'Stop voice search':'Start voice search'} aria-pressed={listening} title={listening?'Listening — select to stop':'Search with your voice'} onClick={()=>void voiceSearch()}><Mic size={19}/></button></div>

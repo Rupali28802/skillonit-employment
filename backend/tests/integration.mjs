@@ -30,7 +30,9 @@ const visitor = client(),
   employer = client(),
   admin = client();
 const health = await visitor('health');
-assert.equal(health.mode, 'demo', 'Test server must use DEMO_MODE=true');
+assert.equal(health.status, 'ok', 'Health endpoint is available');
+assert.equal(Object.hasOwn(health, 'mode'), false, 'Public health does not expose deployment mode');
+assert.equal(Object.hasOwn(health, 'providers'), false, 'Public health does not expose provider configuration');
 await visitor('admin/overview', 'GET', null, 401);
 await visitor('me/profile', 'GET', null, 401);
 let jobs = await visitor('jobs?q=remote');

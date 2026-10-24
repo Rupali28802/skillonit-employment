@@ -5,7 +5,10 @@ export async function validateCvStructure(bytes: Uint8Array, type: string) {
   const ts = import.meta.url.endsWith('.ts');
   await new Promise<void>((resolve, reject) => {
     const child = fork(fileURLToPath(new URL('./cv-file-worker.' + (ts ? 'ts' : 'js'), import.meta.url)), [], { execArgv: ['--max-old-space-size=128', ...(ts ? ['--import', import.meta.resolve('tsx')] : [])], stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
-    const timer = setTimeout(() => finish(false), 10000);
+    // The validator is isolated with a strict memory limit. Allow enough time for
+    // its Node/tsx process to start on a busy Windows host or CI worker, while
+    // still failing closed instead of keeping an untrusted document process alive.
+    const timer = setTimeout(() => finish(false), 30000);
     let result: boolean | undefined;
     const finish = (valid: boolean) => { if (result !== undefined) return; result = valid; clearTimeout(timer); child.kill(); };
     child.once('error', () => finish(false));

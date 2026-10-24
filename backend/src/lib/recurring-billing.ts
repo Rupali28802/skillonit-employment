@@ -6,6 +6,7 @@ import type { PaymentProvider } from './providers.js';
 import type { Repository } from './store.js';
 import { configuredPlans, read, transaction } from './store.js';
 import { ApiError, audit, digest } from './security.js';
+import { qualifyPaidReferral } from './referrals.js';
 import type { StudentSubscription, SubscriptionStatus } from './student-entitlements.js';
 import type { PaymentRecord } from './payment-billing.js';
 
@@ -86,6 +87,7 @@ export async function processRecurringEvent(r:Repository,eventId:string,event:{e
     const record:StudentSubscription={...subscription,status:'active',currentPeriodStart:start,currentPeriodEnd:end,nextBillingAt:iso(entity.charge_at,new Date(end)),autoRenew:true,cancelAtPeriodEnd:false,providerCustomerId:typeof entity.customer_id==='string'?entity.customer_id:subscription.providerCustomerId,lastChargeId:paymentId,revision:subscription.revision+1,updatedAt:now.toISOString(),activatedAt:subscription.activatedAt??now.toISOString()};
     await r.put('studentSubscriptions',record);const user=await r.get<User>('users',subscription.userId);if(user)await r.put('users',{...user,plan:plan.code});
     const id=`subscription:${paymentId}`;if(!await r.get('payments',id)){const row:PaymentRecord={id,userId:subscription.userId,razorpayConfigVersion:subscription.razorpayConfigVersion,planCode:plan.code,status:'captured',amount:payment.amount,currency:plan.currency,refundedAmount:0,providerPaymentId:paymentId,paymentMethod:typeof payment.method==='string'?payment.method:undefined,capturedAt:now.toISOString(),createdAt:now.toISOString(),updatedAt:now.toISOString()};await r.put('payments',row);}
+    await qualifyPaidReferral(r, subscription.userId, id, plan.code, now);
     await r.put('subscriptionRenewals',{id:paymentId,eventId,subscriptionId:providerSubscriptionId,userId:subscription.userId,periodStart:start,periodEnd:end,createdAt:now.toISOString()});await audit(r,'razorpay','subscription.charged',providerSubscriptionId);return 'renewed';
   }
   const status=eventStatus[event.event];if(!status)return null;

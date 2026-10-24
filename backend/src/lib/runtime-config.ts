@@ -44,6 +44,14 @@ export function validateRuntime(env = process.env) {
   if (env.BACKUP_ENABLED && !['true', 'false'].includes(env.BACKUP_ENABLED)) throw new Error('BACKUP_ENABLED must be true or false.');
 }
 
+/** CV processing is opt-in in production and must be explicitly configured. */
+export function cvUploadsEnabled(env = process.env) {
+  const value = env.ENABLE_CV_UPLOADS;
+  if (env.NODE_ENV === 'production' && !['true', 'false'].includes(value || ''))
+    throw new Error('ENABLE_CV_UPLOADS must be explicitly true or false');
+  return value === 'true';
+}
+
 // Optional loopback preview alongside the configured HTTPS application.
 // Never accepts arbitrary origins and never applies to a production backend.
 export function isLocalPreviewOrigin(origin: string, env = process.env) {

@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+const publicHttps = process.env.APP_URL?.startsWith('https://') === true;
 const config: NextConfig = {
   // Integration builds must not overwrite a running development/production build.
   distDir: process.env.NEXT_DIST_DIR || '.next',
@@ -22,7 +23,7 @@ const config: NextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: `${process.env.BACKEND_URL || 'http://127.0.0.1:4000'}/api/:path*`,
+        destination: `${process.env.BACKEND_URL || 'http://127.0.0.1:4100'}/api/:path*`,
       },
     ];
   },
@@ -38,6 +39,9 @@ const config: NextConfig = {
             key: 'Permissions-Policy',
             value: 'camera=(), microphone=(), geolocation=()',
           },
+          ...(publicHttps
+            ? [{ key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' }]
+            : []),
         ],
       },
     ];

@@ -13,4 +13,10 @@ async function main() {
     await checkModule2Redis(); console.info('Redis connectivity: PASS.');
   }
 }
-main().catch(() => { console.error('Module 2 validation failed; configuration/provider values withheld.'); process.exitCode = 1; });
+main().catch(error => {
+  const code = error instanceof Error && /^REDIS_(?:REQUEST_QUOTA_EXCEEDED|CONNECTION_LIMIT|AUTH_FAILED|COMMAND_NOT_PERMITTED|UNAVAILABLE)$/.test(error.message)
+    ? error.message
+    : 'MODULE2_VALIDATION_FAILED';
+  console.error(`Module 2 validation failed: ${code}. Configuration/provider values withheld.`);
+  process.exitCode = 1;
+});

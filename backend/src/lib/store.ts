@@ -102,12 +102,16 @@ function localRepo(data: LocalData): Repository {
     Object.entries(query).every(([key, value]) => {
       if (key === '$and') return (value as Query[]).every(q => matches(row, q));
       if (key === '$or') return (value as Query[]).some(q => matches(row, q));
-      if (value instanceof RegExp) return value.test(Array.isArray(row[key]) ? (row[key] as unknown[]).join(' ') : String(row[key] ?? ''));
-      if (value && typeof value === 'object' && '$in' in value) return (value.$in as unknown[]).includes(row[key]);
-      if (value && typeof value === 'object' && '$nin' in value) return !(value.$nin as unknown[]).includes(row[key]);
+      const actual = row[key];
+      if (value instanceof RegExp) return value.test(Array.isArray(actual) ? (actual as unknown[]).join(' ') : String(actual ?? ''));
+      if (value && typeof value === 'object' && '$in' in value) return Array.isArray(actual)
+        ? actual.some(item => (value.$in as unknown[]).includes(item))
+        : (value.$in as unknown[]).includes(actual);
+      if (value && typeof value === 'object' && '$nin' in value) return Array.isArray(actual)
+        ? actual.every(item => !(value.$nin as unknown[]).includes(item))
+        : !(value.$nin as unknown[]).includes(actual);
       if (value && typeof value === 'object') {
         const range = value as Record<string, unknown>;
-        const actual = row[key];
         const compare = (bound: unknown) => typeof actual === 'number' && typeof bound === 'number'
           ? actual - bound : String(actual ?? '').localeCompare(String(bound));
         return (
@@ -118,7 +122,7 @@ function localRepo(data: LocalData): Repository {
           (!('$lt' in range) || compare(range.$lt) < 0)
         );
       }
-      return row[key] === value;
+      return Array.isArray(actual) ? actual.includes(value) : actual === value;
     });
   return {
     async putMany(c, rows) {
@@ -315,10 +319,22 @@ export async function bootstrapIndexes() {
     'mailOauthStates',
     'mailConnectionVerifications',
     'mailConnectionProofs',
+    'referralProfiles',
+    'referralAttributions',
+    'referrals',
+    'referralCampaigns',
+    'referralRewards',
+    'referralWithdrawals',
     'leadNotes',
   ])
     await db.collection(c).createIndex({ id: 1 }, { unique: true });
   await db.collection('users').createIndex({ email: 1 }, { unique: true });
+  await db.collection('referralProfiles').createIndex({ code: 1 }, { unique: true });
+  await db.collection('referralAttributions').createIndex({ expiresAtDate: 1 }, { expireAfterSeconds: 0 });
+  await db.collection('referrals').createIndex({ referrerId: 1, registeredAt: -1 });
+  await db.collection('referralRewards').createIndex({ referrerId: 1, status: 1, createdAt: -1 });
+  await db.collection('referralRewards').createIndex({ referredUserId: 1, qualifyingEventId: 1 }, { unique: true });
+  await db.collection('referralWithdrawals').createIndex({ userId: 1, createdAt: -1 });
   await db.collection('studentOnboarding').createIndex({ userId: 1 }, { unique: true });
   await db.collection('employers').createIndex({ ownerId: 1 }, { unique: true });
   await db.collection('employers').createIndex({ domain: 1 }, { unique: true });

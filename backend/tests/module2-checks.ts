@@ -61,7 +61,7 @@ export async function checkModule2() {
     assert.equal((await request('/me/preferences', 'PUT', { ...preferences, salary: { min: 5, max: 1, currency: 'INR' } })).status, 400);
     assert.equal((await request('/me/preferences', 'PUT', { ...preferences, automation: true })).status, 503);
     const upload = async (name = 'resume.pdf', bytes?: string | Buffer) => fetch(base + '/me/cv', { method: 'POST', headers: { Cookie: cookie, Origin: process.env.APP_URL!, 'Content-Type': 'application/pdf', 'X-File-Name': name }, body: bytes ?? await pdfFixture() });
-    process.env.ENABLE_CV_UPLOADS = 'false'; assert.equal((await upload()).status, 503);
+    process.env.ENABLE_CV_UPLOADS = 'false'; const uploadsDisabled = await upload(); assert.equal(uploadsDisabled.status, 503); assert.equal((await uploadsDisabled.json()).error.code, 'CV_UPLOADS_DISABLED');
     process.env.ENABLE_CV_UPLOADS = 'true';
     assert.equal((await upload('../resume.pdf')).status, 400);
     assert.equal((await upload('resume.pdf', 'not a PDF')).status, 415);

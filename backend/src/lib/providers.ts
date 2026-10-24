@@ -1,4 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { mailboxConfig } from '../mailbox-auth.js';
+import { cvProductionConfig } from './cv-production.js';
 import { ApiError } from './security.js';
 export interface MailProvider {
   send(input: {
@@ -118,6 +120,23 @@ export class RazorpayProvider implements PaymentProvider {
   }
 }
 export function providerHealth() {
+  let mailboxStatus = 'Not configured';
+  let cvStatus = 'Not configured';
+  try {
+    mailboxConfig();
+    mailboxStatus = 'Configured — connection checked per user';
+  } catch {
+    // A health response must stay available even when mailbox OAuth has not
+    // been configured. The connect/send endpoints return the specific error.
+  }
+  try {
+    cvProductionConfig();
+    cvStatus = process.env.ENABLE_CV_UPLOADS === 'true'
+      ? 'Configured — storage, scanner and parser checked at startup'
+      : 'Configured — uploads intentionally disabled';
+  } catch {
+    // CV remains unavailable until every private provider is configured.
+  }
   return [
     {
       name: process.env.DATABASE_URL ? 'PostgreSQL' : 'MongoDB',
@@ -129,12 +148,10 @@ export function providerHealth() {
       name: 'Payments',
       status: 'See Admin Payments for active Razorpay configuration and validation status',
     },
-    { name: 'Mailbox OAuth', status: 'Not configured' },
+    { name: 'Mailbox OAuth', status: mailboxStatus },
     {
       name: 'CV scanning and parsing',
-      status: process.env.ENABLE_CV_UPLOADS === 'true'
-        ? 'Configured — storage, scanner and parser checked at startup'
-        : 'Not configured',
+      status: cvStatus,
     },
     { name: 'Search index', status: 'Bounded database fallback' },
     {

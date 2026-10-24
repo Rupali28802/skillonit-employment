@@ -17,14 +17,20 @@ const matches = (row: Row, query: Query): boolean => Object.entries(query).every
   if (key === '$or') return (value as Query[]).some(q => matches(row, q));
   const actual = valueAt(row, key);
   if (value instanceof RegExp) return value.test(Array.isArray(actual) ? actual.join(' ') : String(actual ?? ''));
-  if (value && typeof value === 'object' && '$in' in value) return (value.$in as unknown[]).includes(actual);
-  if (value && typeof value === 'object' && '$nin' in value) return !(value.$nin as unknown[]).includes(actual);
+  if (value && typeof value === 'object' && '$in' in value) return Array.isArray(actual)
+    ? actual.some(item => (value.$in as unknown[]).includes(item))
+    : (value.$in as unknown[]).includes(actual);
+  if (value && typeof value === 'object' && '$nin' in value) return Array.isArray(actual)
+    ? actual.every(item => !(value.$nin as unknown[]).includes(item))
+    : !(value.$nin as unknown[]).includes(actual);
   if (value && typeof value === 'object') {
     const range = value as Record<string, unknown>;
     const compare = (bound: unknown) => typeof actual === 'number' && typeof bound === 'number' ? actual - bound : String(actual ?? '').localeCompare(String(bound));
     return (!('$gte' in range) || compare(range.$gte) >= 0) && (!('$gt' in range) || compare(range.$gt) > 0) && (!('$lte' in range) || compare(range.$lte) <= 0) && (!('$lt' in range) || compare(range.$lt) < 0) && (!('$ne' in range) || actual !== range.$ne);
   }
-  return actual === value;
+  // MongoDB equality against an array means membership. Preserve that behavior
+  // while reading the migrated JSON documents from PostgreSQL.
+  return Array.isArray(actual) ? actual.includes(value) : actual === value;
 });
 function repository(db: Pool | PoolClient): Repository {
   const rows = async <T>(collection: string, query: Query) => {
@@ -53,7 +59,21 @@ function repository(db: Pool | PoolClient): Repository {
       }
       return (await rows<Row>(collection, query)).filter(row => matches(row,query)).length;
     },
-    async scan<T>(collection:string, query:Query, after='', limit=250) { return (await rows<Row>(collection, query)).filter(row => row.id>after && matches(row,query)).sort((a,b)=>a.id.localeCompare(b.id)).slice(0,Math.min(500,Math.max(1,limit))) as T[]; },
+    async scan<T>(collection:string, query:Query, after='', limit=250) {
+      const filter = postgresReadFilter(query);
+      const boundedLimit = Math.min(500, Math.max(1, limit));
+      // Keep cursored workers on the database side of the pagination boundary.
+      // The former implementation materialized every matching document for each
+      // page, which let routine maintenance starve short-interval discovery.
+      if (filter.complete) {
+        const values = [...filter.values, after, boundedLimit];
+        return (await db.query<{data:T}>(
+          `SELECT data FROM app_documents WHERE collection=$1${filter.sql} AND id > $${values.length} ORDER BY id ASC LIMIT $${values.length + 1}`,
+          [collection, ...values],
+        )).rows.map(row => row.data);
+      }
+      return (await rows<Row>(collection, query)).filter(row => row.id>after && matches(row,query)).sort((a,b)=>a.id.localeCompare(b.id)).slice(0,boundedLimit) as T[];
+    },
     async find<T>(collection:string, query:Query={}, limit=100) { return (await rows<Row>(collection, query)).filter(row=>matches(row,query)).slice(0,Math.min(limit,1000)) as T[]; },
     async get<T>(collection:string,id:string) { const result=await db.query<{data:T}>('SELECT data FROM app_documents WHERE collection=$1 AND id=$2',[collection,id]); return result.rows[0]?.data??null; },
     async put(collection,value) { await put(collection,value); },
@@ -61,6 +81,201 @@ function repository(db: Pool | PoolClient): Repository {
   };
 }
 export const postgresRead = async <T>(fn:(repo:Repository)=>Promise<T>) => fn(repository(database()));
+// Public search must never leave an unbounded read running after a browser,
+// proxy, or client disconnects. Keep the limit scoped to this explicit helper;
+// discovery and transactional writes retain their own execution budgets.
+export async function postgresReadWithTimeout<T>(timeoutMs: number, fn: (repo: Repository) => Promise<T>): Promise<T> {
+  const bounded = Math.max(1000, Math.min(30000, Math.floor(timeoutMs)));
+  const client = await database().connect();
+  try {
+    await client.query('BEGIN READ ONLY');
+    await client.query(`SET LOCAL statement_timeout = ${bounded}`);
+    const result = await fn(repository(client));
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Public keyword search is deliberately kept in PostgreSQL instead of reading
+ * every job document into a Node worker and applying regular expressions there.
+ * That former fallback could hold an API connection open long enough to affect
+ * the discovery worker.  This narrow helper only serves the uncomplicated
+ * public text-search case; faceted queries keep their existing matcher so their
+ * semantics do not silently change.
+ */
+export async function postgresPublicKeywordSearch<T>(words: string[], sort: 'posted' | 'discovered', skip: number, limit: number) {
+  if (!words.length) return { jobs: [] as T[], total: 0 };
+  const boundedSkip = Math.max(0, Math.floor(skip));
+  const boundedLimit = Math.max(1, Math.min(25, Math.floor(limit)));
+  const client = await database().connect();
+  try {
+    await client.query('BEGIN READ ONLY');
+    // This path avoids Node-side materialization of the full job collection.
+    // It still has a bounded database budget because the broad JSON projection
+    // is intentionally an interim solution until a maintenance-window search
+    // projection/index is installed.
+    await client.query('SET LOCAL statement_timeout = 12000');
+    const predicates = words.map((_, index) => `data::text ILIKE $${index + 1}`).join(' AND ');
+    const order = sort === 'discovered'
+      ? `COALESCE(data #>> ARRAY['discoveredAt'], '') DESC, id ASC`
+      : `COALESCE(data #>> ARRAY['sourcePostedAt'], '') DESC, COALESCE(data #>> ARRAY['discoveredAt'], '') DESC, id ASC`;
+    const result = await client.query<{ data: T; total: string }>(`
+      WITH matched AS MATERIALIZED (
+        SELECT id, data FROM app_documents
+        WHERE collection='jobs'
+          -- Match the JSONB expressions used by the public partial indexes.
+          -- Text extraction is equivalent for this field, but prevents the
+          -- planner from proving the index predicate.
+          AND data #> ARRAY['status']='"published"'::jsonb
+          AND data #>> ARRAY['expiresAt'] > now()::text
+          AND (data #> ARRAY['sample'] IS NULL OR data #> ARRAY['sample'] <> 'true'::jsonb)
+          AND ${predicates}
+      )
+      SELECT count(*) OVER()::text AS total, data
+      FROM matched
+      ORDER BY ${order}
+      LIMIT $${words.length + 1} OFFSET $${words.length + 2}`,
+      [...words.map(word => `%${word.replace(/[\\%_]/g, '\\$&')}%`), boundedLimit, boundedSkip],
+    );
+    await client.query('COMMIT');
+    return { jobs: result.rows.map(row => row.data), total: Number(result.rows[0]?.total || 0) };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** Fast path for the location selector, preserving MongoDB array-membership
+ * semantics for a job's explicitly eligible countries. */
+export async function postgresPublicCountrySearch<T>(country: string, sort: 'posted' | 'discovered', skip: number, limit: number) {
+  const normalized = country.trim();
+  if (!normalized) return { jobs: [] as T[], total: 0 };
+  const boundedSkip = Math.max(0, Math.floor(skip));
+  const boundedLimit = Math.max(1, Math.min(25, Math.floor(limit)));
+  const client = await database().connect();
+  try {
+    await client.query('BEGIN READ ONLY');
+    await client.query('SET LOCAL statement_timeout = 12000');
+    const order = sort === 'discovered'
+      ? `COALESCE(data #>> ARRAY['discoveredAt'], '') DESC, id ASC`
+      : `COALESCE(data #>> ARRAY['sourcePostedAt'], '') DESC, COALESCE(data #>> ARRAY['discoveredAt'], '') DESC, id ASC`;
+    const result = await client.query<{ data: T; total: string }>(`
+      WITH matched AS MATERIALIZED (
+        SELECT id, data FROM app_documents
+        WHERE collection='jobs'
+          AND data #> ARRAY['status']='"published"'::jsonb
+          AND data #>> ARRAY['expiresAt'] > now()::text
+          AND (data #> ARRAY['sample'] IS NULL OR data #> ARRAY['sample'] <> 'true'::jsonb)
+          AND (data #>> ARRAY['country']=$1 OR data #> ARRAY['eligibleCountries'] @> $2::jsonb)
+      )
+      SELECT count(*) OVER()::text AS total, data
+      FROM matched
+      ORDER BY ${order}
+      LIMIT $3 OFFSET $4`,
+      [normalized, JSON.stringify([normalized]), boundedLimit, boundedSkip],
+    );
+    await client.query('COMMIT');
+    return { jobs: result.rows.map(row => row.data), total: Number(result.rows[0]?.total || 0) };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Fast path for the exact category and work-mode selectors. Both fields have
+ * ordered partial indexes, so keep these simple public requests in PostgreSQL
+ * instead of materializing the full jobs collection in the API process.
+ */
+export async function postgresPublicFacetSearch<T>(field: 'category' | 'mode', value: string, sort: 'posted' | 'discovered', skip: number, limit: number) {
+  const normalized = value.trim();
+  if (!normalized) return { jobs: [] as T[], total: 0 };
+  const boundedSkip = Math.max(0, Math.floor(skip));
+  const boundedLimit = Math.max(1, Math.min(25, Math.floor(limit)));
+  // Keep this SQL fragment closed over a fixed selector. Request values always
+  // remain parameters and can never become part of the query text.
+  const fieldExpression = field === 'category'
+    ? "data #> ARRAY['category']"
+    : "data #> ARRAY['mode']";
+  const client = await database().connect();
+  try {
+    await client.query('BEGIN READ ONLY');
+    await client.query('SET LOCAL statement_timeout = 12000');
+    const order = sort === 'discovered'
+      ? `COALESCE(data #>> ARRAY['discoveredAt'], '') DESC, id ASC`
+      : `COALESCE(data #>> ARRAY['sourcePostedAt'], '') DESC, COALESCE(data #>> ARRAY['discoveredAt'], '') DESC, id ASC`;
+    const result = await client.query<{ data: T; total: string }>(`
+      WITH matched AS MATERIALIZED (
+        SELECT id, data FROM app_documents
+        WHERE collection='jobs'
+          AND data #> ARRAY['status']='"published"'::jsonb
+          AND data #>> ARRAY['expiresAt'] > now()::text
+          AND (data #> ARRAY['sample'] IS NULL OR data #> ARRAY['sample'] <> 'true'::jsonb)
+          AND ${fieldExpression} = to_jsonb($1::text)
+      )
+      SELECT count(*) OVER()::text AS total, data
+      FROM matched
+      ORDER BY ${order}
+      LIMIT $2 OFFSET $3`,
+      [normalized, boundedLimit, boundedSkip],
+    );
+    await client.query('COMMIT');
+    return { jobs: result.rows.map(row => row.data), total: Number(result.rows[0]?.total || 0) };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/** Fast path for the fixed employment-type selector values. */
+export async function postgresPublicTypeSearch<T>(normalizedType: string, sort: 'posted' | 'discovered', skip: number, limit: number) {
+  const boundedSkip = Math.max(0, Math.floor(skip));
+  const boundedLimit = Math.max(1, Math.min(25, Math.floor(limit)));
+  const client = await database().connect();
+  try {
+    await client.query('BEGIN READ ONLY');
+    await client.query('SET LOCAL statement_timeout = 12000');
+    const order = sort === 'discovered'
+      ? `COALESCE(data #>> ARRAY['discoveredAt'], '') DESC, id ASC`
+      : `COALESCE(data #>> ARRAY['sourcePostedAt'], '') DESC, COALESCE(data #>> ARRAY['discoveredAt'], '') DESC, id ASC`;
+    const result = await client.query<{ data: T; total: string }>(`
+      WITH matched AS MATERIALIZED (
+        SELECT id, data FROM app_documents
+        WHERE collection='jobs'
+          AND data #> ARRAY['status']='"published"'::jsonb
+          AND data #>> ARRAY['expiresAt'] > now()::text
+          AND (data #> ARRAY['sample'] IS NULL OR data #> ARRAY['sample'] <> 'true'::jsonb)
+          -- Keep combined employment types (for example, "Full-time,
+          -- Permanent") visible for the same selector value as before.
+          AND regexp_replace(lower(COALESCE(data #>> ARRAY['type'], '')), '[ _-]+', '', 'g') LIKE '%' || $1 || '%'
+      )
+      SELECT count(*) OVER()::text AS total, data
+      FROM matched
+      ORDER BY ${order}
+      LIMIT $2 OFFSET $3`,
+      [normalizedType, boundedLimit, boundedSkip],
+    );
+    await client.query('COMMIT');
+    return { jobs: result.rows.map(row => row.data), total: Number(result.rows[0]?.total || 0) };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 // Like MongoDB withTransaction, the callback can be replayed. Keep external
 // side effects outside it; only a committed attempt may publish its result.
 export async function postgresTransaction<T>(fn: (repo: Repository) => Promise<T>): Promise<T> {
@@ -100,23 +315,62 @@ export async function postgresUniqueConflicts(db: Pool | PoolClient = database()
   return conflicts;
 }
 
+async function ensurePostgresIndex(db: Pool | PoolClient, name: string, statement: string) {
+  // `CREATE INDEX IF NOT EXISTS` still takes a DDL lock while checking the
+  // catalog. Workers call bootstrap on every start, so avoid that lock for an
+  // index that is already present. A new deployment can still create it.
+  const existing = await db.query<{ valid: boolean }>(
+    `SELECT COALESCE(bool_or(indexes.indisvalid), false) AS valid
+       FROM pg_class classes
+       JOIN pg_index indexes ON indexes.indexrelid = classes.oid
+      WHERE classes.relkind = 'i' AND classes.relname = $1`,
+    [name],
+  );
+  if (!existing.rows[0]?.valid) await db.query(statement);
+}
+
 export async function bootstrapPostgres() {
   const db = await database().connect();
   try {
     await db.query('BEGIN');
     await db.query("SET LOCAL lock_timeout = '10s'");
     await db.query(`CREATE TABLE IF NOT EXISTS app_documents (collection text NOT NULL,id text NOT NULL,data jsonb NOT NULL,updated_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(collection,id))`);
-    // Hold writers while checking/installing constraints, so a concurrent insert
-    // cannot invalidate the preflight. Existing rows are never repaired/deleted.
-    await db.query('LOCK TABLE app_documents IN SHARE ROW EXCLUSIVE MODE');
-    const conflicts = await postgresUniqueConflicts(db);
-    if (conflicts.length) throw new Error('POSTGRES_UNIQUE_CONFLICTS: ' + JSON.stringify(conflicts));
-    await db.query('CREATE INDEX IF NOT EXISTS app_documents_collection_updated_idx ON app_documents(collection,updated_at DESC)');
-    await db.query(`CREATE INDEX IF NOT EXISTS app_documents_jobs_public_filter_idx ON app_documents ((data #> ARRAY['expiresAt']), (data #> ARRAY['discoveredAt'])) WHERE collection='jobs' AND (data #> ARRAY['status'])='"published"'::jsonb AND ((data #> ARRAY['sample']) IS NULL OR (data #> ARRAY['sample']) <> 'true'::jsonb)`);
-    await db.query(`CREATE INDEX IF NOT EXISTS app_documents_jobs_public_order_idx ON app_documents ((COALESCE(data #>> ARRAY['sourcePostedAt'],'')) DESC, (COALESCE(data #>> ARRAY['discoveredAt'],'')) DESC, id) WHERE collection='jobs' AND (data #> ARRAY['status'])='"published"'::jsonb AND ((data #> ARRAY['sample']) IS NULL OR (data #> ARRAY['sample']) <> 'true'::jsonb)`);
-    for (const key of postgresUniqueDefinitions()) await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS ${key.name} ON app_documents (${key.expressions.map(expression => `(${expression})`).join(',')}) WHERE ${key.predicate}`);
-    // Replace weaker legacy definitions only after all replacements succeed.
-    for (const name of ['users_email','users_google_id','employers_owner','employers_domain','student_onboarding_user','student_preferences_user','automation_preferences_user','student_subscriptions_user','mailbox_connections_user']) await db.query(`DROP INDEX IF EXISTS ${name}_uq`);
+    // Startup runs in every worker process. Do not take a table-wide exclusive
+    // lock here: the existing unique indexes remain the database authority and
+    // a busy production table must not prevent a discovery worker from starting.
+    // The database unique indexes below remain the authority for duplicate
+    // prevention. Do not scan every collection during ordinary worker startup;
+    // such a diagnostic pass can delay discovery for minutes on a live system.
+    await ensurePostgresIndex(db, 'app_documents_collection_updated_idx', 'CREATE INDEX app_documents_collection_updated_idx ON app_documents(collection,updated_at DESC)');
+    // Operations dashboards frequently filter by lifecycle status.  Without this
+    // expression index, PostgreSQL must scan the full jobs collection for every
+    // pending-review count and can exceed the reverse-proxy timeout.
+    await ensurePostgresIndex(db, 'app_documents_collection_status_idx', `CREATE INDEX app_documents_collection_status_idx ON app_documents(collection, (data #> ARRAY['status']))`);
+    // A feed refresh closes only variants for the current source.  This index
+    // keeps that reconciliation bounded instead of scanning every historical
+    // feed variant on each short-interval discovery run.
+    await ensurePostgresIndex(db, 'app_documents_feed_variants_active_idx', `CREATE INDEX app_documents_feed_variants_active_idx ON app_documents ((data #> ARRAY['sourceId']), (data #> ARRAY['active']), id) WHERE collection='jobFeedVariants'`);
+    await ensurePostgresIndex(db, 'app_documents_jobs_public_filter_idx', `CREATE INDEX app_documents_jobs_public_filter_idx ON app_documents ((data #> ARRAY['expiresAt']), (data #> ARRAY['discoveredAt'])) WHERE collection='jobs' AND (data #> ARRAY['status'])='"published"'::jsonb AND ((data #> ARRAY['sample']) IS NULL OR (data #> ARRAY['sample']) <> 'true'::jsonb)`);
+    await ensurePostgresIndex(db, 'app_documents_jobs_public_order_idx', `CREATE INDEX app_documents_jobs_public_order_idx ON app_documents ((COALESCE(data #>> ARRAY['sourcePostedAt'],'')) DESC, (COALESCE(data #>> ARRAY['discoveredAt'],'')) DESC, id) WHERE collection='jobs' AND (data #> ARRAY['status'])='"published"'::jsonb AND ((data #> ARRAY['sample']) IS NULL OR (data #> ARRAY['sample']) <> 'true'::jsonb)`);
+    // Keep common public category filtering on a narrow, ordered partial index.
+    // The live index is installed concurrently as a maintenance operation; this
+    // definition preserves it for clean database/bootstrap environments.
+    await ensurePostgresIndex(db, 'app_documents_jobs_public_category_v1_idx', `CREATE INDEX app_documents_jobs_public_category_v1_idx ON app_documents ((data #> ARRAY['category']), (COALESCE(data #>> ARRAY['sourcePostedAt'],'')) DESC, (COALESCE(data #>> ARRAY['discoveredAt'],'')) DESC, id) WHERE collection='jobs' AND (data #> ARRAY['status'])='"published"'::jsonb AND ((data #> ARRAY['sample']) IS NULL OR (data #> ARRAY['sample']) <> 'true'::jsonb)`);
+    await ensurePostgresIndex(db, 'app_documents_jobs_public_country_v1_idx', `CREATE INDEX app_documents_jobs_public_country_v1_idx ON app_documents ((data #>> ARRAY['country']), (COALESCE(data #>> ARRAY['sourcePostedAt'],'')) DESC, (COALESCE(data #>> ARRAY['discoveredAt'],'')) DESC, id) WHERE collection='jobs' AND (data #> ARRAY['status'])='"published"'::jsonb AND ((data #> ARRAY['sample']) IS NULL OR (data #> ARRAY['sample']) <> 'true'::jsonb)`);
+    await ensurePostgresIndex(db, 'app_documents_jobs_public_eligible_countries_v1_idx', `CREATE INDEX app_documents_jobs_public_eligible_countries_v1_idx ON app_documents USING GIN ((data #> ARRAY['eligibleCountries']) jsonb_path_ops) WHERE collection='jobs' AND (data #> ARRAY['status'])='"published"'::jsonb AND ((data #> ARRAY['sample']) IS NULL OR (data #> ARRAY['sample']) <> 'true'::jsonb)`);
+    await ensurePostgresIndex(db, 'app_documents_jobs_public_mode_v1_idx', `CREATE INDEX app_documents_jobs_public_mode_v1_idx ON app_documents ((data #> ARRAY['mode']), (COALESCE(data #>> ARRAY['sourcePostedAt'],'')) DESC, (COALESCE(data #>> ARRAY['discoveredAt'],'')) DESC, id) WHERE collection='jobs' AND (data #> ARRAY['status'])='"published"'::jsonb AND ((data #> ARRAY['sample']) IS NULL OR (data #> ARRAY['sample']) <> 'true'::jsonb)`);
+    await ensurePostgresIndex(db, 'app_documents_jobs_public_type_v1_idx', `CREATE INDEX app_documents_jobs_public_type_v1_idx ON app_documents ((regexp_replace(lower(COALESCE(data #>> ARRAY['type'],'')), '[ _-]+','','g')), (COALESCE(data #>> ARRAY['sourcePostedAt'],'')) DESC, (COALESCE(data #>> ARRAY['discoveredAt'],'')) DESC, id) WHERE collection='jobs' AND (data #> ARRAY['status'])='"published"'::jsonb AND ((data #> ARRAY['sample']) IS NULL OR (data #> ARRAY['sample']) <> 'true'::jsonb)`);
+    // The landing page defaults to discovered-date order (without sourcePostedAt),
+    // so it needs its own matching partial index rather than scanning/sorting all
+    // published job documents on every request.
+    // v2 can exist from an interrupted historical build and be marked invalid
+    // by PostgreSQL. Keep it for later maintenance; v3 is an independent valid
+    // replacement that can be built online before this code is deployed.
+    await ensurePostgresIndex(db, 'app_documents_jobs_public_discovered_v3_idx', `CREATE INDEX app_documents_jobs_public_discovered_v3_idx ON app_documents ((COALESCE(data #>> ARRAY['discoveredAt'],'')) DESC, id) WHERE collection='jobs' AND (data #> ARRAY['status'])='"published"'::jsonb AND ((data #> ARRAY['sample']) IS NULL OR (data #> ARRAY['sample']) <> 'true'::jsonb)`);
+    for (const key of postgresUniqueDefinitions()) await ensurePostgresIndex(db, key.name, `CREATE UNIQUE INDEX ${key.name} ON app_documents (${key.expressions.map(expression => `(${expression})`).join(',')}) WHERE ${key.predicate}`);
+    // Legacy-index cleanup is an explicit maintenance operation, never a
+    // worker-startup action. Dropping an index takes locks that can make a
+    // healthy background worker fail to start under normal application load.
     await db.query('COMMIT');
   } catch (error) { await db.query('ROLLBACK'); throw error; }
   finally { db.release(); }

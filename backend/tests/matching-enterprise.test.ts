@@ -4,7 +4,7 @@ import { sampleJobs } from '../src/lib/fixtures.js';
 import type { User, Profile, Preferences } from '../src/lib/domain.js';
 import type { Repository } from '../src/lib/store.js';
 import { defaultRankingPolicy, rankingPolicySchema, matchingQuerySchema, candidateMatchingSchema } from '../src/lib/matching-contracts.js';
-import { evaluateMatch, emptyCatalogs, salaryFit, locationFit, occupationFit, candidateEmbeddingText, keywordScore, keywordTerms } from '../src/lib/matching-ranking.js';
+import { evaluateMatch, emptyCatalogs, salaryFit, locationFit, locationPreferenceTier, occupationFit, candidateEmbeddingText, keywordScore, keywordTerms } from '../src/lib/matching-ranking.js';
 import { runMatching } from '../src/lib/matching-engine.js';
 import { jobFingerprint, cosine, validateVector, matchingProviderConfig, MatchingTransport, HttpEmbeddingProvider, OpenSearchMatchingProvider, indexMapping } from '../src/lib/matching-providers.js';
 import { syncMatchingIndex, removeDeletedIndexEntries } from '../src/lib/matching-indexer.js';
@@ -64,6 +64,27 @@ test('catalog hierarchy and explicit aliases work without adding unrelated occup
   catalogs.skills = [{ id: 'js', active: true, displayName: 'JavaScript', aliases: ['ECMAScript'] }];
   const result = evaluateMatch({ ...job, skills: ['JavaScript'] }, user, { ...profile, skills: ['ECMAScript'] }, preferences, catalogs, policy, { keyword: 0, semantic: null }, now);
   assert.deepEqual(result.matchedSkills, ['javascript']);
+});
+test('selected cities rank first while other verified jobs in selected countries remain eligible', async () => {
+  const catalogs = emptyCatalogs();
+  catalogs.locations = [
+    { id: 'india', active: true, displayName: 'India', countryCode: 'IN', type: 'country' },
+    { id: 'pune', active: true, displayName: 'Pune', countryCode: 'IN', parentId: 'india', type: 'city' },
+    { id: 'mumbai', active: true, displayName: 'Mumbai', countryCode: 'IN', parentId: 'india', type: 'city' },
+  ];
+  const cityJob = { ...job, id: 'city-first', city: 'Pune', country: 'India', matching: { locationId: 'pune' } };
+  const countryJob = { ...job, id: 'country-next', city: 'Mumbai', country: 'India', matching: { locationId: 'mumbai' } };
+  const preferencesWithLocation = { ...preferences, countries: ['india'], cities: ['pune'] };
+  assert.equal(locationFit(cityJob, preferencesWithLocation, catalogs), 1);
+  assert.equal(locationFit(countryJob, preferencesWithLocation, catalogs), 0.75);
+  assert.equal(locationPreferenceTier(cityJob, preferencesWithLocation, catalogs), 1);
+  assert.equal(locationPreferenceTier(countryJob, preferencesWithLocation, catalogs), 0);
+  const r = repository({
+    jobs: [countryJob, cityJob],
+    locations: catalogs.locations,
+  });
+  const result = await runMatching(r, { ...user, preferences: preferencesWithLocation }, {}, { semantic: false, candidateEmbeddingAllowed: false }, now);
+  assert.deepEqual(result.items.map(item => item.job.id), ['city-first', 'country-next']);
 });
 test('weights are validated, freshness decays and explanations reproduce score', () => {
   const result = evaluate();

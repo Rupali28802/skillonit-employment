@@ -2,6 +2,20 @@
 // Fields are scalar schema fields; no customer data or connection configuration.
 export const postgresUniqueKeys: { collection: string; fields: string[]; stringFields?: string[] }[] = [
   {
+    "collection": "referralProfiles",
+    "fields": [
+      "code"
+    ]
+  },
+  {
+    "collection": "referralRewards",
+    "fields": [
+      "campaignId",
+      "qualifyingAction",
+      "referredUserId"
+    ]
+  },
+  {
     "collection": "users",
     "fields": [
       "email"

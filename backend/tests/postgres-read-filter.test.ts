@@ -16,6 +16,7 @@ test('unsupported predicates are retained for the existing matcher; empty member
   assert.equal(mixed.complete, false);
   assert.deepEqual(postgresReadFilter({ 'profile.confirmed': true, count: 0 }).values, [['profile','confirmed'],'true',['count'],'0']);
 });
+
 test('field names and hostile values never become executable SQL', () => {
   const value = "owner'); DROP TABLE app_documents; --";
   const filter = postgresReadFilter({ [value]: value });
@@ -27,6 +28,14 @@ test('exclusion membership remains parameterized and preserves missing-field sem
   assert.equal(filter.sql, " AND ((data #> ARRAY['status']) IS NULL OR ((data #> ARRAY['status']) <> $2::jsonb AND (data #> ARRAY['status']) <> $3::jsonb))");
   assert.deepEqual(filter.values, ['"QUEUED"', '"FAILED"']);
   assert.deepEqual(postgresReadFilter({ status: { $nin: [] } }), { sql: '', values: [], complete: true });
+});
+test('primary document ids use the indexed id column for batch membership', () => {
+  const include = postgresReadFilter({ id: { $in: ['job-1', 'job-2'] } });
+  assert.equal(include.sql, ' AND id = ANY($2::text[])');
+  assert.deepEqual(include.values, [['job-1', 'job-2']]);
+  const exclude = postgresReadFilter({ id: { $nin: ['job-1'] } });
+  assert.equal(exclude.sql, ' AND id <> ALL($2::text[])');
+  assert.deepEqual(exclude.values, [['job-1']]);
 });
 test('range and inequality predicates are safely pushed down for bounded job reads', () => {
   const filter = postgresReadFilter({ status:'published', sample:{$ne:true}, expiresAt:{$gt:'2026-10-02T00:00:00.000Z'} });

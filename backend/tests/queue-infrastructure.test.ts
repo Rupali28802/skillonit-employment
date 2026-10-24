@@ -42,8 +42,8 @@ test('queue execution is idempotent, retry-safe, dead-lettered and auditable wit
 test('queue schedules, policies, Redis safety and graceful closure are bounded', async () => {
   const queue = await import('../src/lib/queue-infrastructure.ts');
   const schedules = queue.configuredSchedules({ ENABLE_APPLICATION_ENGINE: 'true', ENABLE_NOTIFICATION_PLATFORM: 'true', ENABLE_JOB_INGESTION_PIPELINE: 'true', ENABLE_JOB_VERIFICATION: 'true' } as NodeJS.ProcessEnv);
-  assert.deepEqual(schedules.map(row => row.name), ['application-sender', 'auto-apply-scheduler', 'subscription-expiry', 'job-ingestion', 'job-verify', 'notification-dispatch', 'data-retention']);
-  assert.equal(schedules.find(row => row.name === 'job-verify')?.every, 300_000);
+  assert.deepEqual(schedules.map(row => row.name), ['application-sender', 'auto-apply-scheduler', 'subscription-expiry', 'job-ingestion', 'notification-dispatch', 'data-retention']);
+  assert.ok(!schedules.some(row => row.name === 'job-verify'), 'job verification is scheduled only by the isolated worker');
   assert.equal(schedules.find(row => row.name === 'data-retention')?.every, 86_400_000);
   assert.equal(queue.configuredSchedules({ DATABASE_URL: 'postgresql://localhost/isolated' }).find(row => row.name === 'data-retention')?.every, 60_000);
   assert.ok(!queue.configuredSchedules({ DATABASE_URL: 'postgresql://localhost/isolated', ENABLE_RETENTION_MAINTENANCE: 'false' }).some(row => row.name === 'data-retention'));

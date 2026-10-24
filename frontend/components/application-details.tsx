@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog';
+import { readBrowserApiPayload } from '@/lib/browser-api';
 
 type Details = {
   id: string; applicationMethod: string; submissionState: string; status: string; company?: string;
@@ -19,8 +20,9 @@ export function ApplicationDetails({ id, admin = false }: { id: string; admin?: 
     setOpen(true); setBusy(true); setData(null); setError('');
     try {
       const response = await fetch(`/api/v1/${admin ? 'admin/console/' : ''}applications/${encodeURIComponent(id)}`, { cache: 'no-store', signal: AbortSignal.timeout(20000) });
-      const payload = await response.json();
+      const payload = await readBrowserApiPayload<Details>(response);
       if (!response.ok) throw Error(payload.error?.message || 'Application details unavailable.');
+      if (!payload.data) throw Error('Application details unavailable.');
       setData(payload.data);
     } catch (e) { setError(e instanceof Error ? e.message : 'Application details unavailable.'); }
     finally { setBusy(false); }

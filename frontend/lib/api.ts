@@ -15,14 +15,25 @@ export class BackendError extends Error {
 // live in Express. Browser mutations use the same-origin /api rewrite.
 export async function api<T>(path: string): Promise<T> {
   const response = await fetch(
-    `${process.env.BACKEND_URL || 'http://127.0.0.1:4000'}/api/v1/${path}`,
+    `${process.env.BACKEND_URL || 'http://127.0.0.1:4100'}/api/v1/${path}`,
     {
       headers: { Cookie: (await cookies()).toString() },
       cache: 'no-store',
       signal: AbortSignal.timeout(15000),
     },
   );
-  const result = await response.json();
+  // During a proxy/upstream failure an HTML error page must never leak its
+  // JSON parser error into a rendered route. Browser discovery already uses
+  // the same defensive rule; keep server-rendered pages equally resilient.
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json'))
+    throw new BackendError(response.status || 502, 'Backend returned an unexpected response. Please retry.');
+  let result: { data?: T; error?: { message?: string } };
+  try {
+    result = await response.json() as { data?: T; error?: { message?: string } };
+  } catch {
+    throw new BackendError(response.status || 502, 'Backend returned an invalid response. Please retry.');
+  }
   if (!response.ok)
     throw new BackendError(
       response.status,

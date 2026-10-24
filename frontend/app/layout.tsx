@@ -5,11 +5,11 @@ import {
   ArrowUp,
   ArrowUpRight,
   BookOpenText,
-  BriefcaseBusiness,
 } from 'lucide-react';
 import './globals.css';
 import { currentUser } from '@/lib/api';
 import { Toaster } from '@/components/ui/toast';
+import { headers } from 'next/headers';
 import { jsonLd, siteOrigin } from '@/lib/seo';
 
 export const metadata: Metadata = {
@@ -29,6 +29,8 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const requestHeaders = await headers();
+  const nonce = requestHeaders.get('x-nonce') ?? undefined;
   const sessionResult = await Promise.allSettled([currentUser()]);
   const sessionUnavailable = sessionResult[0].status === 'rejected';
   const user = sessionResult[0].status === 'fulfilled' ? sessionResult[0].value : null;
@@ -41,19 +43,15 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body>
-        <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd({'@context':'https://schema.org','@type':'Organization',name:'SkillOnIT Employment',url:siteOrigin(),logo:new URL('/favicon.svg',siteOrigin()).href,sameAs:['https://www.instagram.com/skillonit.employment/','https://www.facebook.com/profile.php?id=61594123457942','https://medium.com/@skillonitemployment']})}/>
-        <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd({'@context':'https://schema.org','@type':'WebSite',name:'SkillOnIT Employment',url:siteOrigin()})}/>
+        <script nonce={nonce} type="application/ld+json" dangerouslySetInnerHTML={jsonLd({'@context':'https://schema.org','@type':'Organization',name:'SkillOnIT Employment',url:siteOrigin(),logo:new URL('/skillonit-employment-logo.png',siteOrigin()).href,sameAs:['https://www.instagram.com/skillonit.employment/','https://www.facebook.com/profile.php?id=61594123457942','https://medium.com/@skillonitemployment']})}/>
+        <script nonce={nonce} type="application/ld+json" dangerouslySetInnerHTML={jsonLd({'@context':'https://schema.org','@type':'WebSite',name:'SkillOnIT Employment',url:siteOrigin()})}/>
         <Toaster />
         <a href="#main" className="skip-link">
           Skip to content
         </a>
         <header className="site-header">
           <Link className="brand" href="/">
-            <span className="brand-icon">
-              <BriefcaseBusiness size={22} />
-            </span>
-            Skillon<span>IT</span>
-            <small>EMPLOYMENT</small>
+            <Image className="brand-logo" src="/skillonit-employment-logo.png" alt="SkillOnIT Employment" width={720} height={240} priority />
           </Link>
           <nav aria-label="Main navigation">
             <Link href="/">Find jobs</Link>
@@ -88,13 +86,7 @@ export default async function RootLayout({
           <div className="footer-main">
             <section className="footer-intro" aria-labelledby="footer-brand-name">
               <Link className="footer-brand" href="/" id="footer-brand-name">
-                <span className="footer-brand-icon" aria-hidden="true">
-                  <BriefcaseBusiness size={20} />
-                </span>
-                <span className="footer-brand-copy">
-                  <span className="footer-brand-name">Skillon<strong>IT</strong></span>
-                  <small>EMPLOYMENT</small>
-                </span>
+                <Image className="footer-brand-logo" src="/skillonit-employment-logo.png" alt="SkillOnIT Employment" width={720} height={240} />
               </Link>
               <p>Find meaningful work, build a trusted profile, and take your next career step with confidence.</p>
               <nav className="footer-socials" aria-label="SkillOnIT social media">
@@ -148,7 +140,7 @@ export default async function RootLayout({
             </div>
           </div>
         </footer>
-        <script src="/pricing-carousel.js" defer />
+        <script nonce={nonce} src="/pricing-carousel.js" defer />
       </body>
     </html>
   );

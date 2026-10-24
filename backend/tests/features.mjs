@@ -26,7 +26,10 @@ const visitor = client(),
   candidate = client(),
   other = client(),
   admin = client();
-assert.equal((await visitor("health")).mode, "demo");
+const publicHealth = await visitor('health');
+assert.equal(publicHealth.status, 'ok');
+assert.equal(Object.hasOwn(publicHealth, 'mode'), false);
+assert.equal(Object.hasOwn(publicHealth, 'providers'), false);
 await visitor("me/saved-searches", "GET", undefined, 401);
 for (const c of [candidate, other]) {
   const result = await c(
@@ -144,6 +147,24 @@ assert.equal(result.mode, "keyword-search");
 assert.ok(result.jobs.every((job) => !job.identityVisible));
 await candidate("applications/missing/not-a-real-action", "POST", {}, 404);
 await admin("auth/demo", "POST", { role: "admin" });
+await admin('admin/referrals/campaign', 'PUT', {
+  name: 'Feature referral campaign', active: true, amountPaise: 5000,
+  qualifyingAction: 'email_verified_registration', eligiblePlanCodes: [], startsAt: null, endsAt: null,
+  maxRewardsPerReferrer: null, refundWaitDays: 7, minimumWithdrawalPaise: 1000,
+});
+const referral = await candidate('me/referrals');
+assert.match(referral.code, /^[A-Z0-9]{8,20}$/);
+await candidate('referrals/track', 'POST', { code: referral.code }, 409);
+const referred = client();
+await referred('referrals/track', 'POST', { code: referral.code });
+const registration = await referred('auth/register', 'POST', {
+  name: 'Referred feature test', email: `${randomUUID()}@example.test`, password: randomUUID(), role: 'student',
+}, 201);
+await referred('auth/verify-email', 'POST', { email: registration.user.email, otp: registration.demoVerificationOtp });
+const referralAfterVerification = await candidate('me/referrals');
+assert.equal(referralAfterVerification.totals.referrals, 1);
+assert.equal(referralAfterVerification.totals.emailVerified, 1);
+assert.equal(referralAfterVerification.totals.pendingPaise, 5000);
 await candidate(
   "admin/configuration",
   "PUT",

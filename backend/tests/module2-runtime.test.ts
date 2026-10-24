@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:net';
 import { once } from 'node:events';
 import { module2ProductionIssues } from '../src/lib/module2-production-config.js';
-import { redisSettings, checkModule2Redis, deadline } from '../src/lib/module2-redis.js';
+import { redisSettings, checkModule2Redis, deadline, module2RedisFailureCode } from '../src/lib/module2-redis.js';
 import { processModule2Task, cvJobOptions, startModule2Worker } from '../src/workers/module2-runtime.js';
 
 test('Module 2 production gate names missing variables without disclosing their values', () => {
@@ -23,6 +23,13 @@ test('Module 2 Redis configuration preserves TLS, database selection and bounded
   const retry = options.retryStrategy!;
   assert.equal(retry(1), 250); assert.equal(retry(4), null);
   for (const url of ['redis://example.test', 'https://example.test', 'rediss://example.test/?secret=value', 'rediss://example.test/not-a-db']) assert.throws(() => redisSettings({ REDIS_URL: url, NODE_ENV: 'production' }));
+});
+test('Module 2 Redis diagnostics classify actionable failures without retaining provider text', () => {
+  assert.equal(module2RedisFailureCode(new Error('ERR max requests limit exceeded. Limit: 500000.')), 'REDIS_REQUEST_QUOTA_EXCEEDED');
+  assert.equal(module2RedisFailureCode(new Error('ERR max number of clients reached')), 'REDIS_CONNECTION_LIMIT');
+  assert.equal(module2RedisFailureCode(new Error('NOAUTH Authentication required.')), 'REDIS_AUTH_FAILED');
+  assert.equal(module2RedisFailureCode(new Error('NOPERM this user has no permissions')), 'REDIS_COMMAND_NOT_PERMITTED');
+  assert.equal(module2RedisFailureCode(new Error('private-provider-fixture')), 'REDIS_UNAVAILABLE');
 });
 test('Module 2 worker task boundaries and provider failures retain only safe error codes', async () => {
   let called = 0;

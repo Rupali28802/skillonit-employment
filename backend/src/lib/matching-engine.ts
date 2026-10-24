@@ -3,7 +3,7 @@ import { matchingInputs } from './job-matching.js';
 import { read, transaction, type Repository } from './store.js';
 import { ApiError, audit } from './security.js';
 import { rankingPolicySchema, type RankingPolicy } from './matching-contracts.js';
-import { candidateEmbeddingText, evaluateMatch, keywordScore, keywordTerms, loadMatchingCatalogs } from './matching-ranking.js';
+import { candidateEmbeddingText, evaluateMatch, keywordScore, keywordTerms, loadMatchingCatalogs, locationPreferenceTier } from './matching-ranking.js';
 import { configuredMatchingProviders, cosine, jobFingerprint, MatchingProviderError, type EmbeddingProvider, type MatchingSearchProvider } from './matching-providers.js';
 import { z } from 'zod';
 
@@ -103,7 +103,8 @@ export async function runMatching(r: Repository, user: User, options: { q?: stri
       if (metadata.scanned === policy.localScanLimit) metadata.truncated = (await r.scan<Job>('jobs', { status: 'published', trust: 'verified' }, after, 1)).length > 0;
     }
   }
-  rows.sort((a, b) => b.match.score - a.match.score || Date.parse(b.job.discoveredAt) - Date.parse(a.job.discoveredAt) || a.job.id.localeCompare(b.job.id));
+  rows.sort((a, b) => locationPreferenceTier(b.job, input.preferences, catalogs) - locationPreferenceTier(a.job, input.preferences, catalogs) ||
+    b.match.score - a.match.score || Date.parse(b.job.discoveredAt) - Date.parse(a.job.discoveredAt) || a.job.id.localeCompare(b.job.id));
   const pool = rows.slice(0, policy.candidatePool);
   metadata.truncated ||= rows.length > pool.length;
   metadata.totalInCandidatePool = pool.length;
