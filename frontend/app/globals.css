@@ -2985,6 +2985,7 @@ body:has(.auth-page) > footer { display: none; }
   }
   .site-header .header-actions { margin-left: auto; font-size: 12px; }
   .site-header .header-actions > .primary { min-height: 0; padding: 8px 12px; border-radius: 6px; font-size: 12px; }
+  .site-header .header-actions > .header-workspace-action { display: none; }
   .site-header .brand { font-size: 23px; }
   .site-header .brand-logo { width: 148px; }
 }

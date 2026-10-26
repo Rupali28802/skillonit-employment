@@ -72,7 +72,7 @@ export default async function RootLayout({
                 )}
               </Link>
             ) : <Link href="/login">Sign in</Link>}
-            <Link className="primary" href={user ? workspace : '/register'}>
+            <Link className={user ? 'primary header-workspace-action' : 'primary'} href={user ? workspace : '/register'}>
               {user ? 'Workspace' : 'Get started'}
               <ArrowUpRight size={16} />
             </Link>
