@@ -34,6 +34,53 @@ const iso = (v: unknown) => {
   return Number.isFinite(stamp) && Math.abs(stamp) <= 8640000000000000 ? new Date(stamp).toISOString() : 'invalid';
 };
 
+const githubJobSignal = /\b(?:hiring|job(?:s|\s+opening)?|career(?:s)?|internship(?:s)?|intern|fresher(?:s)?|graduate|entry[- ]level|junior|developer|engineer)\b/i;
+const knownApplicationHosts = new Set([
+  'greenhouse.io', 'job-boards.greenhouse.io', 'lever.co', 'jobs.lever.co', 'ashbyhq.com',
+  'myworkdayjobs.com', 'smartrecruiters.com', 'jobvite.com', 'workable.com', 'bamboohr.com',
+  'icims.com', 'applytojob.com', 'taleo.net', 'successfactors.com', 'recruitee.com',
+  'teamtailor.com', 'personio.com',
+]);
+
+function isGitHubHost(host: string) {
+  const value = host.toLowerCase();
+  return value === 'github.com' || value.endsWith('.github.com') || value.endsWith('.githubusercontent.com');
+}
+
+/**
+ * GitHub announcements are only candidates when the author supplied a public
+ * application URL. This deliberately avoids treating a repository, profile,
+ * issue, or an arbitrary hyperlink as an application destination.
+ */
+export function githubApplicationUrl(body: string): string | undefined {
+  const matches = body.matchAll(/\[[^\]]{0,200}\]\((https:\/\/[^\s)<]+)[^)]*\)|\b(https:\/\/[^\s<>()\]]+)/gi);
+  for (const match of matches) {
+    const raw = (match[1] || match[2] || '').replace(/[.,;:!?]+$/, '');
+    try {
+      const url = new URL(raw);
+      if (url.username || url.password || url.port || isGitHubHost(url.hostname)) continue;
+      const context = body.slice(Math.max(0, match.index! - 250), Math.min(body.length, match.index! + raw.length + 250));
+      const host = url.hostname.toLowerCase();
+      if (/\b(?:apply|application|applicant|career(?:s)?|position|role)\b/i.test(context)
+        || [...knownApplicationHosts].some(domain => host === domain || host.endsWith(`.${domain}`)))
+        return url.href;
+    } catch {
+      // An announcement can contain malformed markdown URLs; skip only that URL.
+    }
+  }
+  return undefined;
+}
+
+function githubIssueBelongsToOrganization(url: string, organization: string) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' && parsed.hostname === 'github.com'
+      && parsed.pathname.split('/').filter(Boolean)[0]?.toLowerCase() === organization.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchJson(url: string, extraHeaders: Record<string, string> = {}, body?: Record<string, unknown>): Promise<Json | Json[]> {
   const r = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(20000),
     ...(body ? { method: 'POST', body: JSON.stringify(body) } : {}),
@@ -60,6 +107,41 @@ export async function fetchJson(url: string, extraHeaders: Record<string, string
 export async function fetchFeed(source: FeedSource, get = fetchJson, pause = delay, reserve = reserveJoobleRequest): Promise<FeedBatch> {
   if (!source.enabled || !source.approved) throw new FeedError('SOURCE_DISABLED');
   const jobs: Candidate[] = []; let requests = 0;
+  if (source.type === 'github') {
+    if (!source.board || !source.company) throw new FeedError('INVALID_GITHUB_ORGANIZATION');
+    const query = [
+      `org:${source.board}`,
+      'is:issue',
+      'is:open',
+      'in:title,body',
+      source.keywords || '(hiring OR jobs OR careers OR internship OR fresher OR developer OR engineer)',
+    ].join(' ');
+    const payload = await get(`https://api.github.com/search/issues?${new URLSearchParams({ q: query, sort: 'updated', order: 'desc', per_page: '100', page: '1' })}`, {
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
+    }) as Json;
+    requests++;
+    if (!Array.isArray(payload.items) || payload.items.length > 100) throw new FeedError('INVALID_FEED');
+    for (const issue of payload.items) {
+      const listingUrl = text(issue.html_url), body = text(issue.body), title = text(issue.title);
+      if (issue.pull_request || !githubIssueBelongsToOrganization(listingUrl, source.board)
+        || !githubJobSignal.test(`${title}\n${body}`)) continue;
+      const applicationUrl = githubApplicationUrl(body);
+      // A public GitHub announcement without an explicit external application
+      // destination is useful context, but is not a verified vacancy to publish.
+      if (!applicationUrl) continue;
+      jobs.push({
+        externalId: String(issue.id ?? issue.number ?? ''), title, company: source.company,
+        url: listingUrl, listingUrl, applicationUrl, applicationTarget: 'direct-form',
+        description: body, location: 'Not specified', postedAt: iso(issue.created_at), updatedAt: iso(issue.updated_at),
+        tags: ['GitHub announcement'],
+      });
+    }
+    // GitHub search is a relevance-ranked, bounded result set. It must never
+    // withdraw a previously discovered listing solely because it falls out of it.
+    return { jobs, complete: false, snapshot: false, requests };
+  }
   if (source.type === 'jobtech') {
     let complete = false;
     for (let page = 0; page < source.maxPages; page++) {

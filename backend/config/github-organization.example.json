@@ -1,0 +1,15 @@
+{
+  "id": "github-example-org",
+  "type": "github",
+  "name": "Example Org hiring announcements",
+  "company": "Example Org",
+  "board": "example-org",
+  "keywords": "hiring OR internship OR fresher OR developer",
+  "enabled": false,
+  "approved": false,
+  "publish": false,
+  "publicListing": true,
+  "intervalMinutes": 360,
+  "maxPages": 1,
+  "policyEvidence": "PENDING: confirm this organization authorizes public job-announcement reuse and verify its external application destinations before enabling."
+}

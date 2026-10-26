@@ -11,7 +11,7 @@ import { sampleJobs } from '../src/lib/fixtures.ts';
 import { publicJob, type Job } from '../src/lib/domain.ts';
 import { sourceSchema, publicSources, type FeedSource } from '../src/job-engine/sources.ts';
 import { canonicalUrl, normalize, categoryFor } from '../src/job-engine/normalize.ts';
-import { fetchFeed, FeedError, type Candidate, type FeedBatch } from '../src/job-engine/adapters.ts';
+import { fetchFeed, FeedError, githubApplicationUrl, type Candidate, type FeedBatch } from '../src/job-engine/adapters.ts';
 import { engineLeaseDurationMs, runEngine, upsertSource, setEmployerRefresh } from '../src/job-engine/engine.ts';
 import { searchJobs } from '../src/lib/search.ts';
 import { expireJobs, expectedJobExpiry } from '../src/lib/lifecycle.ts';
@@ -168,6 +168,41 @@ test('approved-source gates and Remotive public attribution/cooldowns are mandat
   assert.equal(sourceSchema.safeParse({ ...publicSources.find(s => s.type === 'remotive')!, publicListing: false }).success, false);
   let calls = 0;
   await assert.rejects(fetchFeed({ ...source, enabled: false }, async () => { calls++; return {}; })); assert.equal(calls, 0);
+});
+
+test('GitHub organization search keeps the announcement and only publishes explicit external application links', async () => {
+  const github = sourceSchema.parse({ ...source, id: 'github-example', type: 'github', board: 'example-org', company: 'Example Org', intervalMinutes: 360, maxPages: 1 });
+  const result = await fetchFeed(github, async (url, headers) => {
+    const parsed = new URL(url);
+    assert.equal(parsed.origin + parsed.pathname, 'https://api.github.com/search/issues');
+    assert.match(parsed.searchParams.get('q') || '', /org:example-org/);
+    assert.equal(headers?.['Accept'], 'application/vnd.github+json');
+    return { items: [
+      { id: 1, number: 7, title: 'We are hiring a junior developer', html_url: 'https://github.com/example-org/jobs/issues/7',
+        body: 'Our careers team is hiring. Apply at [our careers page](https://careers.example.com/jobs/7).', created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-02T00:00:00Z' },
+      { id: 2, number: 8, title: 'Hiring engineer', html_url: 'https://github.com/example-org/jobs/issues/8',
+        body: 'See https://github.com/example-org/jobs for details.', created_at: '2026-09-01T00:00:00Z' },
+      { id: 3, number: 9, title: 'Hiring engineer', html_url: 'https://github.com/other-org/jobs/issues/9',
+        body: 'Apply at https://careers.example.com/jobs/9', created_at: '2026-09-01T00:00:00Z' },
+      { id: 4, number: 10, title: 'Hiring engineer', html_url: 'https://github.com/example-org/jobs/pull/10',
+        body: 'Apply at https://careers.example.com/jobs/10', pull_request: {}, created_at: '2026-09-01T00:00:00Z' },
+    ] };
+  });
+  assert.equal(result.requests, 1); assert.equal(result.complete, false); assert.equal(result.snapshot, false);
+  assert.equal(result.jobs.length, 1);
+  assert.equal(result.jobs[0].listingUrl, 'https://github.com/example-org/jobs/issues/7');
+  assert.equal(result.jobs[0].applicationUrl, 'https://careers.example.com/jobs/7');
+  const normalized = normalize(result.jobs[0], github);
+  assert.equal(normalized.url, 'https://careers.example.com/jobs/7');
+  assert.equal(publicJob(normalized).sourceLink, 'https://github.com/example-org/jobs/issues/7');
+  assert.equal(sourceSchema.safeParse({ ...github, maxPages: 2 }).success, false);
+  assert.equal(sourceSchema.safeParse({ ...github, intervalMinutes: 60 }).success, false);
+});
+
+test('GitHub application extraction rejects source, profile and unrelated links', () => {
+  assert.equal(githubApplicationUrl('Hiring: visit https://github.com/example/jobs and https://example.com/about.'), undefined);
+  assert.equal(githubApplicationUrl('Hiring: apply through https://jobs.lever.co/example/role.'), 'https://jobs.lever.co/example/role');
+  assert.equal(githubApplicationUrl('A role is open. Submit your application at https://careers.example.com/apply.'), 'https://careers.example.com/apply');
 });
 test('paginated adapters never follow arbitrary next URLs and report truncation', async () => {
   const urls: string[] = [];
