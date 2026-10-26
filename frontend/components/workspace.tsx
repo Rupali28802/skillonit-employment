@@ -337,8 +337,11 @@ async function Candidate({ section, user }: { section: string; user: User }) {
     return <div className="stack"><GmailConnection initial={mailbox} compact /><div className="panel"><span className="pill">{subscription.plan.name} · {automation.executionAvailable && mailbox.connected ? 'Execution available' : 'Execution paused'}</span><h2 style={{marginTop: 15}}>Auto Apply today: {autoUsage.used} / {autoUsage.cap}</h2><p>Remaining: {Math.max(0,autoUsage.cap-autoUsage.used)} · resets each {autoUsage.period} UTC period.</p>{autoUsage.used>=autoUsage.cap&&<p className="notice">Daily Auto Apply limit reached. Automatic applications will resume after the daily reset.</p>}<p>Automation uses only confirmed facts, eligible jobs, your consent, a connected email account, and the daily cap you choose. External forms remain assisted unless a supported integration exists.</p><SmartForm endpoint="me/automation-preferences" method="PUT" initial={automation} expectedRevision={automation.revision} requirements={[{field:'enabled',satisfied:mailbox.connected,message:'Connect your email account first to enable automatic applications.',href:'/mail',action:'Connect Email'}]} fields={[{name:'enabled',label:'Enable Automatic Job Applications',type:'checkbox'},{name:'paused',label:'Pause all automated applications',type:'checkbox'},{name:'dailyCap',label:'Maximum applications per day',type:'number'},{name:'allowedRoleFamilies',label:'Allowed occupation IDs',type:'list',required:false},{name:'excludedRoles',label:'Excluded role names',type:'list',required:false},{name:'allowedLocations',label:'Allowed location IDs',type:'list',required:false},{name:'excludedLocations',label:'Excluded location IDs',type:'list',required:false},{name:'workModes',label:'Work arrangements',type:'list',required:false},{name:'employmentTypes',label:'Employment types',type:'list',required:false}]} /></div></div>;
   }
   if (section === 'cvs') {
-    const documents = await api<RecordRow[]>('me/cv');
-    return <CvManager documents={documents as never[]} profileRevision={user.profileRevision ?? 0} currentProfile={user.profile} />;
+    const [documents, cvStatus] = await Promise.all([
+      api<RecordRow[]>('me/cv'),
+      api<{ available: boolean }>('me/cv/status'),
+    ]);
+    return <CvManager documents={documents as never[]} profileRevision={user.profileRevision ?? 0} currentProfile={user.profile} uploadsAvailable={cvStatus.available} />;
   }
   if (section === 'mail') {
     const mailbox = await api<MailboxStatus>('mail/status');

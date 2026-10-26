@@ -136,7 +136,7 @@ const editableDraftFields = [
   ['availability', 'Availability / notice period', 'text'], ['relocation', 'Relocation preference', 'text'],
 ] as const;
 
-export function CvManager({ documents, profileRevision, currentProfile = {} }: { documents: CvDocument[]; profileRevision: number; currentProfile?: Record<string, unknown> }) {
+export function CvManager({ documents, profileRevision, currentProfile = {}, uploadsAvailable = false }: { documents: CvDocument[]; profileRevision: number; currentProfile?: Record<string, unknown>; uploadsAvailable?: boolean }) {
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState('');
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
@@ -160,8 +160,8 @@ export function CvManager({ documents, profileRevision, currentProfile = {} }: {
     <div className="panel">
       <h2>Upload your CV</h2>
       <p>PDF or DOCX, up to 5 MB. Your file is stored privately, scanned, parsed, and shown to you for confirmation before profile data changes.</p>
-      <input id="cv-file" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
-      <button className="primary" disabled={!!busy} onClick={() => run('upload', async () => {
+      <input id="cv-file" type="file" disabled={!uploadsAvailable} accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+      <button className="primary" disabled={!!busy || !uploadsAvailable} onClick={() => run('upload', async () => {
         const input = document.querySelector<HTMLInputElement>('#cv-file'); const file = input?.files?.[0];
         if (!file) throw new Error('Choose a PDF or DOCX file first.');
         setUploadProgress(0);
@@ -173,6 +173,7 @@ export function CvManager({ documents, profileRevision, currentProfile = {} }: {
           request.onerror = () => reject(new Error('Network error while uploading the CV.')); request.send(file);
         });
       })}>{busy === 'upload' ? 'Uploading…' : 'Upload and process CV'}</button>
+      {!uploadsAvailable && <p className="notice" role="status">CV uploads are temporarily unavailable while secure processing is being restored. You can continue with manual profile entry.</p>}
       {uploadProgress !== null && busy === 'upload' && <p aria-live="polite">Upload progress: {uploadProgress}%</p>}
       {message && <p className="notice" aria-live="polite">{message}</p>}
     </div>

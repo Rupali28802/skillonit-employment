@@ -58,7 +58,7 @@ export async function studentModuleRoute(p: string, method: string, body: () => 
     if (method !== 'GET') throw new ApiError(405, 'METHOD_NOT_ALLOWED', 'Method not allowed.');
     return { data: await lookupCatalog(p === 'taxonomy/occupations' ? 'occupations' : p === 'taxonomy/skills' ? 'skills' : 'locations', Object.fromEntries(query)) };
   }
-  if (!['me/automation-preferences', 'me/profile/completion'].includes(p) && !/^me\/ats-cv(?:\/[^/]+(?:\/(?:confirm|export))?)?$/.test(p) && !['me/onboarding', 'me/onboarding/complete', 'me/consents', 'me/student-taxonomies', 'me/cv'].includes(p) && !/^me\/cv\/[^/]+(?:\/(?:confirm|retry|content))?$/.test(p)) return;
+  if (!['me/automation-preferences', 'me/profile/completion'].includes(p) && !/^me\/ats-cv(?:\/[^/]+(?:\/(?:confirm|export))?)?$/.test(p) && !['me/onboarding', 'me/onboarding/complete', 'me/consents', 'me/student-taxonomies', 'me/cv', 'me/cv/status'].includes(p) && !/^me\/cv\/[^/]+(?:\/(?:confirm|retry|content))?$/.test(p)) return;
   const user = await requireUser('student');
   await module2Limit(user.id, method === 'GET' ? 'lookup' : 'mutation');
   if (p === 'me/profile/completion' && method === 'GET') return { data: await profileCompletion(user.id) };
@@ -89,6 +89,11 @@ export async function studentModuleRoute(p: string, method: string, body: () => 
     const row = await read(r => r.get<{ id: string; value: unknown }>('systemConfig', 'student-taxonomies'));
     const taxonomy = z.object({ version: z.string().max(100), roles: z.array(z.object({ id: z.string().max(100), label: z.string().max(200), relatedRoleIds: z.array(z.string().max(100)).max(100) })).max(1000), industries: z.array(z.string().max(200)).max(1000) });
     return { data: row ? taxonomy.parse(row.value) : { version: 'unconfigured', roles: [], industries: [] } };
+  }
+  if (p === 'me/cv/status' && method === 'GET') {
+    // This deliberately reports only a feature gate. Provider credentials and
+    // operational health remain private to the production readiness checks.
+    return { data: { available: process.env.ENABLE_CV_UPLOADS === 'true' && Boolean(configuredCvProviders()) } };
   }
   if (p === 'me/cv' && method === 'GET') return { data: await listCvs(user.id) };
   const parts = p.split('/');
