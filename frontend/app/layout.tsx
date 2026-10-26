@@ -64,18 +64,27 @@ export default async function RootLayout({
           </nav>
           <div className="header-actions">
             {user ? (
-              <Link className="header-profile-photo" href={workspace} aria-label={`Open ${user.role === 'student' ? 'student ' : ''}workspace`} title={user.name}>
-                {user.profile.avatarVersion ? (
-                  <Image src={`/api/v1/me/profile-image/avatar?v=${encodeURIComponent(user.profile.avatarVersion)}`} alt={`${user.name}'s profile photo`} width={40} height={40} unoptimized />
-                ) : (
-                  <span aria-hidden="true">{user.name.split(' ').filter(Boolean).slice(0, 2).map(word => word[0]).join('').toUpperCase() || 'U'}</span>
-                )}
+              <>
+                <Link className="header-profile-photo" href={workspace} aria-label={`Open ${user.role === 'student' ? 'student ' : ''}workspace`} title={user.name}>
+                  {user.profile.avatarVersion ? (
+                    <Image src={`/api/v1/me/profile-image/avatar?v=${encodeURIComponent(user.profile.avatarVersion)}`} alt={`${user.name}'s profile photo`} width={40} height={40} unoptimized />
+                  ) : (
+                    <span aria-hidden="true">{user.name.split(' ').filter(Boolean).slice(0, 2).map(word => word[0]).join('').toUpperCase() || 'U'}</span>
+                  )}
+                </Link>
+                <Link className="primary header-workspace-action" href={workspace}>
+                  Workspace
+                  <ArrowUpRight size={16} />
+                </Link>
+              </>
+            ) : <>
+              <Link className="header-sign-in" href="/login">Sign in</Link>
+              <Link className="primary header-sign-up" href="/register">
+                <span className="header-sign-up-desktop">Get started</span>
+                <span className="header-sign-up-mobile">Sign up</span>
+                <ArrowUpRight className="header-sign-up-icon" size={16} />
               </Link>
-            ) : <Link href="/login">Sign in</Link>}
-            <Link className={user ? 'primary header-workspace-action' : 'primary'} href={user ? workspace : '/register'}>
-              {user ? 'Workspace' : 'Get started'}
-              <ArrowUpRight size={16} />
-            </Link>
+            </>}
           </div>
         </header>
         <main id="main">

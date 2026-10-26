@@ -2960,6 +2960,7 @@ body:has(.auth-page) > footer { display: none; }
   box-shadow: none;
 }
 .site-header .header-actions > .primary:hover { background: #0a4d3e; }
+.header-sign-up-mobile { display: none; }
 @media (max-width: 1150px) {
   .site-header nav { gap: 18px; }
   .site-header .header-actions { gap: 15px; }
@@ -2986,6 +2987,13 @@ body:has(.auth-page) > footer { display: none; }
   .site-header .header-actions { margin-left: auto; font-size: 12px; }
   .site-header .header-actions > .primary { min-height: 0; padding: 8px 12px; border-radius: 6px; font-size: 12px; }
   .site-header .header-actions > .header-workspace-action { display: none; }
+  .site-header .header-actions > .header-sign-in,
+  .site-header .header-actions > .header-sign-up { min-height: 44px; display: inline-flex; align-items: center; }
+  .site-header .header-actions > .header-sign-up { padding: 0; color: inherit; background: transparent; box-shadow: none; }
+  .site-header .header-actions > .header-sign-up:hover { color: #0b6b4e; background: transparent; }
+  .header-sign-up-desktop,
+  .header-sign-up-icon { display: none; }
+  .header-sign-up-mobile { display: inline; }
   .site-header .brand { font-size: 23px; }
   .site-header .brand-logo { width: 148px; }
 }
