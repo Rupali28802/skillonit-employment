@@ -79,6 +79,7 @@ export default async function RootLayout({
               </>
             ) : <>
               <Link className="header-sign-in" href="/login">Sign in</Link>
+              <span className="header-auth-separator" aria-hidden="true">/</span>
               <Link className="primary header-sign-up" href="/register">
                 <span className="header-sign-up-desktop">Get started</span>
                 <span className="header-sign-up-mobile">Sign up</span>
