@@ -689,7 +689,10 @@ export async function handle(
     if (p === "applications" && method === "POST") {
       const u = await requireUser("student");
       const result = await createApplication(u.id, await body());
-      return ok({ ...publicApplication(result.application), externalUrl: result.externalUrl }, 201);
+      // An external destination is exposed only by the explicit, audited
+      // open-external action. Creating an application must not redirect a user
+      // away from the assisted in-platform review flow.
+      return ok(publicApplication(result.application), 201);
     }
     if (
       parts[0] === "applications" &&

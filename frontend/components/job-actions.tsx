@@ -11,7 +11,7 @@ import { readBrowserApiPayload } from '@/lib/browser-api';
 
 type ApplicationPreview = {
   job: { title: string; company: string; source: string; method: 'direct' | 'external' | 'email' };
-  action: 'open_source_form' | 'send_authorized_email' | 'submit_to_employer';
+  action: 'prepare_assisted_application' | 'send_authorized_email' | 'submit_to_employer';
   destinationHost: string | null;
   destinationKind: 'direct-form' | 'source-job-page' | 'source-redirect' | null;
   requiresConfirmation: true;
@@ -26,6 +26,7 @@ type ApplicationPreview = {
   };
   templates:{id:string;name:string;isDefault:boolean}[];
   selectedTemplateId:string|null;
+  assistedApplication: null | { fields: { name: string; label: string; required: boolean; needsConfirmation: boolean; protectedStep?: boolean }[]; missingFields: string[]; protectedFields: string[]; mode: 'ASSISTED_APPLICATION' };
 };
 
 export function JobActions({
@@ -80,18 +81,21 @@ export function JobActions({
         window.location.href = '/login';
         return;
       }
-      const j = await readBrowserApiPayload<{ method: string; status: string; externalUrl?: string }>(r);
+      const j = await readBrowserApiPayload<{ method: string; status: string }>(r);
       if (!r.ok) throw Error(j.error?.message);
       if (!j.data) throw Error('Application could not be completed. Please try again.');
       setMessage(
         sample
           ? 'Demo application recorded. No real employer has been contacted.'
+          : j.data.method === 'external'
+            ? 'Application plan saved. It still requires an authorized employer-form integration or your further action; no data was submitted externally.'
           : j.data.method === 'email' && j.data.status === 'QUEUED'
             ? 'Application confirmed and queued to send from your connected Gmail.'
             : 'Application recorded: ' + j.data.status.replaceAll('_', ' '),
       );
       setOpen(false);
-      if (j.data.externalUrl) window.location.assign(j.data.externalUrl);
+      // External applications are saved as an in-platform, candidate-reviewed plan.
+      // A source form is never opened automatically after confirmation.
     } catch (e) {
       setMessage((e as Error).message);
     } finally {
@@ -121,12 +125,8 @@ export function JobActions({
           <DialogDescription>
             {sample
               ? 'This is a sample vacancy. Submitting records a demo application only.'
-              : preview?.action === 'open_source_form'
-                ? preview.destinationKind === 'direct-form'
-                  ? `After you confirm, you’ll open the real application form provided by ${preview.job.source}.`
-                  : preview.destinationKind === 'source-redirect'
-                    ? `After you confirm, ${preview.job.source} will send you to this job’s authorized application destination.`
-                    : `After you confirm, you’ll open this job’s source page, where the source provides its application process.`
+              : preview?.action === 'prepare_assisted_application'
+                ? 'SkillonIT will create a private application plan using only your confirmed profile and CV. It will not open, fill, or submit an external form automatically.'
                 : preview?.action === 'send_authorized_email'
                   ? 'Review the saved details below. After you confirm, SkillOnIT will send this application from your connected Gmail.'
                   : 'After you confirm, SkillOnIT will submit the reviewed details to this employer.'}
@@ -134,8 +134,9 @@ export function JobActions({
           {preview && <div className="application-review">
             <p><strong>{preview.job.title}</strong><br />{preview.job.company}</p>
             <p className="small">Source: {preview.job.source}{preview.destinationHost ? ` · Form hosted on ${preview.destinationHost}` : ''}</p>
-            {preview.action === 'open_source_form' ? (
-              <p className="notice small">{preview.destinationKind === 'direct-form' ? 'This link goes to the source-provided application form.' : preview.destinationKind === 'source-redirect' ? 'This is the source-authorized job link and may pass through its redirect before opening the employer’s application destination.' : 'This opens the job-specific source page, not a general homepage. Use the source’s Apply control to continue.'} SkillOnIT will not send your profile, CV, or email to the external site; fill its required fields there.</p>
+            {preview.action === 'prepare_assisted_application' ? (
+              <><p className="notice small">This job uses an external form. SkillonIT has no verified submission integration for {preview.destinationHost || 'this destination'}, so it will not use browser automation, bypass CAPTCHA, or share your data. We will save your reviewed application plan and clearly mark it as requiring further action.</p>
+              {preview.assistedApplication && <div className="application-review-details"><h3>Application details prepared</h3><ul>{preview.assistedApplication.fields.map(field => <li key={field.name}>{field.label}: {field.needsConfirmation ? <strong>Needs your input</strong> : 'Ready from your confirmed profile'}{field.protectedStep ? ' (protected step)' : ''}</li>)}</ul>{preview.assistedApplication.missingFields.length > 0 && <p className="small">Complete missing details in your profile or when using an authorized employer integration: {preview.assistedApplication.missingFields.join(', ')}.</p>}</div>}</>
             ) : (
               <p className="small">Reused after confirmation: {preview.dataShared.join(', ') || 'No candidate data'}.</p>
             )}
@@ -144,7 +145,7 @@ export function JobActions({
               From: {preview.email.connected ? preview.email.address : 'Connect Gmail before sending.'}<br />
               To: {preview.email.destination || 'Verified recruitment email unavailable'}
             </div>}
-            {!!preview.templates.length&&preview.action!=='open_source_form'&&<label>Application template<select value={preview.selectedTemplateId||''} onChange={event=>void review(event.target.value)}>{preview.templates.map(template=><option value={template.id} key={template.id}>{template.name}{template.isDefault?' (Default)':''}</option>)}</select></label>}
+            {!!preview.templates.length&&preview.action!=='prepare_assisted_application'&&<label>Application template<select value={preview.selectedTemplateId||''} onChange={event=>void review(event.target.value)}>{preview.templates.map(template=><option value={template.id} key={template.id}>{template.name}{template.isDefault?' (Default)':''}</option>)}</select></label>}
             {preview.review && <div className="application-review-details">
               <h3>Details reused for this application</h3>
               <p className="small"><strong>Candidate:</strong> {preview.review.profile.name} · {preview.review.profile.email}</p>
@@ -169,7 +170,7 @@ export function JobActions({
             disabled={busy || !preview}
             onClick={() => void apply()}
           >
-            {busy ? 'Checking…' : preview && !preview.readyToConfirm ? 'Record attempt for review' : preview?.action === 'open_source_form' ? preview.destinationKind === 'direct-form' ? 'Confirm and open application form' : 'Confirm and continue to application' : preview?.action === 'send_authorized_email' ? 'Confirm and queue Gmail application' : 'Confirm and apply'}
+            {busy ? 'Checking…' : preview && !preview.readyToConfirm ? 'Record attempt for review' : preview?.action === 'prepare_assisted_application' ? 'Confirm and save application plan' : preview?.action === 'send_authorized_email' ? 'Confirm and queue Gmail application' : 'Confirm and apply'}
           </button>
         </DialogContent>
       </Dialog>

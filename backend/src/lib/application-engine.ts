@@ -15,7 +15,7 @@ import type { AutomationPreferences } from './student-preferences.js';
 import { consumeEntitlement, entitlementUsage, resolveStudentEntitlements, type StudentEntitlements } from './student-entitlements.js';
 import { createNotificationRecord } from './notification-platform.js';
 import { renderAts } from './ats-cv.js';
-import { applicationMethod, safeApplicationReason, submissionState } from './application-routing.js';
+import { applicationMethod, mapConfirmedFields, safeApplicationReason, submissionState } from './application-routing.js';
 import { listApplicationTemplates, renderApplicationTemplate, resolveApplicationTemplate, type ApplicationTemplate } from './application-templates.js';
 import { roleSuggestionEvidence } from './role-suggestions.js';
 
@@ -312,19 +312,33 @@ export async function previewApplication(userId: string, input: unknown) {
     const required = await prerequisites(r, user, job, entitlements, false,templateId);
     const usage = await entitlementUsage(r, user, entitlements, 'applications');
     if (usage.used >= usage.cap) required.reasons.push('DAILY_CAP_REACHED');
-    for (const code of required.reasons) if (!missingRequirements.some(item => item.code === code)) missingRequirements.push({ code, label: safeApplicationReason(code), href: '/applications' });
+    // An external form is prepared inside SkillonIT, but never submitted by browser
+    // automation. Do not present the lack of an integration as a missing candidate
+    // requirement: the candidate can still save a reviewed application plan.
+    for (const code of required.reasons) if (code !== 'EXTERNAL_FORM_UNSUPPORTED' && !missingRequirements.some(item => item.code === code)) missingRequirements.push({ code, label: safeApplicationReason(code), href: '/applications' });
     const rendered = template ? renderApplicationTemplate(template, user, job) : null;
+    const assistedApplication = job.method === 'external' ? mapConfirmedFields(user, [
+      { name: 'name', label: 'Full name', required: true },
+      { name: 'email', label: 'Email address', required: true },
+      { name: 'location', label: 'Location', required: true },
+      { name: 'education', label: 'Education', required: true },
+      { name: 'experience', label: 'Experience', required: true },
+      { name: 'skills', label: 'Skills', required: true },
+      { name: 'resume', label: 'Resume/CV upload', required: true },
+      { name: 'linkedin', label: 'LinkedIn profile', required: false },
+      { name: 'github', label: 'GitHub profile', required: false },
+    ], cv ? { id: cv.id, userId: cv.userId, confirmed: cv.confirmed } : undefined) : null;
     return {
       jobId,
       applicationMethod: applicationMethod(job.method),
       job: { title: job.title, company: job.company, source: job.source, method: job.method },
-      action: job.method === 'external' ? 'open_source_form' : job.method === 'email' ? 'send_authorized_email' : 'submit_to_employer',
+      action: job.method === 'external' ? 'prepare_assisted_application' : job.method === 'email' ? 'send_authorized_email' : 'submit_to_employer',
       destinationHost,
       destinationKind: job.method === 'external' ? job.feed?.applicationTarget || 'source-job-page' : null,
       requiresConfirmation: true,
       readyToConfirm: missingRequirements.length === 0,
       missingRequirements,
-      dataShared: job.method === 'external' ? [] : ['confirmed candidate profile', ...(user.activeCvVersionId ? ['confirmed CV'] : []), ...(template ? ['approved application message'] : [])],
+      dataShared: job.method === 'external' ? ['No profile, CV, or email data has been shared with the external employer.'] : ['confirmed candidate profile', ...(user.activeCvVersionId ? ['confirmed CV'] : []), ...(template ? ['approved application message'] : [])],
       email: {
         address: user.email,
         used: job.method === 'email',
@@ -334,7 +348,7 @@ export async function previewApplication(userId: string, input: unknown) {
       cvVersionId: user.activeCvVersionId ?? null,
       templates: (await listApplicationTemplates(user.id,r)).map(row=>({id:row.id,name:row.templateName,isDefault:row.isDefault})),
       selectedTemplateId:template?.id??null,
-      review: job.method === 'external' ? null : {
+      review: {
         profile: {
           name: user.profile.name || user.name,
           email: user.email,
@@ -346,8 +360,9 @@ export async function previewApplication(userId: string, input: unknown) {
           contactInfo: user.profile.contactInfo || '',
         },
         cv: cv ? { id: cv.id, name: cv.documentId && configuredCvProviders() ? cv.name : `${cv.name}.txt`, attached: true } : null,
-        message: rendered,
+        message: job.method === 'external' ? null : rendered,
       },
+      assistedApplication,
       ...(rendered || {}),
     };
   });
