@@ -25,13 +25,13 @@ import { ProfileSetup, type ProfileEditSection } from './profile-setup';
 type Completion = { percentage: number; missingFields: string[]; readinessStatus: string };
 type CvDocument = { id: string; originalName?: string; name?: string; status?: string; createdAt?: string; size?: number };
 type Consent = { purpose: string; granted: boolean; policyVersion: string; updatedAt: string };
-type ProfileSection = 'about' | 'skills' | 'experience' | 'education' | 'occupation' | 'job-preferences' | 'documents' | 'gmail' | 'privacy';
+type ProfileSection = 'about' | 'skills' | 'experience' | 'education' | 'occupation' | 'job-preferences' | 'documents' | 'gmail' | 'privacy' | 'application';
 const profileSections: { key: ProfileSection; label: string }[] = [
   { key: 'about', label: 'About' }, { key: 'skills', label: 'Skills' },
   { key: 'experience', label: 'Experience' }, { key: 'education', label: 'Education' },
   { key: 'occupation', label: 'Occupation' }, { key: 'job-preferences', label: 'Job Preferences' },
   { key: 'documents', label: 'CV / Resume' }, { key: 'gmail', label: 'Gmail' },
-  { key: 'privacy', label: 'Privacy' },
+  { key: 'application', label: 'Application profile' }, { key: 'privacy', label: 'Privacy' },
 ];
 
 const humanize = (value: string) => value.replaceAll('_', ' ').replaceAll('-', ' ');
@@ -227,6 +227,12 @@ export function ProfileDashboard({ user, completion, preferences, mailbox, docum
           <div className="profile-dash-card-head"><div><Target size={20}/><h2>Job Preferences</h2></div><Link href="/preferences"><Pencil size={13}/> Edit</Link></div>
           <div className="profile-dash-tags">{preferences.roles.map((role) => <span key={role}>{role}</span>)}{preferences.modes.map((mode) => <span key={mode}>{mode}</span>)}</div>
           {!preferences.roles.length && !preferences.modes.length && <p className="profile-dash-muted">No job preferences saved yet.</p>}
+        </section>
+
+        <section className="profile-dash-card" id="profile-application">
+          <div className="profile-dash-card-head"><div><ShieldCheck size={20}/><h2>Reusable Application Profile</h2></div><button type="button" onClick={() => openEditor('all')}><Pencil size={13}/> Review &amp; edit</button></div>
+          <p className="profile-dash-copy">Confirmed profile, contact details, education, skills, work history, projects, links and your selected CV are reused only after you review an application.</p>
+          <dl className="profile-dash-facts"><div><dt>Contact phone</dt><dd>{profile.phone || 'Not set'}</dd></div><div><dt>Work authorization</dt><dd>{profile.workAuthorization || 'Not set'}</dd></div><div><dt>Selected CV</dt><dd>{confirmedCvs.length ? 'Confirmed and ready' : 'Not set'}</dd></div></dl>
         </section>
 
         <section className="profile-dash-card" id="profile-privacy">

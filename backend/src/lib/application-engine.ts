@@ -320,6 +320,9 @@ export async function previewApplication(userId: string, input: unknown) {
     const assistedApplication = job.method === 'external' ? mapConfirmedFields(user, [
       { name: 'name', label: 'Full name', required: true },
       { name: 'email', label: 'Email address', required: true },
+      { name: 'phone', label: 'Phone number', required: true },
+      { name: 'address', label: 'Address', required: false },
+      { name: 'workAuthorization', label: 'Work authorization', required: false },
       { name: 'location', label: 'Location', required: true },
       { name: 'education', label: 'Education', required: true },
       { name: 'experience', label: 'Experience', required: true },

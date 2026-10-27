@@ -10,10 +10,10 @@ test('canonical routing and confirmed semantic mapping never invent candidate fi
   assert.equal(applicationMethod('external'), 'EXTERNAL_FORM'); assert.equal(applicationMethod('ats'), 'ATS');
   assert.equal(applicationMethod(undefined), 'UNSUPPORTED'); assert.equal(applicationMethod('guess'), 'UNSUPPORTED');
   assert.equal(submissionState('EXTERNAL_STARTED'), 'NEEDS_REVIEW'); assert.equal(submissionState('SENT'), 'SUBMITTED');
-  const user = { id:'candidate', email:'candidate@example.test', verified:true, profile:{confirmed:true,name:'Candidate',education:'Confirmed education',experience:0,skills:['TypeScript'],contactInfo:'not a verified phone'} } as User;
+  const user = { id:'candidate', email:'candidate@example.test', verified:true, profile:{confirmed:true,name:'Candidate',education:'Confirmed education',experience:0,skills:['TypeScript'],phone:'+91 90000 00000',contactInfo:'not a verified phone'} } as User;
   const mapping = mapConfirmedFields(user, [{name:'name',label:'Full Name',required:true},{name:'phone',label:'Mobile',required:true},{name:'salary',label:'Expected salary',required:true},{name:'exp',label:'Experience',required:true},{name:'cv',label:'Resume',required:true}], {id:'cv-approved',userId:user.id,confirmed:true});
   assert.equal(mapping.fields[0].value,'Candidate'); assert.equal(mapping.fields[3].value,0);
-  assert.deepEqual(mapping.missingFields,['Mobile','Expected salary']); assert.equal(mapping.submissionSupported,false);
+  assert.equal(mapping.fields[1].value,'+91 90000 00000'); assert.deepEqual(mapping.missingFields,['Expected salary']); assert.equal(mapping.submissionSupported,false);
   const protectedMapping=mapConfirmedFields(user,[{name:'captcha',label:'CAPTCHA',required:true},{name:'email',label:'Email address',required:true}]);
   assert.deepEqual(protectedMapping.protectedFields,['CAPTCHA']);assert.deepEqual(protectedMapping.missingFields,['CAPTCHA']);assert.equal(protectedMapping.mode,'ASSISTED_APPLICATION');assert.equal(protectedMapping.fields[1].value,user.email);
   assert.equal(mapConfirmedFields({...user,profile:{...user.profile,confirmed:false}},[{name:'name',label:'Name',required:true}]).missingFields.length,1);

@@ -76,6 +76,11 @@ export type Profile = {
   matching?: CandidateMatching;
   employmentHistory?: { title: string; employer: string; start: string; end: string; description: string }[];
   contactInfo?: string;
+  /** Candidate-controlled, structured application facts. Never infer these from free text. */
+  phone?: string;
+  address?: string;
+  postalCode?: string;
+  workAuthorization?: string;
   region?: string;
   industry?: string;
   targetRole?: string;

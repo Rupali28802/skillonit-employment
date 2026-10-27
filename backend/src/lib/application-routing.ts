@@ -47,12 +47,13 @@ export const safeApplicationReason = (code: string) => applicationReasons[code] 
 
 /** Mapping assistance only. No network submission, inferred facts, or arbitrary field values. */
 export function mapConfirmedFields(user: User, fields: { name: string; label: string; required: boolean }[], cv?: { id: string; userId: string; confirmed: boolean }) {
-  const aliases: Record<string, string> = { 'full name': 'name', name: 'name', 'first name': 'firstName', 'last name': 'lastName', 'email address': 'email', email: 'email', location: 'location', city: 'city', country: 'country', education: 'education', experience: 'experience', skills: 'skills', resume: 'cv', 'resume/cv upload': 'cv', cv: 'cv', linkedin: 'linkedin', 'linkedin profile': 'linkedin', github: 'github', 'github profile': 'github' };
+  const aliases: Record<string, string> = { 'full name': 'name', name: 'name', 'first name': 'firstName', 'last name': 'lastName', 'email address': 'email', email: 'email', phone: 'phone', 'phone number': 'phone', mobile: 'phone', 'mobile number': 'phone', address: 'address', 'postal code': 'postalCode', 'zip code': 'postalCode', 'work authorization': 'workAuthorization', location: 'location', city: 'city', country: 'country', education: 'education', experience: 'experience', skills: 'skills', resume: 'cv', 'resume/cv upload': 'cv', cv: 'cv', linkedin: 'linkedin', 'linkedin profile': 'linkedin', github: 'github', 'github profile': 'github' };
   const names = user.profile.name.trim().split(/\s+/), links = user.profile.professionalLinks ?? [];
   const providerLink = (provider: string) => links.find(link => { try { return new URL(link).hostname.toLowerCase().endsWith(provider); } catch { return false; } });
   const values: Record<string, unknown> = user.profile.confirmed ? {
     name: user.profile.name, firstName: names[0], lastName: names.length > 1 ? names.slice(1).join(' ') : undefined,
     email: user.verified ? user.email : undefined, city: user.profile.city, country: user.profile.country,
+    phone: user.profile.phone, address: user.profile.address, postalCode: user.profile.postalCode, workAuthorization: user.profile.workAuthorization,
     location: [user.profile.city, user.profile.region, user.profile.country].filter(Boolean).join(', '), education: user.profile.education,
     experience: user.profile.experience, skills: user.profile.skills.length ? user.profile.skills : undefined, cv: cv?.confirmed && cv.userId === user.id ? cv.id : undefined,
     linkedin: providerLink('linkedin.com'), github: providerLink('github.com'),

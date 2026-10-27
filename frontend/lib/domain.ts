@@ -61,6 +61,10 @@ export type Profile = {
   confirmed: boolean;
   employmentHistory?: { title: string; employer: string; start: string; end: string; description: string }[];
   contactInfo?: string;
+  phone?: string;
+  address?: string;
+  postalCode?: string;
+  workAuthorization?: string;
   region?: string;
   industry?: string;
   targetRole?: string;

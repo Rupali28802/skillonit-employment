@@ -14,7 +14,8 @@ const labels: Record<string, string> = {
 };
 
 const profileFields = [
-  {name:'name',label:'Full name *'}, {name:'contactInfo',label:'Contact information',required:false},
+  {name:'name',label:'Full name *'}, {name:'phone',label:'Phone number',required:false}, {name:'contactInfo',label:'Additional contact information',required:false},
+  {name:'address',label:'Address',required:false}, {name:'postalCode',label:'Postal / ZIP code',required:false},
   {name:'headline',label:'Professional headline *'}, {name:'targetRole',label:'Target role',required:false},
   {name:'industry',label:'Industry',required:false}, {name:'experience',label:'Total years of experience',type:'number',required:false},
   {name:'skills',label:'Skills *',type:'list',hint:'Separate items with commas'},
@@ -24,12 +25,12 @@ const profileFields = [
   {name:'professionalLinks',label:'LinkedIn, GitHub and portfolio HTTPS links',type:'list',required:false},
   {name:'languages',label:'Languages and explicit proficiency',type:'list',required:false},
   {name:'country',label:'Country *'}, {name:'region',label:'State / region',required:false}, {name:'city',label:'City *'},
-  {name:'availability',label:'Availability / notice period',required:false}, {name:'relocation',label:'Relocation preference',required:false},
+  {name:'availability',label:'Availability / notice period',required:false}, {name:'relocation',label:'Relocation preference',required:false}, {name:'workAuthorization',label:'Work authorization',required:false},
   {name:'confirmed',label:'I reviewed and confirm these facts are accurate.',type:'checkbox',required:false},
 ] as const;
 const fieldsBySection: Record<ProfileEditSection, readonly string[]> = {
   all: profileFields.map(field => field.name),
-  about: ['name','contactInfo','headline','industry','languages','projects','professionalLinks','availability'],
+  about: ['name','phone','contactInfo','address','postalCode','headline','industry','languages','projects','professionalLinks','availability','workAuthorization'],
   skills: ['skills'],
   experience: ['experience'],
   education: ['education','certifications'],
