@@ -124,6 +124,29 @@ export function Discovery({
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [profileFloat, setProfileFloat] = useState({ visible: false, y: 0 });
   const profileFloatFrame = useRef(0);
+  const [matchPreferencesOpen, setMatchPreferencesOpen] = useState(false);
+  const matchPreferencesRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!matchPreferencesOpen) return;
+    const closeWhenOutside = (event: MouseEvent | TouchEvent) => {
+      if (matchPreferencesRef.current && !matchPreferencesRef.current.contains(event.target as Node)) {
+        setMatchPreferencesOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMatchPreferencesOpen(false);
+    };
+    document.addEventListener('mousedown', closeWhenOutside);
+    document.addEventListener('touchstart', closeWhenOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeWhenOutside);
+      document.removeEventListener('touchstart', closeWhenOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [matchPreferencesOpen]);
+
   useEffect(() => {
     const desktop = window.matchMedia('(min-width: 761px)');
     const resizePage = () => {
@@ -481,12 +504,21 @@ export function Discovery({
           <CategorySlider value={category} onChange={(value) => { setCategory(value); setPage(1); }} />
           <div className="results-toolbar">
             <div className="results-tools">
-              <details className="radar-filter-menu">
-                <summary>
+              <div className="radar-filter-menu" ref={matchPreferencesRef}>
+                <button
+                  type="button"
+                  className="radar-filter-trigger"
+                  aria-expanded={matchPreferencesOpen}
+                  aria-controls="match-preferences-popover"
+                  onClick={() => setMatchPreferencesOpen(open => !open)}
+                >
                   <SlidersHorizontal size={14} /> Match preferences
                   {radarFilterCount > 0 && <span>{radarFilterCount}</span>}
-                </summary>
-                <div className="radar-filter-popover">
+                </button>
+                {matchPreferencesOpen && <section id="match-preferences-popover" className="radar-filter-popover" aria-label="Match preferences">
+                  <button type="button" className="radar-filter-close" aria-label="Close match preferences" onClick={() => setMatchPreferencesOpen(false)}>
+                    <X size={18} aria-hidden="true" />
+                  </button>
                   <div className="radar-filter-group">
                     <strong>Location</strong>
                     <div className="radar-filters" aria-label="Worldwide locations">{[['All locations',''],['India','India'],['USA','United States'],['UK','United Kingdom'],['Canada','Canada'],['Germany','Germany'],['Australia','Australia'],['UAE','United Arab Emirates'],['Singapore','Singapore'],['Remote worldwide','Worldwide']].map(([label,value])=><button type="button" key={label} aria-pressed={activeCountry===value} onClick={()=>{setCountry(value);setRemoved(p=>[...p,'country']);setState('');setPage(1);if(value==='Worldwide')setMode('Remote');}}>{label==='All locations'?'🌍 Worldwide':label}</button>)}</div>
@@ -495,8 +527,8 @@ export function Discovery({
                     <strong>Job preferences</strong>
                     <div className="radar-filters" aria-label="Job filters">{['Fresher','Internship','Full-time','Part-time','Contract','Remote','Hybrid','On-site'].map(label=><button type="button" key={label} aria-pressed={label==='Fresher'?activeExperience==='0':label.includes('years')?experience===label:jobType===label||activeMode===label} onClick={()=>{setPage(1);if(['Remote','Hybrid','On-site'].includes(label)){setMode(activeMode===label?'':label);setRemoved(p=>[...p,'mode']);}else if(label==='Fresher'||label.includes('years')){setExperience(experience===(label==='Fresher'?'0':label)?'':label==='Fresher'?'0':label);setRemoved(p=>[...p,'experience']);}else setJobType(jobType===label?'':label);}}>{label}</button>)}</div>
                   </div>
-                </div>
-              </details>
+                </section>}
+              </div>
               <label className="result-sort-select">
                 <span className="sr-only">Sort jobs</span>
                 <select

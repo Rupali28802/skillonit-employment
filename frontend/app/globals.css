@@ -411,13 +411,15 @@ a:hover {
 }
 .results-tools { position:relative; width:100%; display:flex; align-items:center; justify-content:flex-end; gap:9px; }
 .radar-filter-menu { position:relative; }
-.radar-filter-menu summary { min-height:36px; padding:8px 13px; display:flex; align-items:center; gap:7px; list-style:none; cursor:pointer; border:1px solid #cfe1d8; border-radius:11px; color:#245444; background:linear-gradient(180deg,#fff,#f5faf7); font-size:12px; font-weight:700; white-space:nowrap; box-shadow:0 4px 12px #173d2d0d; transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease; }
-.radar-filter-menu summary::-webkit-details-marker { display:none; }
-.radar-filter-menu summary > span { min-width:18px; height:18px; padding:0 5px; display:grid; place-items:center; border-radius:999px; color:#fff; background:#147556; font-size:10px; }
-.radar-filter-menu summary:hover { transform:translateY(-1px); border-color:#79ad96; box-shadow:0 7px 16px #173d2d16; }
-.radar-filter-menu[open] summary { border-color:#147556; color:#fff; background:linear-gradient(135deg,#0f7557,#198c68); box-shadow:0 0 0 3px #50a47f18,0 9px 20px #126b5024; }
-.radar-filter-menu[open] summary > span { color:#12684e; background:#fff; }
-.radar-filter-popover { position:absolute; z-index:30; top:calc(100% + 8px); right:0; width:min(620px,calc(100vw - 48px)); padding:14px; display:grid; gap:10px; border:1px solid #d6e5dd; border-radius:14px; background:#fff; box-shadow:0 18px 45px #173c2e24; }
+.radar-filter-trigger { min-height:36px; padding:8px 13px; display:flex; align-items:center; gap:7px; cursor:pointer; border:1px solid #cfe1d8; border-radius:11px; color:#245444; background:linear-gradient(180deg,#fff,#f5faf7); font-size:12px; font-weight:700; white-space:nowrap; box-shadow:0 4px 12px #173d2d0d; transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease; }
+.radar-filter-trigger > span { min-width:18px; height:18px; padding:0 5px; display:grid; place-items:center; border-radius:999px; color:#fff; background:#147556; font-size:10px; }
+.radar-filter-trigger:hover { transform:translateY(-1px); border-color:#79ad96; box-shadow:0 7px 16px #173d2d16; }
+.radar-filter-trigger:focus-visible,.radar-filter-close:focus-visible { outline:3px solid #50a47f55; outline-offset:2px; }
+.radar-filter-trigger[aria-expanded='true'] { border-color:#147556; color:#fff; background:linear-gradient(135deg,#0f7557,#198c68); box-shadow:0 0 0 3px #50a47f18,0 9px 20px #126b5024; }
+.radar-filter-trigger[aria-expanded='true'] > span { color:#12684e; background:#fff; }
+.radar-filter-popover { position:absolute; z-index:30; top:calc(100% + 8px); right:0; width:min(620px,calc(100vw - 48px)); padding:42px 14px 14px; display:grid; gap:10px; border:1px solid #d6e5dd; border-radius:14px; background:#fff; box-shadow:0 18px 45px #173c2e24; }
+.radar-filter-close { position:absolute; top:9px; right:9px; width:30px; height:30px; display:grid; place-items:center; border:0; border-radius:9px; color:#2a614e; background:#f1f7f4; cursor:pointer; transition:background .18s ease,color .18s ease,transform .18s ease; }
+.radar-filter-close:hover { color:#fff; background:#147556; transform:translateY(-1px); }
 .radar-filter-group { display:grid; gap:5px; }
 .radar-filter-group > strong { color:#536b61; font-size:10px; letter-spacing:.08em; text-transform:uppercase; }
 .radar-filter-popover .radar-filters { justify-content:flex-start; gap:6px; padding:2px 0; }
