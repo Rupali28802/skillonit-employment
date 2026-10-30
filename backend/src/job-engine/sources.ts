@@ -4,7 +4,7 @@ import { joobleDomains, joobleKey } from './jooble-regions.js';
 
 export const sourceSchema = z.object({
   id: z.string().regex(/^[a-z0-9_-]{1,80}$/),
-  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'themuse', 'himalayas', 'remoteok', 'jooble', 'jobtech', 'reed', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever', 'smartrecruiters', 'github', 'github-authorized']),
+  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'themuse', 'himalayas', 'remoteok', 'jooble', 'jobtech', 'reed', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever', 'smartrecruiters', 'workable', 'recruitee', 'breezy', 'rippling', 'github', 'github-authorized']),
   countryCode: z.string().regex(/^[a-z]{2}$/).optional(),
   keywords: z.string().trim().max(100).optional(),
   name: z.string().trim().min(1).max(100),
@@ -30,13 +30,13 @@ export const sourceSchema = z.object({
     ctx.addIssue({ code: 'custom', message: 'Select a supported Adzuna country; account access still must be confirmed.' });
   if (['jobicy', 'themuse', 'adzuna', 'usajobs', 'jobtech', 'reed'].includes(s.type) && (s.intervalMinutes < 60 || !s.publicListing))
     ctx.addIssue({ code: 'custom', message: 'Public source attribution and at least an hourly interval required.' });
-  if (s.type === 'smartrecruiters' && (s.maxPages > 4 || s.intervalMinutes < 360 || !s.publicListing)) ctx.addIssue({ code: 'custom', message: 'SmartRecruiters requires attribution, six-hour refresh and at most four pages.' });
+  if (['smartrecruiters', 'rippling'].includes(s.type) && (s.maxPages > 4 || s.intervalMinutes < 360 || !s.publicListing)) ctx.addIssue({ code: 'custom', message: 'This paginated ATS connector requires attribution, six-hour refresh and at most four pages.' });
   if (s.type === 'github' && (s.maxPages !== 1 || s.intervalMinutes < 360 || !s.publicListing))
     ctx.addIssue({ code: 'custom', message: 'GitHub requires visible source attribution, one bounded search page and a minimum six-hour refresh.' });
   if (s.type === 'github-authorized' && (!s.repository || !s.company || s.maxPages !== 1 || s.intervalMinutes < 360 || !s.publicListing))
     ctx.addIssue({ code: 'custom', message: 'GitHub requires a specifically approved repository, employer, attribution, one page and a six-hour minimum refresh.' });
   if (s.enabled && !s.approved) ctx.addIssue({ code: 'custom', message: 'Source must be approved before enabling.' });
-  if (['ashby', 'greenhouse', 'lever', 'smartrecruiters', 'github'].includes(s.type) && (!s.board || !s.company))
+  if (['ashby', 'greenhouse', 'lever', 'smartrecruiters', 'workable', 'recruitee', 'breezy', 'rippling', 'github'].includes(s.type) && (!s.board || !s.company))
     ctx.addIssue({ code: 'custom', message: 'Employer boards and GitHub organization searches require an organization identifier and confirmed company name.' });
   if (s.type === 'remotive' && (s.intervalMinutes < 360 || !s.publicListing))
     ctx.addIssue({ code: 'custom', message: 'Remotive requires public attribution, ungated listings and a minimum six-hour interval.' });

@@ -246,6 +246,37 @@ test('Ashby, Greenhouse, Lever and Remotive adapters preserve supplied dates and
   assert.equal(remote.jobs[0].postedAt, '2026-09-01T10:00:00.000Z'); assert.equal(remote.snapshot, false);
   assert.equal(remote.jobs[0].applicationTarget, 'source-job-page');
 });
+
+test('additional public ATS adapters preserve employer-owned application links', async () => {
+  const workable = sourceSchema.parse({ ...source, id: 'workable-example', type: 'workable', intervalMinutes: 360, maxPages: 1 });
+  const workableResult = await fetchFeed(workable, async url => {
+    assert.equal(url, 'https://apply.workable.com/api/v1/widget/accounts/example?details=true');
+    return { jobs: [{ shortcode: 'role-1', title: 'Software Engineer', url: 'https://apply.workable.com/example/j/role-1/', description: 'Build reliable services.', location: { city: 'Pune', country: 'India' }, remote: true, created_at: '2026-09-01T00:00:00Z' }] };
+  });
+  assert.equal(workableResult.jobs[0].country, 'India'); assert.equal(workableResult.jobs[0].applicationTarget, 'source-job-page');
+
+  const recruitee = sourceSchema.parse({ ...source, id: 'recruitee-example', type: 'recruitee', intervalMinutes: 360, maxPages: 1 });
+  const recruiteeResult = await fetchFeed(recruitee, async url => {
+    assert.equal(url, 'https://example.recruitee.com/api/offers/');
+    return { offers: [{ id: 9, title: 'Graduate Engineer', careers_url: 'https://example.recruitee.com/o/graduate-engineer', description: 'Graduate role details.', city: 'Bengaluru', country: 'India', created_at: '2026-09-01T00:00:00Z' }] };
+  });
+  assert.equal(recruiteeResult.jobs[0].city, 'Bengaluru'); assert.equal(recruiteeResult.jobs[0].url, 'https://example.recruitee.com/o/graduate-engineer');
+
+  const breezy = sourceSchema.parse({ ...source, id: 'breezy-example', type: 'breezy', intervalMinutes: 360, maxPages: 1 });
+  const breezyResult = await fetchFeed(breezy, async url => {
+    assert.equal(url, 'https://example.breezy.hr/json');
+    return [{ _id: 'b1', name: 'Intern', url: 'https://example.breezy.hr/p/b1', description: 'Internship details.', location: 'Mumbai, India', remote: false }];
+  });
+  assert.equal(breezyResult.jobs[0].title, 'Intern');
+
+  const rippling = sourceSchema.parse({ ...source, id: 'rippling-example', type: 'rippling', intervalMinutes: 360, maxPages: 2 });
+  const ripplingResult = await fetchFeed(rippling, async url => {
+    assert.equal(url, 'https://ats.rippling.com/api/v2/board/example/jobs?page=1');
+    return { page: 1, totalPages: 1, jobs: [{ id: 'r1', title: 'Developer', postingUrl: 'https://ats.rippling.com/example/jobs/r1', applyUrl: 'https://ats.rippling.com/example/jobs/r1/apply', description: 'Developer role details.', location: 'Remote', remote: true }] };
+  });
+  assert.equal(ripplingResult.jobs[0].applicationTarget, 'direct-form'); assert.equal(ripplingResult.complete, true);
+  assert.equal(sourceSchema.safeParse({ ...rippling, intervalMinutes: 60 }).success, false);
+});
 test('repeated syncs are idempotent, keep first discovery date and respect schedule', async () => {
   await upsertSource(source);
   const first = await runEngine(async () => batch()); assert.equal(first.results[0].counts?.added, 1);

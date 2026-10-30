@@ -1,0 +1,14 @@
+{
+  "id": "example-workable-india",
+  "type": "workable",
+  "name": "Example employer careers",
+  "company": "Example Employer",
+  "board": "example-employer",
+  "enabled": false,
+  "approved": false,
+  "publish": false,
+  "publicListing": true,
+  "intervalMinutes": 360,
+  "maxPages": 1,
+  "policyEvidence": "PENDING: confirm the employer authorizes public job-board reuse, source attribution, and original application-link display before enabling."
+}

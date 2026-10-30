@@ -39,7 +39,7 @@ const knownApplicationHosts = new Set([
   'greenhouse.io', 'job-boards.greenhouse.io', 'lever.co', 'jobs.lever.co', 'ashbyhq.com',
   'myworkdayjobs.com', 'smartrecruiters.com', 'jobvite.com', 'workable.com', 'bamboohr.com',
   'icims.com', 'applytojob.com', 'taleo.net', 'successfactors.com', 'recruitee.com',
-  'teamtailor.com', 'personio.com',
+  'teamtailor.com', 'personio.com', 'breezy.hr', 'rippling.com',
 ]);
 
 function isGitHubHost(host: string) {
@@ -475,6 +475,57 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
         category: text(j.departments?.[0]?.name), updatedAt: iso(j.updated_at) }); // updated_at is not an original posting date.
     }
     return { jobs, complete: true, snapshot: true, requests: 1 };
+  }
+  if (source.type === 'workable') {
+    const payload = await get(`https://apply.workable.com/api/v1/widget/accounts/${board}?details=true`) as Json; requests++;
+    if (!Array.isArray(payload.jobs)) throw new FeedError('INVALID_FEED');
+    for (const j of payload.jobs) {
+      const listingUrl = text(j.url) || `https://apply.workable.com/${board}/j/${text(j.shortcode)}`;
+      jobs.push({ externalId: text(j.shortcode) || listingUrl, title: text(j.title), company: source.company!,
+        url: listingUrl, listingUrl, applicationUrl: listingUrl, applicationTarget: 'source-job-page', description: text(j.description),
+        location: [text(j.location?.city), text(j.location?.country)].filter(Boolean).join(', '), country: text(j.location?.country), city: text(j.location?.city),
+        category: text(j.department), employmentType: text(j.employment_type), mode: j.remote === true ? 'Remote' : undefined, postedAt: iso(j.created_at || j.created) });
+    }
+    return { jobs, complete: true, snapshot: true, requests };
+  }
+  if (source.type === 'recruitee') {
+    const payload = await get(`https://${board}.recruitee.com/api/offers/`) as Json; requests++;
+    if (!Array.isArray(payload.offers)) throw new FeedError('INVALID_FEED');
+    for (const j of payload.offers) {
+      const listingUrl = text(j.careers_url) || text(j.url);
+      jobs.push({ externalId: String(j.id ?? '') || listingUrl, title: text(j.title), company: source.company!,
+        url: listingUrl, listingUrl, applicationUrl: listingUrl, applicationTarget: 'source-job-page', description: text(j.description),
+        location: [text(j.location), text(j.city), text(j.country)].filter(Boolean).join(', '), country: text(j.country), city: text(j.city),
+        category: text(j.department), employmentType: text(j.employment_type), mode: j.remote === true ? 'Remote' : undefined, postedAt: iso(j.created_at) });
+    }
+    return { jobs, complete: true, snapshot: true, requests };
+  }
+  if (source.type === 'breezy') {
+    const payload = await get(`https://${board}.breezy.hr/json`); requests++;
+    if (!Array.isArray(payload)) throw new FeedError('INVALID_FEED');
+    for (const j of payload) {
+      const listingUrl = text(j.url) || `https://${board}.breezy.hr/p/${text(j._id)}`;
+      jobs.push({ externalId: text(j._id) || listingUrl, title: text(j.name), company: source.company!,
+        url: listingUrl, listingUrl, applicationUrl: listingUrl, applicationTarget: 'source-job-page', description: text(j.description),
+        location: text(j.location), category: text(j.department), employmentType: text(j.type), mode: j.remote === true ? 'Remote' : undefined, postedAt: iso(j.published_date) });
+    }
+    return { jobs, complete: true, snapshot: true, requests };
+  }
+  if (source.type === 'rippling') {
+    let complete = false;
+    for (let page = 1; page <= source.maxPages; page++) {
+      if (page > 1) await pause(2000);
+      const payload = await get(`https://ats.rippling.com/api/v2/board/${board}/jobs?page=${page}`) as Json; requests++;
+      if (!Array.isArray(payload.jobs)) throw new FeedError('INVALID_FEED');
+      for (const j of payload.jobs) {
+        const listingUrl = text(j.postingUrl) || text(j.url), applicationUrl = text(j.applyUrl) || listingUrl;
+        jobs.push({ externalId: String(j.id ?? '') || listingUrl, title: text(j.title), company: source.company!,
+          url: listingUrl, listingUrl, applicationUrl, applicationTarget: text(j.applyUrl) ? 'direct-form' : 'source-job-page', description: text(j.description),
+          location: text(j.location), category: text(j.department), employmentType: text(j.employmentType), mode: j.remote === true ? 'Remote' : undefined, postedAt: iso(j.publishedAt) });
+      }
+      if (payload.jobs.length === 0 || payload.page >= payload.totalPages) { complete = true; break; }
+    }
+    return { jobs, complete, snapshot: true, requests };
   }
   let complete = false;
   for (let page = 0; page < source.maxPages; page++) {
