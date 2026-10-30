@@ -10,6 +10,7 @@ import { ApiError, audit } from './security.js';
 import { resolveJobTaxonomy } from './student-catalog.js';
 import { read, transaction, type Repository } from './store.js';
 import { retentionExpiry } from './data-retention.js';
+import { saveCoverageAudit } from '../job-engine/coverage.js';
 
 const clean = (value: string) => value.normalize('NFKC').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
 const identifier = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,199}$/);
@@ -28,6 +29,7 @@ const variantSchema = z.object({
     experienceMin: z.number().nonnegative().max(80).optional(), experienceMax: z.number().nonnegative().max(80).optional(),
     requirements: z.string().max(100000).optional(), employerId: z.string().max(200).optional(), email: z.string().email().optional(),
     occupationId: z.string().max(100).optional(), locationId: z.string().max(100).optional(), expiresAt: z.string().datetime().optional(),
+    sourceUpdatedAt: z.string().datetime().optional(),
   }).passthrough(),
 }).passthrough();
 
@@ -73,7 +75,9 @@ function canonicalJob(variant: Variant, sourceName: string, now: Date): Job & Re
     description: clean(n.description), requirements: clean(n.requirements || ''), method: 'external', url: n.url,
     ...(n.email ? { email: n.email.toLowerCase() } : {}), status: 'review', trust: 'pending', employerId: clean(n.employerId || ''),
     source: variant.sourceId, discoveredAt: discovered.toISOString(), expiresAt: expiry.toISOString(),
+    ...(n.sourceUpdatedAt ? { sourceUpdatedAt: n.sourceUpdatedAt } : {}),
     schemaVersion: 1, sourceVariantIds: [variant.id], provenance: [{ ...variant.provenance, sourceJobId: variant.sourceJobId, fetchedAt: variant.fetchedAt }],
+    feed: { sourceId: variant.sourceId, externalId: variant.sourceJobId, publicListing: true, attributionUrl: n.url, lastSeenAt: variant.fetchedAt, applicationTarget: 'source-job-page' },
     ingestion: { missingFields: missing, verifiedAt: null, indexedAt: null, requiresReview: true },
     lifecycle: { schemaVersion: 1, state: 'publishing', revision: 0, changedAt: now.toISOString(), reasonCode: 'INGESTED_FOR_REVIEW' },
   };
@@ -195,4 +199,11 @@ export async function runIngestion(actorId = 'job-ingestion-worker', sink: JobIn
   const finished = { ...run, status: results.some(x => ['retry', 'quarantined', 'failed'].includes(x.status)) ? 'DEGRADED' : 'COMPLETED', processed: results.length, failed: results.filter(x => ['retry', 'quarantined', 'failed'].includes(x.status)).length, finishedAt: new Date().toISOString(), results };
   await transaction(r => r.put('jobIngestionRuns', finished));
   return finished;
+}
+
+/** Runs ingestion and writes the current coverage snapshot only after its run has completed. */
+export async function runIngestionWithCoverageAudit(actorId = 'job-ingestion-worker', sink: JobIndexSink = new ExistingMatchingIndexSink(), now = new Date()) {
+  const result = await runIngestion(actorId, sink, now);
+  await saveCoverageAudit();
+  return result;
 }

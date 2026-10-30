@@ -11,6 +11,8 @@
 **/coverage/
 **/test-results/
 **/*.log
+.preview-main/
+.run-main/
 
 .deploy-db.env
 *.deploy.tar.gz

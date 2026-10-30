@@ -246,6 +246,7 @@ export async function runEngine(discover: (source: FeedSource) => Promise<FeedBa
 export async function engineStatus() {
   return read(async r => ({
     sources: await r.find('jobFeedSources', {}, 1000), states: await r.find('jobFeedStates', {}, 1000),
+    directSources: await r.find('jobSources', {}, 1000),
     lease: await r.get('jobEngineState', leaseId),
     coverage: await r.get('jobEngineState', 'coverage-latest'),
     providerBackoffs: await r.find('jobEngineState', { id: { $regex: '^provider-' } }, 100),

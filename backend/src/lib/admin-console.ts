@@ -7,7 +7,7 @@ import type { EmployerRecord, EmployerVerification } from './employer-portal.js'
 import { recordEmployerVerificationDecision } from './employer-portal.js';
 import { persistJobFraudAssessment } from './fraud-detection.js';
 import { transitionJobLifecycle } from './lifecycle.js';
-import { updateJobSource } from './job-source-strategy.js';
+import { createJobSource, listJobSources, updateJobSource } from './job-source-strategy.js';
 import { read, transaction, type Repository, type Row } from './store.js';
 import { ApiError, audit, id, safeUser } from './security.js';
 import { revokeSessions } from './auth-lifecycle.js';
@@ -28,6 +28,7 @@ const userRoleSchema = z.object({ role: z.enum(['student', 'employer', 'admin'])
 const verificationSchema = z.object({ status: z.enum(['verified', 'rejected', 'pending']), note: z.string().trim().min(3).max(2000).optional() }).strict();
 const moderationSchema = z.object({ action: z.enum(['publish', 'review', 'close', 'remove']), reason: z.string().trim().min(3).max(500) }).strict();
 const fraudReviewSchema = z.object({ status: z.enum(['resolved', 'rejected']), note: z.string().trim().min(3).max(1000) }).strict();
+const sourceApprovalSchema = z.object({ revision: z.number().int().positive() }).strict();
 
 const collectionPermission: Record<string, AdminPermission> = { users:'users.read', employers:'employers.read', jobs:'jobs.read', jobSources:'sources.read', applications:'applications.read', fraudReports:'fraud.read', payments:'payments.read', auditLogs:'audit.read' };
 async function requireAdmin(r: Repository, actor: User, permission?: AdminPermission) {
@@ -44,7 +45,7 @@ function page<T extends { id: string }>(rows: T[], input: z.infer<typeof pageSch
 function matchesQuery(row: Record<string, unknown>, query?: string) {
   if (!query) return true;
   const needle = query.toLowerCase();
-  return ['id', 'email', 'name', 'company', 'title', 'domain'].some(key => String(row[key] ?? '').toLowerCase().includes(needle));
+  return ['id', 'email', 'name', 'company', 'title', 'domain', 'provider', 'board'].some(key => String(row[key] ?? '').toLowerCase().includes(needle));
 }
 
 function safePayment(row: Row) {
@@ -244,10 +245,50 @@ export async function moderateAdminJob(actor: User, jobId: string, input: unknow
   });
 }
 
-export const listAdminSources = (actor: User, params: URLSearchParams) => listRows(actor, 'jobSources', params);
+export async function listAdminSources(actor: User, params: URLSearchParams): Promise<AdminList> {
+  const input = pageSchema.parse(Object.fromEntries(params));
+  return read(async r => {
+    await requireAdmin(r, actor, 'sources.read');
+    const rows = (await r.find<Row>('jobSources', {}, 1000)).map(source => {
+      const configuration = source.configuration as { board?: unknown } | undefined;
+      const compliance = source.compliance as { status?: unknown } | undefined;
+      const health = source.health as { status?: unknown; lastSuccessAt?: unknown; consecutiveFailures?: unknown } | undefined;
+      return {
+        id: source.id, revision: source.revision, name: source.name, provider: source.provider,
+        board: configuration?.board, enabled: source.enabled === true,
+        complianceStatus: compliance?.status ?? source.status ?? 'legacy', healthStatus: health?.status ?? source.status ?? 'unknown',
+        lastSuccessAt: health?.lastSuccessAt, failureCount: health?.consecutiveFailures ?? 0, updatedAt: source.updatedAt,
+      };
+    }).filter(source => {
+      if (!input.status) return true;
+      return source.complianceStatus === input.status || source.healthStatus === input.status;
+    }).filter(source => matchesQuery(source, input.query));
+    return page(rows, input);
+  });
+}
+export async function createAdminSource(actor: User, input: unknown) {
+  await read(r => requireAdmin(r, actor, 'sources.create'));
+  return createJobSource(actor.id, input);
+}
 export async function updateAdminSource(actor: User, sourceId: string, input: unknown) {
   await read(r => requireAdmin(r, actor, 'sources.update'));
+  const request = input as { enabled?: unknown; compliance?: { status?: unknown } };
+  if (request.enabled === true || request.compliance?.status === 'approved')
+    await read(r => requireAdmin(r, actor, 'sources.approve'));
   return updateJobSource(actor.id, sourceId, input);
+}
+export async function approveAdminSource(actor: User, sourceId: string, input: unknown) {
+  const { revision } = sourceApprovalSchema.parse(input);
+  await read(r => requireAdmin(r, actor, 'sources.approve'));
+  const current = (await listJobSources()).find(source => source.id === sourceId);
+  if (!current) throw new ApiError(404, 'SOURCE_NOT_FOUND', 'Job source not found.');
+  if (current.compliance.status === 'rejected' || current.compliance.status === 'suspended')
+    throw new ApiError(409, 'SOURCE_APPROVAL_REVIEW_REQUIRED', 'A rejected or suspended source needs a new compliance review before approval.');
+  return updateJobSource(actor.id, sourceId, {
+    revision,
+    enabled: true,
+    compliance: { ...current.compliance, status: 'approved' },
+  });
 }
 
 export const listAdminFraud = (actor: User, params: URLSearchParams) => listRows(actor, 'fraudReports', params);
@@ -333,6 +374,8 @@ export async function adminConsoleRoute(actor: User, parts: string[], method: st
   if (resource === 'jobs' && !id && method === 'GET') return listAdminJobs(actor, params);
   if (resource === 'jobs' && id && action === 'moderation' && method === 'POST') return moderateAdminJob(actor, id, await body());
   if (resource === 'sources' && !id && method === 'GET') return listAdminSources(actor, params);
+  if (resource === 'sources' && !id && method === 'POST') return createAdminSource(actor, await body());
+  if (resource === 'sources' && id && action === 'approval' && method === 'PUT') return approveAdminSource(actor, id, await body());
   if (resource === 'sources' && id && method === 'PUT') return updateAdminSource(actor, id, await body());
   if (resource === 'fraud' && !id && method === 'GET') return listAdminFraud(actor, params);
   if (resource === 'fraud' && id && action === 'review' && method === 'POST') return reviewAdminFraud(actor, id, await body());

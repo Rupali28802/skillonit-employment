@@ -1,0 +1,14 @@
+{
+  "id": "replace-with-employer-id-smartrecruiters",
+  "type": "smartrecruiters",
+  "name": "Replace with employer careers",
+  "company": "Replace with verified employer name",
+  "board": "replace-with-company-identifier",
+  "enabled": false,
+  "approved": false,
+  "publicListing": true,
+  "publish": true,
+  "policyEvidence": "Replace this text with documented authorization evidence before approval.",
+  "intervalMinutes": 360,
+  "maxPages": 4
+}

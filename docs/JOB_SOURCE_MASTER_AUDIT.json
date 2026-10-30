@@ -176,7 +176,7 @@
     {
       "name": "Careerjet",
       "region": "International/localized search",
-      "status": "Documented API - implementation pending",
+      "status": "Implemented - approval/configuration required",
       "code": "",
       "reference": "https://www.careerjet.com/partners/api",
       "evidence": "Publisher v4 search requires key plus actual triggering visitor IP and user agent.",
@@ -277,9 +277,9 @@
       "region": "Employer-specific global boards",
       "status": "Documented API - implementation pending",
       "code": "",
-      "reference": "https://developers.smartrecruiters.com/docs/get-job-postings",
-      "evidence": "Company-scoped public postings and a separate token-protected job-board publication feed documented. Neither gives automatic access to all employers.",
-      "next": "Confirm employer/partner scope and implement bounded listing/detail fetching."
+      "reference": "https://developers.smartrecruiters.com/docs/endpoints",
+      "evidence": "The bounded company-postings adapter accepts active public postings only. A separate token-protected job-board feed does not grant all-employer access. No approved company source is configured.",
+      "next": "Complete employer approval and permitted display scope, then configure an approved company identifier and verify bounded live health."
     },
     {
       "name": "Glassdoor",

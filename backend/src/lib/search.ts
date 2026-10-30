@@ -33,6 +33,25 @@ function cachedPublicFeed(key: string, load: () => Promise<RawSearchResult>) {
   return value;
 }
 
+function keywordRelevance(job: Job, words: string[], query: string, now: number) {
+  const text = (value: unknown) => typeof value === 'string' ? value.toLocaleLowerCase('en-US') : '';
+  const title = text(job.title), company = text(job.company);
+  const category = text(job.category) + ' ' + text(job.normalizedFacts?.sourceCategory);
+  const skills = [...job.skills, ...(job.normalizedFacts?.sourceTags || [])].join(' ').toLocaleLowerCase('en-US');
+  const description = text(job.description);
+  let score = title.includes(query) ? 24 : 0;
+  for (const word of words) {
+    if (title.includes(word)) score += 9;
+    if (skills.includes(word)) score += 6;
+    if (category.includes(word)) score += 4;
+    if (company.includes(word)) score += 2;
+    if (description.includes(word)) score += 1;
+  }
+  const date = Date.parse(job.sourcePostedAt || job.discoveredAt);
+  if (Number.isFinite(date)) score += Math.max(0, 7 - Math.floor((now - date) / 86400000));
+  return score;
+}
+
 export async function searchJobs(params: URLSearchParams, user: User | null = null) {
   const query = (params.get('q') || '').slice(0, 200).toLowerCase();
   const ignored = new Set(['jobs', 'job', 'in', 'for', 'a', 'an', 'and', 'or', 'the', 'as', 'with', 'fresher']);
@@ -49,6 +68,30 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
   if (params.get('source')) filter.source = exact(params.get('source')!);
   if (params.get('company')) { filter.company = exact(params.get('company')!); filter['feed.publicListing'] = true; }
   if (params.get('mnc') === 'true') filter.mnc = true;
+  const applicationTarget = params.get('applicationTarget');
+  if (applicationTarget && ['direct-form', 'source-job-page', 'source-redirect'].includes(applicationTarget))
+    filter['feed.applicationTarget'] = applicationTarget;
+  if (params.get('hasDirectApplication') === 'true') filter['feed.applicationTarget'] = 'direct-form';
+  const freshnessDays = Number(params.get('postedWithinDays'));
+  if (params.has('postedWithinDays')) {
+    if (!Number.isInteger(freshnessDays) || freshnessDays < 1 || freshnessDays > 90) filter.id = '__invalid_freshness_filter__';
+    else {
+      const since = new Date(now.getTime() - freshnessDays * 86400000).toISOString();
+      // A newly imported legacy listing is not necessarily a newly posted vacancy.
+      // Keep the "posted recently" promise tied to the date supplied by the source.
+      clauses.push({ sourcePostedAt: { $gte: since } });
+    }
+  }
+  const internshipPattern = /\b(intern(ship)?|apprentice(ship)?)\b/i;
+  if (params.get('internship') === 'true') clauses.push({ $or: [
+    { title: internshipPattern }, { type: internshipPattern }, { category: internshipPattern },
+    { 'normalizedFacts.sourceCategory': internshipPattern }, { 'normalizedFacts.sourceTags': internshipPattern },
+  ] });
+  if (params.get('entryLevel') === 'true') clauses.push({ $or: [
+    { experienceMin: { $lte: 0 }, experienceMax: { $lte: 2 }, experienceDisclosed: { $ne: false } },
+    { title: /\b(entry[ -]?level|fresher|graduate|intern(ship)?|trainee|apprentice(ship)?)\b/i },
+    { 'normalizedFacts.sourceTags': /\b(entry[ -]?level|fresher|graduate|intern(ship)?|trainee|apprentice(ship)?)\b/i },
+  ] });
   if (params.get('skills')) for (const skill of params.get('skills')!.split(',').map(s => s.trim()).filter(Boolean).slice(0, 20)) clauses.push({ skills: exact(skill) });
   const salaryRequested = params.has('salaryMin') || params.has('salaryMax');
   if (salaryRequested) {
@@ -173,12 +216,14 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
     ? await cachedPublicFeed(`${publicFeedCacheKey(params)}:${feedVersion?.version || 'initial'}`, load)
     : await load();
   const plans = await configuredPlans();
-  if (semantic) {
+  const relevant = !semantic && params.get('sort') === 'relevant' && words.length > 0;
+  if (semantic || relevant) {
     // Apply every eligibility/facet filter before ranking or pagination.
     const jobs = await read(r => r.find<Job>('jobs',filter,10000));
-    const scores = new Map(semantic.map(m=>[m.id,m.score]));
+    const scores = semantic ? new Map(semantic.map(m=>[m.id,m.score]))
+      : new Map(jobs.map(job => [job.id, keywordRelevance(job, words, query, now.getTime())]));
     jobs.sort((a,b)=>(scores.get(b.id)||0)-(scores.get(a.id)||0)||a.id.localeCompare(b.id));
-    return {jobs:jobs.slice((page-1)*limit,page*limit).map(j=>({...publicJob(j,user,plans),semanticScore:scores.get(j.id)})),total:jobs.length,page,limit,hasMore:page*limit<jobs.length,searchMode:'semantic',indexScope:'public indexed vacancies'};
+    return {jobs:jobs.slice((page-1)*limit,page*limit).map(j=>({ ...publicJob(j,user,plans), ...(semantic ? { semanticScore: scores.get(j.id) } : { relevanceScore: scores.get(j.id) }) })),total:jobs.length,page,limit,hasMore:page*limit<jobs.length,searchMode:semantic?'semantic':'relevant',...(semantic ? { indexScope:'public indexed vacancies' } : {})};
   }
   return { jobs: result.jobs.map(j => publicJob(j, user, plans)), total: result.total, page, limit, hasMore: page * limit < result.total };
 }

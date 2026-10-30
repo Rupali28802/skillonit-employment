@@ -1,0 +1,14 @@
+{
+  "id": "github-approved-employer-hiring",
+  "type": "github-authorized",
+  "name": "Approved employer GitHub hiring repository",
+  "repository": "approved-organization/approved-hiring-repository",
+  "company": "Confirmed employer name",
+  "enabled": false,
+  "approved": false,
+  "policyEvidence": "Replace with GitHub written approval reference, employer authorization, repository ownership verification, and permitted display terms.",
+  "publicListing": true,
+  "publish": false,
+  "intervalMinutes": 360,
+  "maxPages": 1
+}

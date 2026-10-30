@@ -14,7 +14,7 @@ test('admin console securely manages and oversees existing backend resources', a
   const adminConsole = await import('../src/lib/admin-console.ts');
   const employerPortal = await import('../src/lib/employer-portal.ts');
   const billingAdmin = await import('../src/lib/billing-admin.ts');
-  const admin = makeUser('admin-one', 'admin'), secondAdmin = makeUser('admin-two', 'admin'), student = makeUser('student-one', 'student'), employerUser = makeUser('employer-user', 'employer'), onboardingEmployer = makeUser('onboarding-employer', 'employer');
+  const admin = makeUser('admin-one', 'admin'), secondAdmin = makeUser('admin-two', 'admin'), operationsAdmin = makeUser('operations-admin', 'admin'), student = makeUser('student-one', 'student'), employerUser = makeUser('employer-user', 'employer'), onboardingEmployer = makeUser('onboarding-employer', 'employer');
   const now = new Date('2026-01-10T00:00:00.000Z');
   const job: Job = {
     id: 'job-one', title: 'Backend Engineer', company: 'Example', domain: 'example.test', country: 'India', state: 'Maharashtra', city: 'Pune', category: 'Technology', skills: ['TypeScript'], mode: 'Remote', type: 'Full-time', salaryMin: 1, salaryMax: 2, currency: 'INR', experienceMin: 1, experienceMax: 3,
@@ -24,8 +24,9 @@ test('admin console securely manages and oversees existing backend resources', a
   try {
     await store.bootstrapIndexes();
     await store.transaction(async r => {
-      for (const user of [admin, secondAdmin, student, employerUser, onboardingEmployer]) await r.put('users', user);
+      for (const user of [admin, secondAdmin, operationsAdmin, student, employerUser, onboardingEmployer]) await r.put('users', user);
       await r.put('adminAssignments', { id: admin.id, userId: admin.id, roleId: 'super_admin', createdAt: now.toISOString(), updatedAt: now.toISOString(), updatedBy: admin.id });
+      await r.put('adminAssignments', { id: operationsAdmin.id, userId: operationsAdmin.id, roleId: 'operations', createdAt: now.toISOString(), updatedAt: now.toISOString(), updatedBy: admin.id });
       await r.put('sessions', { id: 'session-one', userId: student.id, expiresAt: '2027-01-01T00:00:00.000Z' });
       await r.put('employers', { id: 'employer-one', ownerId: employerUser.id, name: 'Example', domain: 'example.test', country: 'India', description: '', status: 'pending', revision: 0, createdAt: now.toISOString(), updatedAt: now.toISOString() });
       await r.put('employerVerifications', { id: 'employer-one', employerId: 'employer-one', status: 'pending', revision: 0, evidence: [{ id: 'ev-1', type: 'domain', reference: 'example.test', submittedAt: now.toISOString() }], history: [], createdAt: now.toISOString(), updatedAt: now.toISOString() });
@@ -74,6 +75,28 @@ test('admin console securely manages and oversees existing backend resources', a
     const reviewed = await adminConsole.reviewAdminFraud(admin, 'report-one', { status: 'resolved', note: 'Evidence reviewed and retained.' });
     assert.equal(reviewed.status, 'resolved');
     await assert.rejects(adminConsole.reviewAdminFraud(admin, 'report-one', { status: 'rejected', note: 'Second decision is forbidden.' }), { code: 'FRAUD_REPORT_FINAL' });
+    await store.transaction(r => r.put('systemConfig', {
+      id: 'fraud-policy', revision: 4,
+      value: { reviewThreshold: 20, highThreshold: 50, blockedThreshold: 80, reportReviewCount: 1, reportHighCount: 3 },
+    }));
+
+    const pendingSource = await adminConsole.createAdminSource(admin, {
+      name: 'India partner board', provider: 'lever', configuration: { board: 'india-partner' }, enabled: false,
+      compliance: { status: 'pending', policyEvidence: 'Partner agreement is awaiting written approval before any source activation.', permittedMethod: 'official_api', jurisdictions: ['India'] },
+      schedule: { intervalMinutes: 60 }, rate: { requestsPerMinute: 2 },
+      retry: { maxAttempts: 3, baseDelaySeconds: 30, maxDelaySeconds: 300 },
+    });
+    assert.equal(pendingSource.provider, 'lever');
+    assert.equal(pendingSource.enabled, false);
+    assert.equal(pendingSource.compliance.status, 'pending');
+    await assert.rejects(adminConsole.updateAdminSource(operationsAdmin, pendingSource.id, { revision: pendingSource.revision, enabled: true }), { code: 'ADMIN_PERMISSION_REQUIRED' });
+    await assert.rejects(adminConsole.approveAdminSource(operationsAdmin, pendingSource.id, { revision: pendingSource.revision }), { code: 'ADMIN_PERMISSION_REQUIRED' });
+    const approvedSource = await adminConsole.approveAdminSource(admin, pendingSource.id, { revision: pendingSource.revision });
+    assert.equal(approvedSource.enabled, true);
+    assert.equal(approvedSource.compliance.status, 'approved');
+    const sourceRows = await adminConsole.listAdminSources(admin, new URLSearchParams({ query: 'india-partner' }));
+    assert.equal((sourceRows.items[0] as { board: string }).board, 'india-partner');
+    assert.equal((sourceRows.items[0] as { complianceStatus: string }).complianceStatus, 'approved');
 
     const applications = await adminConsole.listAdminApplications(admin, new URLSearchParams());
     const application = applications.items[0] as Record<string, unknown>;
@@ -100,7 +123,7 @@ test('admin console securely manages and oversees existing backend resources', a
     assert.equal(JSON.stringify(subscriptionDetail).includes('private-payment-id'), false);
 
     const configuration = await adminConsole.adminConfiguration(admin);
-    assert.equal(configuration.items.find(item => item.id === 'fraud-policy')?.revision, 3);
+    assert.equal(configuration.items.find(item => item.id === 'fraud-policy')?.revision, 4);
     assert.equal(JSON.stringify(configuration).includes('must-not-be-returned'), false);
     const auditRows = await adminConsole.listAdminAudit(admin, new URLSearchParams());
     assert.ok(auditRows.items.length >= 4);

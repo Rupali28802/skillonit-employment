@@ -25,7 +25,7 @@ This is a prioritized source inventory, not a claim that every platform has been
 | [Ashby](https://developers.ashbyhq.com/docs/public-job-posting-api) | Employer-specific global boards | Connector implemented; approved employer board configuration needed. |
 | [Greenhouse](https://developers.greenhouse.io/job-board.html) | Employer-specific global boards | Connector implemented; approved employer board configuration needed. |
 | [Lever](https://github.com/lever/postings-api) | Employer-specific global boards | Connector implemented; approved employer board configuration needed. |
-| [SmartRecruiters](https://developers.smartrecruiters.com/docs/posting-api) | Employer-specific global boards | Posting API documentation identified; adapter and employer review pending. |
+| [SmartRecruiters](https://developers.smartrecruiters.com/docs/endpoints) | Employer-specific global boards | Bounded company-postings adapter implemented. An approved employer company identifier and permitted display scope are still required; it is not connected or counted as live coverage. |
 
 The following regional/specialist inventory is a discovery backlog. Listing a name does **not** assert that its current API, terms, availability, brand ownership or countries have been verified. Each needs an official endpoint/terms review before connection; none is silently counted as connected.
 

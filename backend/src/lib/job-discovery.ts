@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { ApiError, audit } from './security.js';
 import { read, transaction } from './store.js';
+import { saveCoverageAudit } from '../job-engine/coverage.js';
 import {
   SourceAdapterRegistry,
   claimDueJobSources,
@@ -192,5 +193,7 @@ export async function runDiscovery(
 }
 
 export async function runScheduledDiscovery(registry = new SourceAdapterRegistry(), now = new Date()) {
-  return runDiscovery('scheduled', 'job-discovery-scheduler', {}, registry, now);
+  const result = await runDiscovery('scheduled', 'job-discovery-scheduler', {}, registry, now);
+  await saveCoverageAudit();
+  return result;
 }

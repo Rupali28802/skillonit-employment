@@ -1,0 +1,13 @@
+{
+  "id": "freehire-licensed-tech",
+  "type": "freehire",
+  "name": "freehire",
+  "keywords": "software engineer OR developer OR internship",
+  "enabled": false,
+  "approved": false,
+  "publish": false,
+  "publicListing": true,
+  "intervalMinutes": 360,
+  "maxPages": 4,
+  "policyEvidence": "Licensed Freehire API/Data plan for displaying postings in Skillonit, with visible Freehire attribution and original application links: https://freehire.me/docs/api"
+}

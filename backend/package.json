@@ -54,6 +54,7 @@
     "test:frontend": "node --import tsx ../scripts/test-frontend-integration.mts",
     "jobs:seed-employers": "node --env-file-if-exists=.env dist/job-engine/cli.js seed-employers",
     "jobs:seed-jooble": "node --env-file-if-exists=.env dist/job-engine/cli.js seed-jooble",
+    "jobs:seed-themuse": "node --env-file-if-exists=.env --import tsx src/job-engine/cli.ts seed-themuse",
     "jobs:jooble": "node --env-file-if-exists=.env dist/job-engine/cli.js once-jooble",
     "jobs:seed": "node --env-file-if-exists=.env --import tsx src/job-engine/cli.ts seed",
     "jobs:configure": "node --env-file-if-exists=.env --import tsx src/job-engine/cli.ts configure",
