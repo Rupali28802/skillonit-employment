@@ -1683,6 +1683,7 @@ th {
 .auth-role-switch { display:flex; border:1px solid #dfe8e2; padding:4px; border-radius:10px; background:#f4f7f5; margin-bottom:26px; }
 .auth-role-switch button { flex:1; padding:9px; font-size:12px; font-weight:600; border-radius:7px; color:#718078; }
 .auth-role-switch button[aria-pressed=true] { background:#fff; color:#126b51; box-shadow:0 2px 5px #1b3e2912; }
+.auth-role-help { margin:-14px 0 18px; color:#557168; font-size:12px; line-height:1.5; }
 .auth-form-panel form > label { display:block; font-size:12px; font-weight:600; color:#42594e; margin:0 0 17px; }
 .auth-form-panel input { background:#f8faf9; border:1px solid #dfe8e2; border-radius:8px; padding:13px 14px; font-size:13px; margin-top:7px; width:100%; }
 .auth-form-panel input:focus { outline:2px solid #15977440; outline-offset:1px; border-color:#199774; background:#fff; }

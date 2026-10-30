@@ -384,6 +384,11 @@ export function AuthForm({
               Employer
             </button>
           </fieldset>
+          {!register && accountType === 'employer' && (
+            <output className="auth-role-help">
+              Sign in with an account already registered as an employer. To create a new employer account, choose Employer when registering.
+            </output>
+          )}
           <>
             <button type="button" className="auth-google" disabled={busy} onClick={async () => {
               setBusy(true); setMessage('');
@@ -414,6 +419,7 @@ export function AuthForm({
               }
               delete data.confirmPassword;
               if (register) data.role = accountType;
+              else if (accountType === 'employer') data.role = 'employer';
               try {
                 const r = await fetch(
                   '/api/v1/auth/' + (register ? 'register' : 'login'),

@@ -314,6 +314,8 @@ export async function handle(
         if (user) await transaction((r) => audit(r, user.id, "auth.login_failed", user.id));
         throw new ApiError(401, "INVALID_LOGIN", "Email or password is incorrect.");
       }
+      if (input.role === 'employer' && user.role !== 'employer')
+        throw new ApiError(403, 'ACCOUNT_ROLE_MISMATCH', 'This account is not registered as an employer. Sign in as a job seeker or ask an administrator to change the account role.');
       await signIn(user);
       await transaction((r) => audit(r, user.id, "auth.login_succeeded", user.id));
       return ok({ user: safeUser(user) });

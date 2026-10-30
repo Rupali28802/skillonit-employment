@@ -11,6 +11,9 @@ export const registerSchema = z.object({
 export const loginSchema = z.object({
   email: z.email().toLowerCase(),
   password: z.string().min(1).max(128),
+  // Sent only when a person explicitly selects the employer portal. This
+  // asserts portal access; it can never change the account's stored role.
+  role: z.literal('employer').optional(),
 });
 export const profileSchema = z.object({
   name: z.string().trim().max(200),

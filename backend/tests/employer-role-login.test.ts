@@ -18,7 +18,7 @@ test('same account password login follows admin role changes and revoked session
   async function call(path:string,cookie='',method='GET',body?:unknown,status=200) {
     const response=await fetch(base+path,{method,headers:{Origin:process.env.APP_URL!,'Content-Type':'application/json',Cookie:cookie},...(body===undefined?{}:{body:JSON.stringify(body)})});
     const result=await response.json(); assert.equal(response.status,status,`${method} ${path}: ${JSON.stringify(result.error)}`);
-    return {data:result.data,cookie:response.headers.getSetCookie().map(value=>value.split(';')[0]).join('; ')};
+    return {data:result.data,error:result.error,cookie:response.headers.getSetCookie().map(value=>value.split(';')[0]).join('; ')};
   }
   const login=(id:string)=>call('auth/login','','POST',{email:`${id}@example.test`,password});
   try {
@@ -27,7 +27,15 @@ test('same account password login follows admin role changes and revoked session
     const admin=await login('admin'), initial=await login('candidate');
     assert.equal(initial.data.user.role,'student'); assert.ok(initial.cookie);
     await call('employer/overview',initial.cookie,'GET',undefined,403);
+    const wrongPortal=await call('auth/login','','POST',{email:'candidate@example.test',password,role:'employer'},403);
+    assert.equal(wrongPortal.error.code,'ACCOUNT_ROLE_MISMATCH');
+    assert.equal((await store.read(r=>r.get<User>('users','candidate')))?.role,'student');
+    const registeredEmployer=await call('auth/register','','POST',{name:'New Employer',email:'employer-registration@example.test',password,role:'employer'},201);
+    assert.equal(registeredEmployer.data.user.role,'employer');
+    await call('employer/overview',registeredEmployer.cookie);
     const promoted=await call('admin/console/users/candidate/role',admin.cookie,'PUT',{role:'employer',reason:'Isolated role flow verification'});
+    assert.equal(promoted.data.user.role,'employer');
+    assert.notEqual(promoted.data.user.disabled,true);
     assert.equal(promoted.data.sessionsRevoked,true);
     await call('employer/overview',initial.cookie,'GET',undefined,401);
     const employer=await login('candidate');
