@@ -52,6 +52,19 @@ export function cvUploadsEnabled(env = process.env) {
   return value === 'true';
 }
 
+export type CvProcessingMode = 'queue' | 'direct';
+
+/**
+ * Queue mode is the normal production configuration. Direct mode is an
+ * explicit, database-backed recovery path for CV processing when Redis is
+ * unavailable; it still requires the dedicated worker and every CV provider.
+ */
+export function cvProcessingMode(env = process.env): CvProcessingMode {
+  const value = env.CV_PROCESSING_MODE || 'queue';
+  if (value === 'queue' || value === 'direct') return value;
+  throw new Error('CV_PROCESSING_MODE must be queue or direct');
+}
+
 // Optional loopback preview alongside the configured HTTPS application.
 // Never accepts arbitrary origins and never applies to a production backend.
 export function isLocalPreviewOrigin(origin: string, env = process.env) {

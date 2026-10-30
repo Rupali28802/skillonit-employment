@@ -4,11 +4,15 @@ import { cvProductionConfig } from './cv-production.js';
 import { module2Config } from './module2-config.js';
 import { authMailConfig } from './auth-mail.js';
 import { redisSettings } from './module2-redis.js';
+import { cvProcessingMode } from './runtime-config.js';
 
 /** Returns variable/category names only, never values or raw validator errors. */
 export function module2ProductionIssues(env = process.env): string[] {
   const issues = new Set<string>();
-  const required = ['APP_URL', 'AUTH_OTP_SECRET', 'ENABLE_AUTH_EMAIL', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'AUTH_EMAIL_FROM', 'ENABLE_CV_UPLOADS', 'CV_STORAGE_PROVIDER', 'CV_GOOGLE_DRIVE_CLIENT_ID', 'CV_GOOGLE_DRIVE_CLIENT_SECRET', 'CV_GOOGLE_DRIVE_REFRESH_TOKEN', 'CV_GOOGLE_DRIVE_FOLDER_ID', 'CV_GOOGLE_DRIVE_ACCOUNT', 'CV_SCANNER_PROVIDER', 'CV_SCANNER_URL', 'CV_SCANNER_TOKEN', 'CV_PARSER_PROVIDER', 'CV_PARSER_VERSION', 'REDIS_URL'];
+  let processingMode: 'queue' | 'direct' = 'queue';
+  try { processingMode = cvProcessingMode(env); } catch { issues.add('CV_PROCESSING_MODE'); }
+  const required = ['APP_URL', 'AUTH_OTP_SECRET', 'ENABLE_AUTH_EMAIL', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'AUTH_EMAIL_FROM', 'ENABLE_CV_UPLOADS', 'CV_STORAGE_PROVIDER', 'CV_GOOGLE_DRIVE_CLIENT_ID', 'CV_GOOGLE_DRIVE_CLIENT_SECRET', 'CV_GOOGLE_DRIVE_REFRESH_TOKEN', 'CV_GOOGLE_DRIVE_FOLDER_ID', 'CV_GOOGLE_DRIVE_ACCOUNT', 'CV_SCANNER_PROVIDER', 'CV_SCANNER_URL', 'CV_SCANNER_TOKEN', 'CV_PARSER_PROVIDER', 'CV_PARSER_VERSION'];
+  if (processingMode === 'queue') required.push('REDIS_URL');
   required.push(...(env.CV_PARSER_PROVIDER === 'textkernel'
     ? ['CV_TEXTKERNEL_ACCOUNT_ID', 'CV_TEXTKERNEL_SERVICE_KEY', 'CV_TEXTKERNEL_REGION']
     : ['CV_PARSER_URL', 'CV_PARSER_TOKEN']));
@@ -30,7 +34,9 @@ export function module2ProductionIssues(env = process.env): string[] {
       else issues.add('CV_CONFIG');
     }
   }
-  try { redisSettings({ ...env, NODE_ENV: 'production' }); } catch { issues.add('REDIS_CONFIG'); }
+  if (processingMode === 'queue') {
+    try { redisSettings({ ...env, NODE_ENV: 'production' }); } catch { issues.add('REDIS_CONFIG'); }
+  }
   return [...issues].sort();
 }
 export function requireModule2Production(env = process.env) {

@@ -34,6 +34,7 @@
     "verify:release:full": "npm run verify:release && npm test",
     "start": "node scripts/start-with-discovery.mjs",
     "worker": "node --env-file-if-exists=.env dist/workers/index.js",
+    "worker:cv-direct": "node --env-file-if-exists=.env dist/workers/cv-direct.js",
     "worker:application-sender": "node --env-file-if-exists=.env dist/workers/application-sender.js",
     "worker:job-verification": "node --env-file-if-exists=.env dist/workers/job-verification.js",
     "worker:module2": "node --env-file-if-exists=.env dist/workers/module2.js",

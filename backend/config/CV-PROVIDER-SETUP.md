@@ -33,5 +33,23 @@ remain trusted HTTPS gateways. No service credentials are supplied by source fil
 Module 2 checks: `npm run test:module2` and `npm run test:module2:mongo`. The Mongo suite uses
 a disposable local `architecture_test` replica set and never invokes the frontend.
 
+## Temporary Redis-free CV processing
+
+When the existing Redis service is unavailable, CV processing can use the persisted database
+queue instead. This is an explicit recovery mode for CVs only; it does not replace Redis-backed
+job discovery, notifications, or application scheduling.
+
+1. Keep all provider values above configured and set `ENABLE_CV_UPLOADS=true`.
+2. Set `CV_PROCESSING_MODE=direct` in the existing secret manager or ignored deployment env file.
+   Do not add, remove, or expose any provider secrets.
+3. Build the backend and run exactly one dedicated CV worker process with
+   `npm run worker:cv-direct`. Leave the existing operations and other workers unchanged.
+4. Verify the provider probe, then upload a non-sensitive test PDF and confirm it reaches the
+   review state before allowing candidate uploads. Switch back to `CV_PROCESSING_MODE=queue`
+   after Redis is restored.
+
+Direct mode is fail-closed: it cannot enable uploads, skip scans/parsing, or process files unless
+the Google Drive storage and existing trusted providers pass startup validation.
+
 Never paste credentials into source files or reports. Keep `.env` ignored. This setup does not
 change `DEMO_MODE`, authentication, Job Matching, the Application Engine, or frontend code.

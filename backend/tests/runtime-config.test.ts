@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { cvUploadsEnabled, demoEnabled, validateRuntime } from '../src/lib/runtime-config.js';
+import { cvProcessingMode, cvUploadsEnabled, demoEnabled, validateRuntime } from '../src/lib/runtime-config.js';
 
 test('demo mode is local-only and production persistence is explicit', () => {
   const local = {
@@ -35,6 +35,9 @@ test('production requires an explicit CV upload mode but permits a fail-closed d
   assert.equal(cvUploadsEnabled({ NODE_ENV: 'production', ENABLE_CV_UPLOADS: 'true' }), true);
   assert.throws(() => cvUploadsEnabled({ NODE_ENV: 'production' }));
   assert.throws(() => cvUploadsEnabled({ NODE_ENV: 'production', ENABLE_CV_UPLOADS: 'enabled' }));
+  assert.equal(cvProcessingMode({}), 'queue');
+  assert.equal(cvProcessingMode({ CV_PROCESSING_MODE: 'direct' }), 'direct');
+  assert.throws(() => cvProcessingMode({ CV_PROCESSING_MODE: 'inline' }));
 });
 
 test('malformed MongoDB URI cannot expose credentials through diagnostics or startup', () => {

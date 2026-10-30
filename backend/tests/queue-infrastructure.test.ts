@@ -44,6 +44,7 @@ test('queue schedules, policies, Redis safety and graceful closure are bounded',
   const schedules = queue.configuredSchedules({ ENABLE_APPLICATION_ENGINE: 'true', ENABLE_NOTIFICATION_PLATFORM: 'true', ENABLE_JOB_INGESTION_PIPELINE: 'true', ENABLE_JOB_VERIFICATION: 'true' } as NodeJS.ProcessEnv);
   assert.deepEqual(schedules.map(row => row.name), ['application-sender', 'auto-apply-scheduler', 'subscription-expiry', 'job-ingestion', 'notification-dispatch', 'data-retention']);
   assert.ok(!schedules.some(row => row.name === 'job-verify'), 'job verification is scheduled only by the isolated worker');
+  assert.ok(!queue.configuredSchedules({ ENABLE_CV_UPLOADS: 'true', CV_PROCESSING_MODE: 'direct' } as NodeJS.ProcessEnv).some(row => row.name === 'cv-process'));
   assert.equal(schedules.find(row => row.name === 'data-retention')?.every, 86_400_000);
   assert.equal(queue.configuredSchedules({ DATABASE_URL: 'postgresql://localhost/isolated' }).find(row => row.name === 'data-retention')?.every, 60_000);
   assert.ok(!queue.configuredSchedules({ DATABASE_URL: 'postgresql://localhost/isolated', ENABLE_RETENTION_MAINTENANCE: 'false' }).some(row => row.name === 'data-retention'));

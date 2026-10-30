@@ -4,6 +4,7 @@ import type { User } from './domain.js';
 import type { Repository, Row } from './store.js';
 import { read, transaction } from './store.js';
 import { redisSettings, deadline } from './module2-redis.js';
+import { cvProcessingMode } from './runtime-config.js';
 import { ApiError, audit } from './security.js';
 import { retentionExpiry } from './data-retention.js';
 
@@ -35,7 +36,8 @@ export type QueueSchedule = { id: string; name: QueueTaskName; every: number };
 export function configuredSchedules(env = process.env): QueueSchedule[] {
   const schedules: QueueSchedule[] = [];
   const add = (enabled: boolean, name: QueueTaskName, every: number) => { if (enabled) schedules.push({ id: name, name, every }); };
-  add(env.ENABLE_CV_UPLOADS === 'true', 'cv-process', 60_000); add(env.ENABLE_CV_UPLOADS === 'true', 'cv-maintenance', 3_600_000);
+  const usesQueueForCv = env.ENABLE_CV_UPLOADS === 'true' && cvProcessingMode(env) === 'queue';
+  add(usesQueueForCv, 'cv-process', 60_000); add(usesQueueForCv, 'cv-maintenance', 3_600_000);
   add(env.ENABLE_APPLICATION_ENGINE === 'true', 'application-sender', 60_000); add(env.ENABLE_APPLICATION_ENGINE === 'true', 'auto-apply-scheduler', 300_000); add(env.ENABLE_APPLICATION_ENGINE === 'true', 'subscription-expiry', 3_600_000);
   add((env.ENABLE_JOB_DISCOVERY_ENGINE ?? env.ENABLE_JOB_SOURCE_STRATEGY) === 'true', 'source-scheduler', 60_000);
   add(env.ENABLE_JOB_INGESTION_PIPELINE === 'true', 'job-ingestion', 60_000);
