@@ -399,6 +399,38 @@ test('The Muse requires its registered key and retains the required source job-p
   }
 });
 
+test('Freehire connector requires a licensed key and preserves attribution plus original application links', async () => {
+  const oldKey = process.env.FREEHIRE_API_KEY;
+  const freehire = sourceSchema.parse({ ...source, id: 'freehire-test', type: 'freehire', name: 'freehire', board: undefined, company: undefined,
+    intervalMinutes: 360, maxPages: 1, policyEvidence: 'Licensed API plan fixture with visible attribution: https://freehire.me/docs/api', publicListing: true });
+  try {
+    delete process.env.FREEHIRE_API_KEY;
+    let calls = 0;
+    await assert.rejects(fetchFeed(freehire, async () => { calls++; return {}; }), /MISSING_FREEHIRE_CREDENTIALS/);
+    assert.equal(calls, 0);
+    process.env.FREEHIRE_API_KEY = 'fixture-key';
+    const batch = await fetchFeed(freehire, async (raw, headers) => {
+      const url = new URL(raw);
+      assert.equal(url.origin, 'https://freehire.me'); assert.equal(url.pathname, '/api/v1/agent/jobs/search');
+      assert.equal(url.searchParams.get('limit'), '100'); assert.equal(headers?.Authorization, 'Bearer fixture-key');
+      return { data: [{ public_slug: 'graduate-software-engineer-example-1', title: 'Graduate Software Engineer', company: 'Example India',
+        url: 'https://jobs.example.com/roles/graduate-engineer', description: 'Build reliable products with a supportive team.',
+        location: 'Bengaluru, India', countries: ['in'], skills: ['typescript', 'node.js'], work_mode: 'hybrid',
+        posted_at: '2026-10-12T00:00:00Z', updated_at: '2026-10-13T00:00:00Z',
+        enrichment: { category: 'software_engineering', employment_type: 'internship', salary_min: 600000, salary_max: 900000, salary_currency: 'INR', salary_period: 'year' } }],
+        meta: { total: 1, limit: 100, offset: 0 } };
+    });
+    assert.equal(batch.complete, true); assert.equal(batch.jobs.length, 1);
+    const job = normalize(batch.jobs[0], freehire);
+    assert.equal(publicJob(job).sourceLink, 'https://freehire.me/jobs/graduate-software-engineer-example-1');
+    assert.equal(publicJob(job).publicApplicationLink, 'https://jobs.example.com/roles/graduate-engineer');
+    assert.equal(publicJob(job).applicationTarget, 'direct-form');
+    assert.equal(job.country, 'India');
+  } finally {
+    if (oldKey === undefined) delete process.env.FREEHIRE_API_KEY; else process.env.FREEHIRE_API_KEY = oldKey;
+  }
+});
+
 test('GitHub hiring discovery is approval-gated and accepts only attributed employer posts with an external apply link', async () => {
   const oldApproval = process.env.GITHUB_JOB_DISCOVERY_APPROVAL_REFERENCE;
   const oldToken = process.env.GITHUB_JOB_DISCOVERY_TOKEN;

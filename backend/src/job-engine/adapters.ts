@@ -314,6 +314,46 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
     // Latest N is a rolling feed, never a full inventory snapshot.
     return { jobs, complete: jobs.length < 200, snapshot: false, requests: 1 };
   }
+  if (source.type === 'freehire') {
+    // Freehire's public unauthenticated reads are personal/non-commercial only.
+    // A production job board must use its licensed API/data plan, represented by
+    // this backend-only credential. Never fetch its huge catalogue wholesale.
+    const key = process.env.FREEHIRE_API_KEY?.trim();
+    if (!key) throw new FeedError('MISSING_FREEHIRE_CREDENTIALS');
+    let complete = false;
+    for (let page = 0; page < source.maxPages; page++) {
+      if (page) await pause(2000);
+      const query = new URLSearchParams({ limit: '100', offset: String(page * 100), sort: 'posted_at', order: 'desc', description_format: 'text', ...(source.keywords ? { q: source.keywords } : {}) });
+      let payload: Json;
+      try {
+        payload = await get(`https://freehire.me/api/v1/agent/jobs/search?${query}`, { Authorization: `Bearer ${key}` }) as Json;
+      } catch (error) {
+        throw new FeedError(error instanceof FeedError && /^HTTP_\d{3}$/.test(error.code) ? error.code : 'FREEHIRE_REQUEST_FAILED', error instanceof FeedError ? error.retryAfterMs : 0);
+      }
+      requests++;
+      if (!Array.isArray(payload.data) || !Number.isFinite(payload.meta?.total)) throw new FeedError('INVALID_FEED');
+      for (const j of payload.data) {
+        const originalUrl = text(j.apply_url) || text(j.url);
+        const slug = text(j.public_slug);
+        if (!slug || !originalUrl) continue;
+        const sourceUrl = `https://freehire.me/jobs/${encodeURIComponent(slug)}`;
+        const enrichment = j.enrichment && typeof j.enrichment === 'object' ? j.enrichment : {};
+        const countries = list(j.countries);
+        jobs.push({ externalId: slug, title: text(j.title), company: text(j.company), url: sourceUrl, listingUrl: sourceUrl,
+          applicationUrl: originalUrl, applicationTarget: 'direct-form', description: text(j.description), location: text(j.location),
+          countryCodes: countries, country: countries.length === 1 ? countries[0] : undefined, tags: list(j.skills),
+          category: text(enrichment.category), employmentType: text(enrichment.employment_type),
+          mode: text(j.work_mode) === 'remote' ? 'Remote' : text(j.work_mode) === 'hybrid' ? 'Hybrid' : text(j.work_mode) === 'onsite' ? 'On-site' : undefined,
+          postedAt: iso(j.posted_at), updatedAt: iso(j.updated_at),
+          salary: { min: enrichment.salary_min, max: enrichment.salary_max, currency: text(enrichment.salary_currency), period: text(enrichment.salary_period) } });
+      }
+      const limit = Number(payload.meta?.limit);
+      if (!payload.data.length || !Number.isFinite(limit) || limit < 1 || (page + 1) * limit >= Number(payload.meta.total)) { complete = true; break; }
+    }
+    // The licensed API's pagination is bounded so this is a rolling import,
+    // not proof that all remote catalogue records disappeared.
+    return { jobs, complete, snapshot: false, requests };
+  }
   if (source.type === 'themuse') {
     const key = process.env.THEMUSE_API_KEY?.trim();
     if (!key) throw new FeedError('MISSING_THEMUSE_CREDENTIALS');
