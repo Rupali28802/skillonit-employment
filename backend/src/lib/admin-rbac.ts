@@ -9,7 +9,7 @@ export const adminPermissions = [
   'jobs.read','jobs.moderate','jobs.publish','applications.read','fraud.read','fraud.review','fraud.resolve',
   'payments.read','payments.refund','subscriptions.read','subscriptions.manage','plans.read','plans.update','entitlements.manage','notifications.read','notifications.manage','system.read',
   'configuration.read','configuration.update','admin.users.manage','admin.roles.manage','admin.permissions.manage',
-  'audit.read','privacy.read','privacy.process','sources.read','sources.update','analytics.read','referrals.read','referrals.manage',
+  'audit.read','privacy.read','privacy.process','sources.read','sources.create','sources.update','sources.approve','analytics.read','referrals.read','referrals.manage',
 ] as const;
 export type AdminPermission = typeof adminPermissions[number];
 export type AdminRoleId = 'super_admin'|'admin'|'moderator'|'support'|'operations'|'finance'|'analyst';
@@ -22,7 +22,7 @@ export const builtInAdminRoles: { id:AdminRoleId; name:string; description:strin
   { id:'admin', name:'Admin', description:'Platform operations without super-administrator delegation.', permissions:all.filter(p=>!p.startsWith('admin.')) },
   { id:'moderator', name:'Moderator', description:'Employer, job, application and fraud moderation.', permissions:['employers.read','employers.verify','employers.reject','jobs.read','jobs.moderate','jobs.publish','applications.read','fraud.read','fraud.review','fraud.resolve','sources.read'] },
   { id:'support', name:'Support', description:'Read-only user and application support with privacy workflows.', permissions:['users.read','applications.read','notifications.read','privacy.read','privacy.process','audit.read'] },
-  { id:'operations', name:'Operations', description:'Job sources, queues and operational configuration.', permissions:['jobs.read','applications.read','sources.read','sources.update','system.read','configuration.read','notifications.read'] },
+  { id:'operations', name:'Operations', description:'Job sources, queues and operational configuration.', permissions:['jobs.read','applications.read','sources.read','sources.create','sources.update','system.read','configuration.read','notifications.read'] },
   { id:'finance', name:'Finance', description:'Plans, payments, subscriptions and finance operations.', permissions:['payments.read','payments.refund','subscriptions.read','subscriptions.manage','plans.read','plans.update','entitlements.manage','analytics.read','audit.read','referrals.read','referrals.manage'] },
   { id:'analyst', name:'Analyst', description:'Read-only platform analytics and operational visibility.', permissions:['analytics.read','system.read','users.read','employers.read','jobs.read','applications.read','sources.read'] },
 ];

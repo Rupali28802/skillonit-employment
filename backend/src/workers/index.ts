@@ -5,7 +5,7 @@ import { type Job as DomainJob } from '../lib/domain.js';
 import { fingerprint } from '../lib/pipeline.js';
 import { fetchJobSource } from '../lib/job-source-strategy.js';
 import { runScheduledDiscovery } from '../lib/job-discovery.js';
-import { runIngestion } from '../lib/job-ingestion.js';
+import { runIngestionWithCoverageAudit } from '../lib/job-ingestion.js';
 import { expireJobs } from '../lib/lifecycle.js';
 import { runCvBatch, runCvMaintenance } from './cv.js';
 import { processDueEmailApplications, scheduleAutomaticApplicationBatch, scheduleAutomaticApplications } from '../lib/application-engine.js';
@@ -29,7 +29,7 @@ const handlers: Record<QueueTaskName, QueueHandler> = {
   'source-scheduler': async () => runScheduledDiscovery(),
   'source-discovery': async (data, context) => fetchJobSource(data.sourceId, context.taskId),
   'source-fetch': async (data, context) => fetchJobSource(data.sourceId, context.taskId),
-  'job-ingestion': async () => runIngestion(),
+  'job-ingestion': async () => runIngestionWithCoverageAudit(),
   'job-verify': async (data, context) => verifyJobs(context.taskId, data.jobId ? { jobId: data.jobId } : {}),
   'fraud-recheck': async (data, context) => recheckFraud(context.taskId, data.jobId ? { jobId: data.jobId } : {}),
   'job-retention': async () => expireJobs(),

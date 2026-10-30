@@ -11,7 +11,9 @@ const slug = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,79}$/i);
 
 const sourceFieldsSchema = z.object({
   name: z.string().trim().min(1).max(100),
-  provider: z.literal('greenhouse'),
+  // SmartRecruiters is handled by the main job-engine source pipeline. Keep
+  // this direct ATS registry limited to providers for which it has an adapter.
+  provider: z.enum(['greenhouse', 'lever', 'ashby']),
   configuration: z.object({ board: slug }),
   enabled: z.boolean().default(false),
   compliance: z.object({
@@ -103,6 +105,16 @@ export type SourceRecord = {
   location: string;
   updatedAt?: string;
 };
+
+async function assertUniqueSourceIdentity(r: Repository, provider: JobSource['provider'], board: string, exceptId?: string) {
+  const normalizedBoard = board.toLocaleLowerCase('en-US');
+  const existing = (await r.find('jobSources', {}, 1000)).map(hydrateSource).find(source =>
+    source && source.id !== exceptId && source.provider === provider
+      && source.configuration.board.toLocaleLowerCase('en-US') === normalizedBoard,
+  );
+  if (existing)
+    throw new ApiError(409, 'SOURCE_ALREADY_REGISTERED', 'This official provider board is already registered. Review the existing source instead.');
+}
 export type SourceFetchResult = { records: SourceRecord[]; fetchedAt: string; cursor?: string };
 export interface JobSourceAdapter {
   readonly provider: JobSource['provider'];
@@ -167,9 +179,88 @@ export class GreenhouseSourceAdapter implements JobSourceAdapter {
   }
 }
 
+const sourceResponseError = (response: Response): SourceProviderError => {
+  if (response.status === 401 || response.status === 403)
+    return new SourceProviderError('SOURCE_AUTHORIZATION_FAILED', 'authorization', false);
+  if (response.status === 429)
+    return new SourceProviderError('SOURCE_RATE_LIMITED', 'rate_limit', true);
+  if (response.status >= 500)
+    return new SourceProviderError('SOURCE_PROVIDER_UNAVAILABLE', 'transient', true);
+  return new SourceProviderError('SOURCE_REQUEST_REJECTED', 'permanent', false);
+};
+
+const cleanDescription = (value: string) => value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 15000);
+const explicitLocation = (value: string) => {
+  const location = value.replace(/\s+/g, ' ').trim().slice(0, 300);
+  if (!/\bindia\b/i.test(location)) return { city: location };
+  const city = location.replace(/\bindia\b/ig, '').replace(/^[,\-–—\s]+|[,\-–—\s]+$/g, '').trim();
+  return { city, country: 'India' };
+};
+const providerTimestamp = (value: string | undefined) => value && isoDate.safeParse(value).success ? value : undefined;
+
+export class LeverSourceAdapter implements JobSourceAdapter {
+  readonly provider = 'lever' as const;
+  constructor(private readonly transport: HttpFetch = fetch) {}
+  async fetch(source: JobSource, signal: AbortSignal): Promise<SourceFetchResult> {
+    try {
+      const response = await this.transport(
+        `https://api.lever.co/v0/postings/${encodeURIComponent(source.configuration.board)}?mode=json&limit=100`,
+        { signal, headers: { Accept: 'application/json' } },
+      );
+      if (!response.ok) throw sourceResponseError(response);
+      const payload: unknown = await response.json().catch(() => { throw new SourceProviderError('SOURCE_RESPONSE_INVALID', 'provider_contract', false); });
+      const parsed = z.array(z.object({
+        id: z.string().min(1).max(300), text: z.string().min(1).max(500),
+        hostedUrl: z.string().url().refine(value => value.startsWith('https://')),
+        descriptionPlain: z.string().optional(), additionalPlain: z.string().optional(),
+        categories: z.object({ location: z.string().optional() }).optional(),
+      })).max(1000).safeParse(payload);
+      if (!parsed.success) throw new SourceProviderError('SOURCE_RESPONSE_INVALID', 'provider_contract', false);
+      return { fetchedAt: new Date().toISOString(), records: parsed.data.map(job => ({
+        externalId: job.id, title: job.text, url: job.hostedUrl,
+        description: cleanDescription([job.descriptionPlain, job.additionalPlain].filter(Boolean).join('\n')),
+        location: job.categories?.location?.slice(0, 300) || '',
+      })) };
+    } catch (error) {
+      if (error instanceof SourceProviderError) throw error;
+      throw new SourceProviderError('SOURCE_NETWORK_ERROR', 'transient', true);
+    }
+  }
+}
+
+export class AshbySourceAdapter implements JobSourceAdapter {
+  readonly provider = 'ashby' as const;
+  constructor(private readonly transport: HttpFetch = fetch) {}
+  async fetch(source: JobSource, signal: AbortSignal): Promise<SourceFetchResult> {
+    try {
+      const response = await this.transport(
+        `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(source.configuration.board)}`,
+        { signal, headers: { Accept: 'application/json' } },
+      );
+      if (!response.ok) throw sourceResponseError(response);
+      const payload: unknown = await response.json().catch(() => { throw new SourceProviderError('SOURCE_RESPONSE_INVALID', 'provider_contract', false); });
+      const parsed = z.object({ jobs: z.array(z.object({
+        id: z.string().min(1).max(300), title: z.string().min(1).max(500),
+        jobUrl: z.string().url().refine(value => value.startsWith('https://')),
+        descriptionPlain: z.string().optional(), descriptionHtml: z.string().optional(), location: z.string().optional(),
+        isListed: z.boolean().optional(), publishedAt: z.string().optional(),
+      })).max(1000) }).safeParse(payload);
+      if (!parsed.success) throw new SourceProviderError('SOURCE_RESPONSE_INVALID', 'provider_contract', false);
+      return { fetchedAt: new Date().toISOString(), records: parsed.data.jobs.filter(job => job.isListed !== false).map(job => ({
+        externalId: job.id, title: job.title, url: job.jobUrl,
+        description: cleanDescription(job.descriptionPlain || job.descriptionHtml || ''),
+        location: job.location?.slice(0, 300) || '', updatedAt: job.publishedAt,
+      })) };
+    } catch (error) {
+      if (error instanceof SourceProviderError) throw error;
+      throw new SourceProviderError('SOURCE_NETWORK_ERROR', 'transient', true);
+    }
+  }
+}
+
 export class SourceAdapterRegistry {
   private readonly adapters = new Map<JobSource['provider'], JobSourceAdapter>();
-  constructor(adapters: JobSourceAdapter[] = [new GreenhouseSourceAdapter()]) {
+  constructor(adapters: JobSourceAdapter[] = [new GreenhouseSourceAdapter(), new LeverSourceAdapter(), new AshbySourceAdapter()]) {
     for (const adapter of adapters) this.adapters.set(adapter.provider, adapter);
   }
   get(provider: JobSource['provider']) {
@@ -208,6 +299,7 @@ export async function createJobSource(actorId: string, input: unknown, now = new
     health: { status: value.enabled ? 'idle' : 'disabled', consecutiveFailures: 0 },
   };
   await transaction(async r => {
+    await assertUniqueSourceIdentity(r, value.provider, value.configuration.board);
     await r.put('jobSources', row);
     await r.put('entityRiskAssessments', await assessSource(r, row, now));
     await audit(r, actorId, 'source.created', row.id);
@@ -223,6 +315,7 @@ export async function updateJobSource(actorId: string, sourceId: string, input: 
     if (current.revision !== patch.revision)
       throw new ApiError(409, 'SOURCE_REVISION_CONFLICT', 'The source changed. Reload and try again.');
     const merged = sourceCreateSchema.parse({ ...current, ...patch });
+    await assertUniqueSourceIdentity(r, merged.provider, merged.configuration.board, sourceId);
     const stamp = now.toISOString();
     const next: JobSource = {
       ...current, ...merged, revision: current.revision + 1, updatedAt: stamp,
@@ -282,7 +375,8 @@ export async function fetchJobSource(
           normalized: {
             id: `${source.provider}-${source.configuration.board}-${record.externalId}`,
             title: record.title, url: record.url, description: record.description,
-            city: record.location, method: 'external', source: source.id,
+            ...explicitLocation(record.location), ...(providerTimestamp(record.updatedAt) ? { sourceUpdatedAt: providerTimestamp(record.updatedAt) } : {}),
+            method: 'external', source: source.id,
             status: 'review', trust: 'pending', discoveredAt: result.fetchedAt,
           } satisfies Partial<Job>,
         });

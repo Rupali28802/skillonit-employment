@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { configureIngestionPolicy, defaultIngestionPolicy, ingestionOverview, runIngestion, type JobIndexSink } from '../src/lib/job-ingestion.ts';
+import { configureIngestionPolicy, defaultIngestionPolicy, ingestionOverview, runIngestion, runIngestionWithCoverageAudit, type JobIndexSink } from '../src/lib/job-ingestion.ts';
 import { read, transaction } from '../src/lib/store.ts';
 
 async function sandbox(run: () => Promise<void>) {
@@ -17,7 +17,7 @@ const variant = (id: string, overrides: Record<string, unknown> = {}) => ({
   provenance: { provider: 'greenhouse', sourceUrl: `https://jobs.example.test/${id}`, permittedMethod: 'official_api' },
   normalized: { id, title: 'Senior Engineer', url: `https://jobs.example.test/${id}`, description: 'Build secure software for customers.', city: 'Pune',
     company: 'Example Incorporated', domain: 'example.test', country: 'India', category: 'Technology', skills: ['TypeScript'], mode: 'Hybrid', type: 'Full-time',
-    salaryMin: 100, salaryMax: 200, currency: 'INR', experienceMin: 3, experienceMax: 6, employerId: 'employer-one', ...overrides },
+    salaryMin: 100, salaryMax: 200, currency: 'INR', experienceMin: 3, experienceMax: 6, employerId: 'employer-one', sourceUpdatedAt: '2026-01-01T00:00:00.000Z', ...overrides },
 });
 const sink: JobIndexSink = { async index() { return 'not_eligible'; } };
 
@@ -29,9 +29,21 @@ test('ingestion completes every stage and stores a review-only canonical job', a
   const job = await read(r => r.get<any>('jobs', storedVariant.jobId));
   assert.equal(storedVariant.status, 'stored'); assert.equal(job.status, 'review'); assert.equal(job.trust, 'pending');
   assert.equal(job.sourceVariantIds[0], 'variant-one'); assert.equal(job.provenance[0].sourceJobId, 'variant-one');
+  assert.equal(job.feed.sourceId, source.id); assert.equal(job.feed.lastSeenAt, '2026-01-01T00:00:00.000Z');
+  assert.equal(job.sourceUpdatedAt, '2026-01-01T00:00:00.000Z');
   const events = await read(r => r.find<any>('jobIngestionEvents', { variantId: 'variant-one' }, 50));
   for (const stage of ['fetch', 'parse', 'normalize', 'validate', 'verify', 'enrich', 'deduplicate', 'store', 'index']) assert.ok(events.some(row => row.stage === stage), stage);
   assert.equal(JSON.stringify(events).includes('Build secure software'), false);
+}));
+
+test('ingestion writes the coverage snapshot after processing a new India listing', async () => sandbox(async () => {
+  await transaction(async r => { await r.put('jobSources', source); await r.put('jobSourceVariants', variant('coverage-one')); });
+  const result = await runIngestionWithCoverageAudit('admin', sink, new Date('2026-01-02T00:00:00.000Z'));
+  assert.equal(result.status, 'COMPLETED');
+  const audit = await read(r => r.get<any>('jobEngineState', 'coverage-latest'));
+  assert.ok(audit.generatedAt);
+  assert.equal(audit.india.localListings, 0);
+  assert.equal(audit.india.eligibleListings, 0);
 }));
 
 test('ingestion collapses duplicate records while preserving provenance', async () => sandbox(async () => {

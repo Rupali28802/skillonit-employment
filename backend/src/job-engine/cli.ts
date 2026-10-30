@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { bootstrapIndexes, closeStore, read, transaction } from '../lib/store.js';
 import { runEngine, upsertSource, engineStatus, setEmployerRefresh } from './engine.js';
-import { publicSources, worldwideSources, configuredJoobleSources, sourceSchema } from './sources.js';
+import { publicSources, worldwideSources, configuredJoobleSources, configuredTheMuseSource, sourceSchema } from './sources.js';
 import { coverageReport, saveCoverageAudit } from './coverage.js';
 import { indexSemantic } from './semantic.js';
 
@@ -27,8 +27,14 @@ function scheduleCoverageAudit() {
 }
 try {
   if (!process.env.DATABASE_URL?.trim() && !process.env.MONGODB_URI?.trim()) throw Error('DATABASE_REQUIRED');
-  await bootstrapIndexes();
   const command = process.argv[2] || 'status';
+  // These commands are read-only observability. Keep them available when Atlas
+  // cannot create an index (for example, while a capacity incident is being repaired).
+  // A credential-gated seed with no configured credential must be a no-op. It
+  // should not require database mutation/index privileges merely to report that
+  // the provider is pending activation.
+  const noOpCredentialSeed = command === 'seed-themuse' && !process.env.THEMUSE_API_KEY?.trim();
+  if (!['coverage', 'status'].includes(command) && !noOpCredentialSeed) await bootstrapIndexes();
   if (command === 'watch-semantic') {
     do {
       try { const indexed = await indexSemantic(100); if(indexed) console.log(JSON.stringify({indexed})); }
@@ -56,6 +62,12 @@ try {
       if (!(await read(r => r.get('jobFeedSources', source.id)))) await upsertSource(source);
     }
     console.log(JSON.stringify({ configuredRegions: configured.length, message: 'Existing settings preserved; credentials never stored in source records.' }));
+  } else if (command === 'seed-themuse') {
+    const configured = configuredTheMuseSource();
+    for (const source of configured) {
+      if (!(await read(r => r.get('jobFeedSources', source.id)))) await upsertSource(source);
+    }
+    console.log(JSON.stringify({ configured: configured.length, message: 'The Muse source configured only when a private registered API key is present; existing settings preserved.' }));
   } else if (command === 'seed-worldwide') {
     await transaction(async r => {
       const existing = new Set((await r.find<{ id: string }>('jobFeedSources', {}, 1000)).map(s => s.id));

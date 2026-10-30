@@ -90,6 +90,9 @@ export function Discovery({
     [country, setCountry] = useState(''),
     [mode, setMode] = useState(''),
     [jobType, setJobType] = useState(''),
+    [freshness, setFreshness] = useState(''),
+    [opportunity, setOpportunity] = useState(''),
+    [directApplication, setDirectApplication] = useState(false),
     [experience, setExperience] = useState(''),
     [state, setState] = useState(''),
     [sort, setSort] = useState('discovered'),
@@ -251,7 +254,7 @@ export function Discovery({
   const activeCountry = country || (removed.includes('country') ? '' : intent.country);
   const activeMode = mode || (removed.includes('mode') ? '' : intent.mode);
   const activeExperience = experience || (removed.includes('experience') ? '' : intent.experience);
-  const radarFilterCount = [activeCountry, activeMode, jobType, activeExperience].filter(Boolean).length;
+  const radarFilterCount = [activeCountry, activeMode, jobType, activeExperience, freshness, opportunity, directApplication].filter(Boolean).length;
   function updateQuery(value: string) { setQuery(value); setRemoved([]); setPage(1); }
   function removeChip(key: string) {
     setRemoved(prev => [...prev,key]); setPage(1);
@@ -359,8 +362,14 @@ export function Discovery({
           sort: intent.highSalary&&!removed.includes('salary')?'salary':sort,
           page: String(page),
           limit: String(pageSize),
-          searchMode: semantic || (sort === 'relevant' && !!roleQuery) ? 'semantic' : 'keyword',
+          // "Best match" uses the transparent server-side relevance score.
+          // AI search remains an explicit opt-in because its index can be narrower.
+          searchMode: semantic ? 'semantic' : 'keyword',
         });
+        if (freshness) p.set('postedWithinDays', freshness);
+        if (opportunity === 'internship') p.set('internship', 'true');
+        if (opportunity === 'entry-level') p.set('entryLevel', 'true');
+        if (directApplication) p.set('hasDirectApplication', 'true');
         const range:Record<string,string[]>={'0–2 years':['0','2'],'2–5 years':['2','5'],'5+ years':['5','100']};
         if(range[activeExperience]){p.delete('experience');p.set('experienceMin',range[activeExperience][0]);p.set('experienceMax',range[activeExperience][1]);}
         const keyParams = new URLSearchParams(p); keyParams.delete('page');
@@ -389,7 +398,7 @@ export function Discovery({
         if (requestId === sequence.current) {setBusy(false);requestPending.current=false;}
       }
     },
-    [roleQuery, category, activeCountry, activeMode, jobType, activeExperience, state, sort, page, pageSize, semantic, intent.highSalary, removed],
+    [roleQuery, category, activeCountry, activeMode, jobType, activeExperience, freshness, opportunity, directApplication, state, sort, page, pageSize, semantic, intent.highSalary, removed],
   );
   useEffect(() => {
     const timer = setTimeout(() => void search(), 250);
@@ -525,7 +534,7 @@ export function Discovery({
                   </div>
                   <div className="radar-filter-group">
                     <strong>Job preferences</strong>
-                    <div className="radar-filters" aria-label="Job filters">{['Fresher','Internship','Full-time','Part-time','Contract','Remote','Hybrid','On-site'].map(label=><button type="button" key={label} aria-pressed={label==='Fresher'?activeExperience==='0':label.includes('years')?experience===label:jobType===label||activeMode===label} onClick={()=>{setPage(1);if(['Remote','Hybrid','On-site'].includes(label)){setMode(activeMode===label?'':label);setRemoved(p=>[...p,'mode']);}else if(label==='Fresher'||label.includes('years')){setExperience(experience===(label==='Fresher'?'0':label)?'':label==='Fresher'?'0':label);setRemoved(p=>[...p,'experience']);}else setJobType(jobType===label?'':label);}}>{label}</button>)}</div>
+                    <div className="radar-filters" aria-label="Job filters">{['Fresher','Internship','Full-time','Part-time','Contract','Remote','Hybrid','On-site'].map(label=><button type="button" key={label} aria-pressed={label==='Fresher'?activeExperience==='0':label==='Internship'?opportunity==='internship':label.includes('years')?experience===label:jobType===label||activeMode===label} onClick={()=>{setPage(1);if(['Remote','Hybrid','On-site'].includes(label)){setMode(activeMode===label?'':label);setRemoved(p=>[...p,'mode']);}else if(label==='Fresher'||label.includes('years')){setExperience(experience===(label==='Fresher'?'0':label)?'':label==='Fresher'?'0':label);setRemoved(p=>[...p,'experience']);}else if(label==='Internship')setOpportunity(opportunity==='internship'?'':'internship');else setJobType(jobType===label?'':label);}}>{label}</button>)}</div>
                   </div>
                 </section>}
               </div>
@@ -568,6 +577,32 @@ export function Discovery({
                 <select value={jobType} onChange={(e) => { setJobType(e.target.value); setPage(1); }}>
                   <option value="">All job types</option>
                   {['Full-time', 'Part-time', 'Permanent', 'Contract', 'Temporary', 'Internship', 'Apprenticeship', 'Freelance', 'Volunteer'].map(t => <option key={t}>{t}</option>)}
+                </select>
+              </label>
+              <label>
+                Posted
+                <select value={freshness} onChange={(e) => { setFreshness(e.target.value); setPage(1); }}>
+                  <option value="">Any verified posting date</option>
+                  <option value="1">Last 24 hours</option>
+                  <option value="3">Last 3 days</option>
+                  <option value="7">Last 7 days</option>
+                  <option value="14">Last 14 days</option>
+                  <option value="30">Last 30 days</option>
+                </select>
+              </label>
+              <label>
+                Opportunity focus
+                <select value={opportunity} onChange={(e) => { setOpportunity(e.target.value); setPage(1); }}>
+                  <option value="">All opportunities</option>
+                  <option value="entry-level">Entry-level and fresher</option>
+                  <option value="internship">Internships and apprenticeships</option>
+                </select>
+              </label>
+              <label>
+                Application route
+                <select value={directApplication ? 'direct' : ''} onChange={(e) => { setDirectApplication(e.target.value === 'direct'); setPage(1); }}>
+                  <option value="">All authorized routes</option>
+                  <option value="direct">Direct application form</option>
                 </select>
               </label>
               <label>

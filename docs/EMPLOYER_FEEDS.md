@@ -2,7 +2,11 @@
 
 From backend/: run `npm install`, `npm run build`, then `npm run jobs:seed-employers` and `npm run worker:jobs`. MongoDB must be configured privately in backend/.env. Existing source settings are preserved on repeated seeding. The versioned configuration contains public board identifiers only.
 
-Three boards: Razorpay Software Private Limited (Greenhouse), Employ (Lever), Ema (Ashby). Each refreshes daily through existing validation, deduplication and expiry logic. Initial ingest published 47 jobs. Ashby returned 44 candidates, of which 22 were rejected by normal validation. Do not equate these three boards with complete ATS coverage.
+The reviewed manifest now contains 11 public employer boards: Razorpay Software Private Limited, TechGrove by Banyan Software, Blenheim Chalcot India, NICE, SuperApp, Cognite (Greenhouse); Employ (Lever); and Ema, Handshake, LG Ad Solutions, Cartesia (Ashby). The additional boards were checked on 2026-10-14 for a live public endpoint and returned India-located opportunities at that time. This is a staged configuration, not proof that they are already present in the production database.
+
+Each source preserves the employer-owned listing/application URL, is deduplicated across sources, and closes listings only after a complete source snapshot no longer contains them. A worker should refresh the boards at their configured cadence and enforce provider backoff. A source returning a failed or partial response must not remove listings.
+
+Before the manifest can be seeded, restore the database write/index capacity described in [INDIA_COVERAGE_LIVE_AUDIT.md](INDIA_COVERAGE_LIVE_AUDIT.md). Then run `npm run jobs:seed-employers`, followed by `npm run jobs:once`, and review `npm run jobs:coverage`. Existing source settings are deliberately preserved, so each board can be rolled out and measured independently.
 
 Official API references:
 - https://docs.greenhouse.io/job-board.html

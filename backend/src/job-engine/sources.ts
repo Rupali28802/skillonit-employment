@@ -4,11 +4,12 @@ import { joobleDomains, joobleKey } from './jooble-regions.js';
 
 export const sourceSchema = z.object({
   id: z.string().regex(/^[a-z0-9_-]{1,80}$/),
-  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'himalayas', 'remoteok', 'jooble', 'jobtech', 'reed', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever', 'smartrecruiters', 'github']),
+  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'themuse', 'himalayas', 'remoteok', 'jooble', 'jobtech', 'reed', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever', 'smartrecruiters', 'github', 'github-authorized']),
   countryCode: z.string().regex(/^[a-z]{2}$/).optional(),
   keywords: z.string().trim().max(100).optional(),
   name: z.string().trim().min(1).max(100),
   board: z.string().regex(/^[a-zA-Z0-9_-]{1,80}$/).optional(),
+  repository: z.string().regex(/^[A-Za-z0-9_.-]{1,39}\/[A-Za-z0-9_.-]{1,100}$/).optional(),
   company: z.string().trim().min(1).max(150).optional(),
   enabled: z.boolean(), approved: z.boolean(),
   policyEvidence: z.string().min(20).max(2000),
@@ -27,11 +28,13 @@ export const sourceSchema = z.object({
     ctx.addIssue({ code: 'custom', message: 'Unknown country code.' });
   if (s.type === 'adzuna' && (!s.countryCode || !['au','at','be','br','ca','ch','de','es','fr','gb','in','it','mx','nl','nz','pl','sg','us','za'].includes(s.countryCode)))
     ctx.addIssue({ code: 'custom', message: 'Select a supported Adzuna country; account access still must be confirmed.' });
-  if (['jobicy', 'adzuna', 'usajobs', 'jobtech', 'reed'].includes(s.type) && (s.intervalMinutes < 60 || !s.publicListing))
+  if (['jobicy', 'themuse', 'adzuna', 'usajobs', 'jobtech', 'reed'].includes(s.type) && (s.intervalMinutes < 60 || !s.publicListing))
     ctx.addIssue({ code: 'custom', message: 'Public source attribution and at least an hourly interval required.' });
   if (s.type === 'smartrecruiters' && (s.maxPages > 4 || s.intervalMinutes < 360 || !s.publicListing)) ctx.addIssue({ code: 'custom', message: 'SmartRecruiters requires attribution, six-hour refresh and at most four pages.' });
   if (s.type === 'github' && (s.maxPages !== 1 || s.intervalMinutes < 360 || !s.publicListing))
     ctx.addIssue({ code: 'custom', message: 'GitHub requires visible source attribution, one bounded search page and a minimum six-hour refresh.' });
+  if (s.type === 'github-authorized' && (!s.repository || !s.company || s.maxPages !== 1 || s.intervalMinutes < 360 || !s.publicListing))
+    ctx.addIssue({ code: 'custom', message: 'GitHub requires a specifically approved repository, employer, attribution, one page and a six-hour minimum refresh.' });
   if (s.enabled && !s.approved) ctx.addIssue({ code: 'custom', message: 'Source must be approved before enabling.' });
   if (['ashby', 'greenhouse', 'lever', 'smartrecruiters', 'github'].includes(s.type) && (!s.board || !s.company))
     ctx.addIssue({ code: 'custom', message: 'Employer boards and GitHub organization searches require an organization identifier and confirmed company name.' });
@@ -46,6 +49,15 @@ export function configuredJoobleSources(): FeedSource[] {
     enabled: true, approved: true, publicListing: true, publish: true, intervalMinutes: 1440, maxPages: 1,
     policyEvidence: 'Owner-requested regional API key; attributed search-result display: https://help.jooble.org/en/support/solutions/articles/60001448238',
   }));
+}
+
+export function configuredTheMuseSource(): FeedSource[] {
+  if (!process.env.THEMUSE_API_KEY?.trim()) return [];
+  return [sourceSchema.parse({
+    id: 'themuse-global', type: 'themuse', name: 'The Muse', enabled: true, approved: true,
+    policyEvidence: 'Registered The Muse API app; listings link back to The Muse as required: https://www.themuse.com/developers/api/v2/terms',
+    publicListing: true, publish: true, intervalMinutes: 360, maxPages: 2,
+  })];
 }
 
 export const publicSources: FeedSource[] = [

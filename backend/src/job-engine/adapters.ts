@@ -80,6 +80,13 @@ function githubIssueBelongsToOrganization(url: string, organization: string) {
     return false;
   }
 }
+const githubRoleTitle = (value: unknown) => text(value)
+  .replace(/^\s*(?:\[?hiring\]?|we(?:'|’)re hiring|job opening|open role|internship opportunity)\s*[:\-–—|]?\s*/i, '')
+  .replace(/^\s*(?:apply for|role)\s*[:\-–—|]?\s*/i, '').trim();
+const githubLocation = (body: string) => {
+  const match = body.match(/(?:^|\n)\s*(?:location|locations?)\s*[:\-]\s*([^\n]{1,160})/i);
+  return match ? match[1].trim() : 'Not specified';
+};
 
 export async function fetchJson(url: string, extraHeaders: Record<string, string> = {}, body?: Record<string, unknown>): Promise<Json | Json[]> {
   const r = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(20000),
@@ -141,6 +148,41 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
     // GitHub search is a relevance-ranked, bounded result set. It must never
     // withdraw a previously discovered listing solely because it falls out of it.
     return { jobs, complete: false, snapshot: false, requests };
+  }
+  if (source.type === 'github-authorized') {
+    const approval = process.env.GITHUB_JOB_DISCOVERY_APPROVAL_REFERENCE?.trim();
+    if (!approval) throw new FeedError('MISSING_GITHUB_WRITTEN_APPROVAL');
+    const token = process.env.GITHUB_JOB_DISCOVERY_TOKEN?.trim();
+    if (!token) throw new FeedError('MISSING_GITHUB_CREDENTIALS');
+    const repository = source.repository!;
+    let payload: Json | Json[];
+    try {
+      payload = await get(`https://api.github.com/repos/${repository}/issues?state=open&sort=updated&direction=desc&per_page=100`, {
+        Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28',
+      });
+    } catch (error) {
+      throw new FeedError(error instanceof FeedError && /^HTTP_\d{3}$/.test(error.code) ? error.code : 'GITHUB_REQUEST_FAILED', error instanceof FeedError ? error.retryAfterMs : 0);
+    }
+    requests++;
+    if (!Array.isArray(payload)) throw new FeedError('INVALID_FEED');
+    const allowedAuthors = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+    const expectedPath = `/${repository.toLowerCase()}/issues/`;
+    for (const issue of payload) {
+      if (!issue || typeof issue !== 'object' || issue.pull_request || !allowedAuthors.has(text(issue.author_association))) continue;
+      const listingUrl = text(issue.html_url);
+      try {
+        const parsed = new URL(listingUrl);
+        if (parsed.protocol !== 'https:' || parsed.hostname !== 'github.com' || !parsed.pathname.toLowerCase().startsWith(expectedPath)) continue;
+      } catch { continue; }
+      const body = text(issue.body), title = githubRoleTitle(issue.title);
+      if (title.length < 4 || /^(?:hiring|we(?:'|’)re hiring|jobs?)$/i.test(title) || !githubJobSignal.test(`${issue.title}\n${body}`)) continue;
+      const applicationUrl = githubApplicationUrl(body);
+      if (!applicationUrl) continue;
+      jobs.push({ externalId: String(issue.id ?? ''), title, company: source.company!, url: listingUrl, listingUrl,
+        applicationUrl, applicationTarget: 'source-redirect', description: body, location: githubLocation(body),
+        tags: ['GitHub', 'authorized hiring post'], postedAt: iso(issue.created_at), updatedAt: iso(issue.updated_at) });
+    }
+    return { jobs, complete: true, snapshot: true, requests };
   }
   if (source.type === 'jobtech') {
     let complete = false;
@@ -271,6 +313,31 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
     }
     // Latest N is a rolling feed, never a full inventory snapshot.
     return { jobs, complete: jobs.length < 200, snapshot: false, requests: 1 };
+  }
+  if (source.type === 'themuse') {
+    const key = process.env.THEMUSE_API_KEY?.trim();
+    if (!key) throw new FeedError('MISSING_THEMUSE_CREDENTIALS');
+    let complete = false;
+    for (let page = 0; page < source.maxPages; page++) {
+      if (page) await pause(2000);
+      const query = new URLSearchParams({ page: String(page), descending: 'true', api_key: key });
+      let payload: Json;
+      try { payload = await get(`https://www.themuse.com/api/public/jobs?${query}`) as Json; }
+      catch (error) { throw new FeedError(error instanceof FeedError && /^HTTP_\d{3}$/.test(error.code) ? error.code : 'THEMUSE_REQUEST_FAILED', error instanceof FeedError ? error.retryAfterMs : 0); }
+      requests++;
+      if (!Array.isArray(payload.results)) throw new FeedError('INVALID_FEED');
+      for (const j of payload.results) {
+        const listingUrl = text(j.refs?.landing_page);
+        if (!listingUrl) continue;
+        jobs.push({ externalId: String(j.id ?? ''), title: text(j.name), company: text(j.company?.name),
+          url: listingUrl, listingUrl, applicationUrl: listingUrl, applicationTarget: 'source-job-page', description: text(j.contents),
+          location: Array.isArray(j.locations) ? j.locations.map((location: Json) => text(location?.name)).filter(Boolean).join('; ') : '',
+          category: Array.isArray(j.categories) ? j.categories.map((category: Json) => text(category?.name)).filter(Boolean).join(', ') : '',
+          tags: Array.isArray(j.levels) ? j.levels.map((level: Json) => text(level?.name)).filter(Boolean) : [], postedAt: iso(j.publication_date) });
+      }
+      if (payload.results.length < 20 || page + 1 >= Number(payload.page_count || 0)) { complete = true; break; }
+    }
+    return { jobs, complete, snapshot: false, requests };
   }
   if (source.type === 'adzuna') {
     if (!process.env.ADZUNA_APP_ID || !process.env.ADZUNA_APP_KEY) throw new FeedError('MISSING_ADZUNA_CREDENTIALS');

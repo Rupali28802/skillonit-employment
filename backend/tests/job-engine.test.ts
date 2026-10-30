@@ -1,4 +1,5 @@
 import { test, before, after, beforeEach } from 'node:test';
+import { readFile } from 'node:fs/promises';
 import { countryEntries, countriesInLocation, normalizeCountry } from '../src/lib/countries.ts';
 import { coverageReport, saveCoverageAudit } from '../src/job-engine/coverage.ts';
 import { worldwideSources } from '../src/job-engine/sources.ts';
@@ -25,6 +26,20 @@ const candidate = (overrides: Partial<Candidate> = {}): Candidate => ({ external
   location: 'London, United Kingdom', postedAt: new Date(Date.now() - 86400000).toISOString(), ...overrides });
 const batch = (jobs = [candidate()], overrides: Partial<FeedBatch> = {}): FeedBatch => ({ jobs, complete: true, snapshot: true, requests: 1, ...overrides });
 const joobleSource = (): FeedSource => sourceSchema.parse({ ...source, id: 'jooble-gb', type: 'jooble', countryCode: 'gb', intervalMinutes: 1440, maxPages: 1 });
+
+test('reviewed employer manifest contains unique, approved public ATS boards', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../job-sources.employers.json', import.meta.url), 'utf8')) as unknown[];
+  const sources = manifest.map(sourceSchema.parse);
+  assert.equal(new Set(sources.map(source => source.id)).size, sources.length);
+  assert.ok(sources.length >= 11);
+  for (const item of sources) {
+    assert.ok(['ashby', 'greenhouse', 'lever'].includes(item.type));
+    assert.equal(item.enabled, true); assert.equal(item.approved, true); assert.equal(item.publicListing, true);
+    assert.ok(item.board); assert.ok(item.company); assert.ok(item.policyEvidence.includes('https://'));
+  }
+  assert.ok(sources.some(source => source.id === 'greenhouse-superapp'));
+  assert.ok(sources.some(source => source.id === 'ashby-handshake'));
+});
 
 test('jobs expire 90 days after posting or at an earlier employer close date', () => {
   const now = Date.parse('2026-09-17T12:00:00.000Z');
@@ -325,6 +340,73 @@ test('Jobicy keeps attribution, geography and salary period; snapshots are never
   assert.throws(() => normalize({ ...b.jobs[0], url: 'https://other.example.com/job', listingUrl: 'https://other.example.com/job', applicationUrl: 'https://other.example.com/job' }, s));
 });
 
+test('The Muse requires its registered key and retains the required source job-page link', async () => {
+  const oldKey = process.env.THEMUSE_API_KEY;
+  delete process.env.THEMUSE_API_KEY;
+  const muse = { ...source, type: 'themuse' as const, id: 'themuse-test', name: 'The Muse', intervalMinutes: 360, maxPages: 2 };
+  try {
+    let calls = 0;
+    await assert.rejects(fetchFeed(muse, async () => { calls++; return {}; }), /MISSING_THEMUSE_CREDENTIALS/);
+    assert.equal(calls, 0);
+    process.env.THEMUSE_API_KEY = 'fixture-key';
+    const batch = await fetchFeed(muse, async raw => {
+      const url = new URL(raw);
+      assert.equal(url.origin, 'https://www.themuse.com');
+      assert.equal(url.pathname, '/api/public/jobs');
+      assert.equal(url.searchParams.get('api_key'), 'fixture-key');
+      return { page_count: 1, results: [{ id: 7, name: 'Graduate software engineer', contents: 'Build accessible products with an experienced engineering team.',
+        publication_date: '2026-10-12T00:00:00Z', company: { name: 'Example India' }, locations: [{ name: 'Bengaluru, India' }],
+        categories: [{ name: 'Engineering' }], levels: [{ name: 'Entry Level' }], refs: { landing_page: 'https://www.themuse.com/jobs/example/graduate-software-engineer' } }] };
+    });
+    assert.equal(batch.complete, true); assert.equal(batch.jobs.length, 1);
+    const job = normalize(batch.jobs[0], muse);
+    assert.equal(job.url, 'https://www.themuse.com/jobs/example/graduate-software-engineer');
+    assert.equal(publicJob(job).applicationTarget, 'source-job-page');
+    assert.equal(job.country, 'India');
+  } finally {
+    if (oldKey === undefined) delete process.env.THEMUSE_API_KEY; else process.env.THEMUSE_API_KEY = oldKey;
+  }
+});
+
+test('GitHub hiring discovery is approval-gated and accepts only attributed employer posts with an external apply link', async () => {
+  const oldApproval = process.env.GITHUB_JOB_DISCOVERY_APPROVAL_REFERENCE;
+  const oldToken = process.env.GITHUB_JOB_DISCOVERY_TOKEN;
+  delete process.env.GITHUB_JOB_DISCOVERY_APPROVAL_REFERENCE;
+  delete process.env.GITHUB_JOB_DISCOVERY_TOKEN;
+  const github = sourceSchema.parse({ ...source, id: 'github-approved-test', type: 'github-authorized', name: 'Approved GitHub employer feed',
+    company: 'Example Employer', repository: 'example-org/hiring', publicListing: true, intervalMinutes: 360, maxPages: 1,
+    policyEvidence: 'GitHub written approval and employer authorization fixture reference: https://github.com/example-org/hiring',
+  });
+  try {
+    let calls = 0;
+    await assert.rejects(fetchFeed(github, async () => { calls++; return []; }), /MISSING_GITHUB_WRITTEN_APPROVAL/);
+    assert.equal(calls, 0);
+    process.env.GITHUB_JOB_DISCOVERY_APPROVAL_REFERENCE = 'GitHub case GH-TEST-001';
+    process.env.GITHUB_JOB_DISCOVERY_TOKEN = 'fixture-token';
+    const batch = await fetchFeed(github, async (raw, headers) => {
+      const url = new URL(raw);
+      assert.equal(url.origin, 'https://api.github.com'); assert.equal(url.pathname, '/repos/example-org/hiring/issues');
+      assert.equal(url.searchParams.get('state'), 'open'); assert.equal(headers?.Authorization, 'Bearer fixture-token');
+      return [
+        { id: 1, title: 'Hiring: Graduate Software Engineer', body: 'Location: Pune, India\nApply here: https://careers.example.com/jobs/graduate-engineer/apply',
+          html_url: 'https://github.com/example-org/hiring/issues/1', author_association: 'MEMBER', created_at: '2026-10-12T08:00:00Z', updated_at: '2026-10-12T09:00:00Z' },
+        { id: 2, title: 'Hiring', body: 'Email us for details', html_url: 'https://github.com/example-org/hiring/issues/2', author_association: 'MEMBER' },
+        { id: 3, title: 'Hiring: Backend Engineer', body: 'Apply: https://careers.example.com/jobs/backend', html_url: 'https://github.com/example-org/hiring/issues/3', author_association: 'NONE' },
+        { id: 4, title: 'Hiring: Platform Engineer', body: 'Apply: https://careers.example.com/jobs/platform', html_url: 'https://github.com/example-org/hiring/pull/4', author_association: 'OWNER', pull_request: {} },
+      ];
+    });
+    assert.equal(batch.complete, true); assert.equal(batch.snapshot, true); assert.equal(batch.jobs.length, 1);
+    assert.equal(batch.jobs[0].title, 'Graduate Software Engineer');
+    assert.equal(batch.jobs[0].url, 'https://github.com/example-org/hiring/issues/1');
+    assert.equal(batch.jobs[0].applicationUrl, 'https://careers.example.com/jobs/graduate-engineer/apply');
+    assert.equal(batch.jobs[0].applicationTarget, 'source-redirect');
+    assert.equal(sourceSchema.safeParse({ ...github, maxPages: 2 }).success, false);
+  } finally {
+    if (oldApproval === undefined) delete process.env.GITHUB_JOB_DISCOVERY_APPROVAL_REFERENCE; else process.env.GITHUB_JOB_DISCOVERY_APPROVAL_REFERENCE = oldApproval;
+    if (oldToken === undefined) delete process.env.GITHUB_JOB_DISCOVERY_TOKEN; else process.env.GITHUB_JOB_DISCOVERY_TOKEN = oldToken;
+  }
+});
+
 test('gated providers fail before network without credentials; invalid Adzuna countries fail validation', async () => {
   const old = process.env.ADZUNA_APP_KEY, oldUs = process.env.USAJOBS_API_KEY;
   delete process.env.ADZUNA_APP_KEY; delete process.env.USAJOBS_API_KEY;
@@ -382,6 +464,49 @@ test('search covers unmatched professions, job types and multiple countries; rep
   assert.equal(coverage.countries.length, 250); assert.equal(coverage.total, 1);
   assert.equal(coverage.countries.find(c => c.code === 'AE')?.indexedListings, 1);
   assert.equal(coverage.countries.find(c => c.code === 'JP')?.status, 'no_explicit_inventory');
+});
+
+test('coverage measures India-local jobs separately from India-eligible remote jobs', async () => {
+  const local = normalize(candidate({ externalId: 'india-local', title: 'Software engineer', company: 'India employer',
+    location: 'Pune, Maharashtra, India', country: 'India', city: 'Pune', state: 'Maharashtra', category: 'Information technology' }), source);
+  const eligible = normalize(candidate({ externalId: 'india-eligible', title: 'Remote analyst', company: 'Global employer',
+    url: 'https://careers.example.com/jobs/india-eligible', location: 'Remote', countryCodes: ['IN', 'AE'], category: 'Data and analytics' }), source);
+  await transaction(async r => {
+    await r.putMany('jobs', [local, eligible]);
+    await r.put('jobSources', {
+      id: 'india-direct-source', name: 'India employer careers', provider: 'lever', enabled: true,
+      compliance: { status: 'approved', jurisdictions: ['India'] }, schedule: { intervalMinutes: 60 },
+      health: { status: 'idle', consecutiveFailures: 0, lastSuccessAt: new Date().toISOString() },
+    });
+    await r.put('jobFeedSources', { ...source, id: 'india-engine-source', countryCode: 'in' });
+    await r.put('jobFeedStates', { id: 'india-engine-source', status: 'completed', failures: 0, lastSuccessAt: new Date().toISOString(), nextRunAt: Date.now() + 3600000 });
+    await r.put('jobFeedSources', { ...source, id: 'failed-engine-source', countryCode: 'in' });
+    await r.put('jobFeedStates', { id: 'failed-engine-source', status: 'failed', errorCode: 'MISSING_PARTNER_CREDENTIALS', failures: 1, nextRunAt: Date.now() + 3600000 });
+  });
+
+  const report = await coverageReport();
+  assert.equal(report.india.localListings, 1);
+  assert.equal(report.india.eligibleListings, 2);
+  assert.equal(report.india.remoteOrInternationalEligible, 1);
+  assert.equal(report.india.localWithoutState, 0);
+  assert.equal(report.india.locationQuality.stateCompletenessPercent, 100);
+  assert.equal(report.india.locationQuality.cityCompletenessPercent, 100);
+  assert.equal(report.india.locationQuality.statesRepresented, 1);
+  assert.equal(report.india.locationQuality.officialRegionsCovered, 1);
+  assert.equal(report.india.locationQuality.officialRegionsTotal, 36);
+  assert.equal(report.india.locationQuality.officialRegionCoveragePercent, 2.8);
+  assert.ok(report.india.locationQuality.unrepresentedRegions.includes('Delhi'));
+  assert.equal(report.india.sourceHealth.indiaScoped, 1);
+  assert.equal(report.india.sourceHealth.reportingNormally, 1);
+  assert.equal(report.india.sourceHealth.engine.indiaScoped, 2);
+  assert.equal(report.india.sourceHealth.engine.reportingNormally, 1);
+  assert.equal(report.india.sourceHealth.engine.failed, 1);
+  assert.deepEqual(report.india.sourceHealth.engine.failureCodes, [{ name: 'MISSING_PARTNER_CREDENTIALS', listings: 1 }]);
+  assert.equal(report.india.sourceHealth.engine.staleOrNeverRun, 1);
+  assert.equal(report.india.states.find(item => item.name === 'Maharashtra')?.listings, 1);
+  assert.equal(report.india.cities.find(item => item.name === 'Pune')?.listings, 1);
+  assert.equal(report.india.sources.find(item => item.name === source.id)?.listings, 2);
+  assert.equal(report.india.freshness.seenLast24Hours, 2);
 });
 
 test('country rollout covers every directory entry and queries explicit eligibility, not worldwide substitutes', async () => {
@@ -574,6 +699,38 @@ test('structured filters combine skills, city, trust and compatible salary witho
   assert.equal((await searchJobs(new URLSearchParams('skills=Patient%20care,Unknown'))).total,0);
   const report = await coverageReport();
   assert.equal(report.completeness.normalized,4); assert.equal(report.completeness.verified,1);
+});
+
+test('job search supports freshness, entry-level, internship, direct-form and transparent relevance filters', async () => {
+  const now = Date.now();
+  const graduate = normalize(candidate({ externalId: 'graduate-intern', title: 'React Graduate Intern', company: 'India Product Company',
+    description: 'Build accessible React product features with an experienced engineering team.', location: 'Pune, India',
+    skills: ['React', 'TypeScript'], employmentType: 'Internship', postedAt: new Date(now - 2 * 3600000).toISOString(),
+    url: 'https://careers.example.com/jobs/graduate-intern',
+    applicationUrl: 'https://careers.example.com/jobs/graduate-intern/apply', applicationTarget: 'direct-form',
+  }), source, now);
+  const older = normalize(candidate({ externalId: 'older-role', title: 'Platform Engineer', company: 'India Product Company',
+    description: 'React platform work for production engineering systems and services.', location: 'Pune, India',
+    url: 'https://careers.example.com/jobs/older-role',
+    postedAt: new Date(now - 8 * 86400000).toISOString(),
+  }), source, now);
+  const unknownDate = normalize(candidate({ externalId: 'unknown-date-role', title: 'Software Trainee', company: 'India Product Company',
+    description: 'A structured entry-level programme for software engineering candidates.', location: 'Pune, India',
+    url: 'https://careers.example.com/jobs/unknown-date-role',
+  }), source, now);
+  await transaction(r => r.putMany('jobs', [graduate, older, unknownDate]));
+
+  const fresh = await searchJobs(new URLSearchParams('postedWithinDays=1'));
+  assert.deepEqual(fresh.jobs.map(job => job.id), [graduate.id]);
+  assert.deepEqual((await searchJobs(new URLSearchParams('internship=true'))).jobs.map(job => job.id), [graduate.id]);
+  assert.deepEqual((await searchJobs(new URLSearchParams('entryLevel=true'))).jobs.map(job => job.id).sort(), [graduate.id, unknownDate.id].sort());
+  assert.deepEqual((await searchJobs(new URLSearchParams('hasDirectApplication=true'))).jobs.map(job => job.id), [graduate.id]);
+  assert.equal((await searchJobs(new URLSearchParams('postedWithinDays=0'))).total, 0);
+
+  const relevant = await searchJobs(new URLSearchParams('q=react&sort=relevant'));
+  assert.equal(relevant.searchMode, 'relevant');
+  assert.equal(relevant.jobs[0].id, graduate.id);
+  assert.ok('relevanceScore' in relevant.jobs[0]);
 });
 
 test('social intake holds incomplete posts, enforces permissions and handles removal idempotently', async () => {

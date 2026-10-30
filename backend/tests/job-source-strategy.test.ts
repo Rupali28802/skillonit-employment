@@ -4,18 +4,22 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
+  AshbySourceAdapter,
   GreenhouseSourceAdapter,
+  LeverSourceAdapter,
   SourceAdapterRegistry,
   SourceProviderError,
   claimDueJobSources,
   createJobSource,
   fetchJobSource,
   listJobSources,
+  sourceCreateSchema,
   sourceEvents,
   updateJobSource,
   type JobSourceAdapter,
 } from '../src/lib/job-source-strategy.ts';
 import { read } from '../src/lib/store.ts';
+import { ApiError } from '../src/lib/security.ts';
 
 const approved = {
   name: 'Example careers', provider: 'greenhouse' as const,
@@ -62,13 +66,15 @@ test('source lifecycle persists provenance, health, retries and redacted audit e
   assert.equal(created.schemaVersion, 1); assert.equal(created.health.status, 'idle');
   const adapter: JobSourceAdapter = { provider: 'greenhouse', async fetch() { return {
     fetchedAt: '2026-01-01T00:00:01.000Z', records: [{ externalId: 'job-1', title: 'Engineer',
-      url: 'https://jobs.example.test/job-1', description: 'Confirmed provider text', location: 'Pune' }],
+      url: 'https://jobs.example.test/job-1', description: 'Confirmed provider text', location: 'Pune, India', updatedAt: '2026-01-01T00:00:00.000Z' }],
   }; } };
   const success = await fetchJobSource(created.id, 'correlation-safe', 'admin-1', new SourceAdapterRegistry([adapter]), new Date('2026-01-01T00:00:00.000Z'));
   assert.deepEqual(success, { sourceId: created.id, fetched: 1, status: 'succeeded' });
   const variants = await read(r => r.find<any>('jobSourceVariants', { sourceId: created.id }));
   assert.equal(variants.length, 1); assert.equal(variants[0].sourceJobId, 'job-1');
   assert.equal(variants[0].provenance.permittedMethod, 'official_api');
+  assert.equal(variants[0].normalized.country, 'India'); assert.equal(variants[0].normalized.city, 'Pune');
+  assert.equal(variants[0].normalized.sourceUpdatedAt, '2026-01-01T00:00:00.000Z');
   assert.equal((await sourceEvents(created.id)).length, 2);
   const current = (await listJobSources())[0]; assert.equal(current.health.lastSuccessAt, '2026-01-01T00:00:01.000Z');
   await assert.rejects(updateJobSource('admin-1', created.id, { revision: 99, name: 'Conflict' }), /changed/);
@@ -83,6 +89,32 @@ test('source lifecycle persists provenance, health, retries and redacted audit e
   assert.equal(serialized.includes('Confirmed provider text'), false);
 }));
 
+test('Lever and Ashby adapters accept only their documented public-board fields', async () => {
+  const stamp = new Date().toISOString();
+  const leverSource = { ...approved, provider: 'lever' as const, id: 'lever-source', schemaVersion: 1 as const, revision: 1,
+    createdAt: stamp, updatedAt: stamp, reviewedBy: 'a', reviewedAt: stamp, nextRunAt: stamp, health: { status: 'idle' as const, consecutiveFailures: 0 } };
+  const lever = new LeverSourceAdapter(async () => Response.json([{
+    id: 'lever-role', text: 'Engineer', hostedUrl: 'https://jobs.example.test/lever-role',
+    descriptionPlain: 'Build reliable systems', categories: { location: 'Bengaluru, India' },
+  }]));
+  const leverResult = await lever.fetch(leverSource, AbortSignal.timeout(1000));
+  assert.deepEqual(leverResult.records[0], {
+    externalId: 'lever-role', title: 'Engineer', url: 'https://jobs.example.test/lever-role',
+    description: 'Build reliable systems', location: 'Bengaluru, India',
+  });
+
+  const ashbySource = { ...approved, provider: 'ashby' as const, id: 'ashby-source', schemaVersion: 1 as const, revision: 1,
+    createdAt: stamp, updatedAt: stamp, reviewedBy: 'a', reviewedAt: stamp, nextRunAt: stamp, health: { status: 'idle' as const, consecutiveFailures: 0 } };
+  const ashby = new AshbySourceAdapter(async () => Response.json({ jobs: [{
+    id: 'ashby-role', title: 'Product manager', jobUrl: 'https://jobs.example.test/ashby-role',
+    descriptionHtml: '<p>Lead product strategy</p>', location: 'Mumbai, India', isListed: true,
+  }, { id: 'hidden', title: 'Hidden', jobUrl: 'https://jobs.example.test/hidden', isListed: false }] }));
+  const ashbyResult = await ashby.fetch(ashbySource, AbortSignal.timeout(1000));
+  assert.equal(ashbyResult.records.length, 1);
+  assert.equal(ashbyResult.records[0].description, 'Lead product strategy');
+  assert.equal(ashbyResult.records[0].location, 'Mumbai, India');
+});
+
 test('scheduler claims only approved, enabled and due sources', async () => sandbox(async () => {
   const due = await createJobSource('admin-1', approved, new Date('2026-01-01T00:00:00.000Z'));
   await createJobSource('admin-1', { ...approved, name: 'Disabled', configuration: { board: 'disabled' }, enabled: false }, new Date('2026-01-01T00:00:00.000Z'));
@@ -90,3 +122,26 @@ test('scheduler claims only approved, enabled and due sources', async () => sand
   assert.deepEqual(claimed, [due.id]);
   assert.deepEqual(await claimDueJobSources(new Date('2026-01-01T00:00:02.000Z')), []);
 }));
+
+test('a provider board can only be registered once, including pending registrations', async () => sandbox(async () => {
+  const now = new Date('2026-01-01T00:00:00.000Z');
+  const first = await createJobSource('admin-1', { ...approved, enabled: false }, now);
+  await assert.rejects(
+    createJobSource('admin-2', { ...approved, name: 'Second copy', enabled: false, configuration: { board: 'EXAMPLE' } }, now),
+    (error: ApiError) => error.code === 'SOURCE_ALREADY_REGISTERED',
+  );
+  const alternate = await createJobSource('admin-2', { ...approved, name: 'Different board', enabled: false, configuration: { board: 'example-india' } }, now);
+  await assert.rejects(
+    updateJobSource('admin-2', alternate.id, { revision: alternate.revision, configuration: { board: first.configuration.board } }, now),
+    (error: ApiError) => error.code === 'SOURCE_ALREADY_REGISTERED',
+  );
+}));
+
+test('the direct ATS registry rejects providers without a matching adapter', () => {
+  const candidate = {
+    ...approved,
+    provider: 'smartrecruiters',
+    configuration: { board: 'example-company' },
+  };
+  assert.equal(sourceCreateSchema.safeParse(candidate).success, false);
+});

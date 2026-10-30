@@ -9,6 +9,7 @@ import {
   discoveryOverview,
   expireStaleDiscoveries,
   runDiscovery,
+  runScheduledDiscovery,
 } from '../src/lib/job-discovery.ts';
 import {
   createJobSource,
@@ -76,4 +77,17 @@ test('discovery expires old variants and honors the global policy pause', async 
   const run = await runDiscovery('scheduled', 'job-discovery-scheduler');
   assert.equal(run.status, 'PAUSED'); assert.equal(run.selectedSources, 0); assert.ok(run.finishedAt);
   assert.equal((await read(r => r.get<any>('jobDiscoveryRuns', run.id))).status, 'PAUSED');
+}));
+
+test('scheduled discovery persists a coverage audit after source health changes', async () => sandbox(async () => {
+  const now = new Date();
+  await createJobSource('admin', sourceInput('coverage', ['India']), now);
+  const adapter: JobSourceAdapter = { provider: 'greenhouse', async fetch() {
+    return { fetchedAt: now.toISOString(), records: [] };
+  } };
+  const run = await runScheduledDiscovery(new SourceAdapterRegistry([adapter]), now);
+  assert.equal(run.status, 'COMPLETED');
+  const audit = await read(r => r.get<any>('jobEngineState', 'coverage-latest'));
+  assert.equal(audit.india.sourceHealth.indiaScoped, 1);
+  assert.equal(audit.india.sourceHealth.reportingNormally, 1);
 }));
