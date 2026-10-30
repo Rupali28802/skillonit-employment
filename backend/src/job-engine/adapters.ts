@@ -350,6 +350,28 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
     // Latest N is a rolling feed, never a full inventory snapshot.
     return { jobs, complete: jobs.length < 200, snapshot: false, requests: 1 };
   }
+  if (source.type === 'getonbrd') {
+    let complete = false;
+    for (let page = 1; page <= source.maxPages; page++) {
+      if (page > 1) await pause(2000);
+      const payload = await get(`https://www.getonbrd.com/api/v0/categories/programming/jobs?${new URLSearchParams({ 'expand[]': 'company', page: String(page) })}`) as Json;
+      requests++;
+      if (!Array.isArray(payload.data)) throw new FeedError('INVALID_FEED');
+      for (const record of payload.data) {
+        const attributes = record?.attributes || {}, company = record?.attributes?.company?.data?.attributes || {};
+        const listingUrl = text(record?.links?.public_url);
+        if (!text(record?.id) || !listingUrl) continue;
+        const description = [text(attributes.description_headline), text(attributes.description), text(attributes.projects), text(attributes.functions), text(attributes.benefits), text(attributes.desirable)].filter(Boolean).join('\n\n');
+        jobs.push({ externalId: text(record.id), title: text(attributes.title), company: text(company.name), url: listingUrl, listingUrl,
+          applicationUrl: listingUrl, applicationTarget: 'source-job-page', description, location: list(attributes.countries).join('; ') || 'Not specified',
+          countryCodes: list(attributes.countries), category: text(attributes.category_name), tags: list(attributes.perks),
+          mode: attributes.remote === true ? 'Remote' : undefined, postedAt: iso(attributes.published_at),
+          salary: { min: attributes.min_salary, max: attributes.max_salary } });
+      }
+      if (payload.data.length < 20) { complete = true; break; }
+    }
+    return { jobs, complete, snapshot: false, requests };
+  }
   if (source.type === 'freehire') {
     // Freehire's public unauthenticated reads are personal/non-commercial only.
     // A production job board must use its licensed API/data plan, represented by
