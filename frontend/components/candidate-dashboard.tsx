@@ -47,13 +47,19 @@ export function CandidateDashboard({ user, dashboard, completion, onboarding, ma
   const firstName = user.name.trim().split(/\s+/)[0] || 'there';
   const activeApplications = dashboard.apps.filter(app => !['REJECTED', 'WITHDRAWN', 'CANCELLED', 'FAILED'].includes(app.status)).length;
   const unread = notifications.filter(item => !item.read).length;
-  const nextRequired = onboarding.steps.find(step => !step.optional && !step.complete);
   const initial = reduceMotion ? false : 'hidden';
   const setup = [
-    { label: 'Confirm your profile', complete: user.profile.confirmed, href: '/profile', icon: UserRound },
-    { label: 'Upload and confirm a CV', complete: cvCount > 0, href: '/cvs', icon: FileText },
-    { label: 'Set job preferences', complete: user.preferences.roles.length > 0, href: '/preferences', icon: Target },
-    { label: 'Connect your email', complete: mailboxConnected, href: '/mail', icon: Mail },
+    { label: 'Confirm your profile', complete: user.profile.confirmed, href: '/profile', icon: UserRound, benefit: 'Improves job matches' },
+    { label: 'Upload and confirm a CV', complete: cvCount > 0, href: '/cvs', icon: FileText, benefit: 'Keeps applications ready' },
+    { label: 'Set job preferences', complete: user.preferences.roles.length > 0, href: '/preferences', icon: Target, benefit: 'Personalizes recommendations' },
+    { label: 'Connect your email', complete: mailboxConnected, href: '/mail', icon: Mail, benefit: 'Enables email applications' },
+  ];
+  const completeSetup = setup.filter(item => item.complete).length;
+  const nextSetup = setup.find(item => !item.complete);
+  const applicationStates = [
+    { label: 'In review', count: dashboard.apps.filter(app => ['NEEDS_REVIEW', 'QUEUED', 'SENDING'].includes(app.status)).length },
+    { label: 'Submitted', count: dashboard.apps.filter(app => ['SENT', 'DIRECT_SUBMITTED', 'EXTERNAL_SUBMITTED'].includes(app.status)).length },
+    { label: 'Interviews', count: dashboard.apps.filter(app => app.status === 'INTERVIEW').length },
   ];
   const quickActions = [
     { label: 'Update profile', detail: `${completion.percentage}% ready`, href: '/profile', icon: UserRound },
@@ -76,10 +82,10 @@ export function CandidateDashboard({ user, dashboard, completion, onboarding, ma
         <h2>Welcome back, {firstName}.</h2>
         <p>{completion.percentage === 100
           ? 'Your profile is application-ready. Explore fresh roles matched to your experience and preferences.'
-          : 'Complete the essentials once, then use your trusted profile to discover and apply with confidence.'}</p>
+          : `Your workspace is ${completeSetup} of ${setup.length} essentials ready. Complete one focused step to improve the jobs and applications we can prepare for you.`}</p>
         <div className="dashboard-hero-actions">
-          <Link className="primary" href="/">Explore matching jobs <ArrowRight size={16} /></Link>
-          <Link className="dashboard-quiet-action" href="/profile">Review profile</Link>
+          <Link className="primary" href={nextSetup?.href || '/'}>{nextSetup ? `Continue: ${nextSetup.label}` : 'Explore matching jobs'} <ArrowRight size={16} /></Link>
+          <Link className="dashboard-quiet-action" href="#application-readiness">View readiness</Link>
         </div>
       </div>
       <motion.div className="dashboard-progress-card" whileHover={reduceMotion ? undefined : { y: -4, scale: 1.015 }} transition={{ duration: 0.22 }}>
@@ -88,8 +94,8 @@ export function CandidateDashboard({ user, dashboard, completion, onboarding, ma
         </div>
         <div>
           <span className="dashboard-progress-label"><i /> PROFILE STATUS</span>
-          <strong>{completion.percentage === 100 ? 'Ready to apply' : 'Build your profile'}</strong>
-          <small>{human(completion.readinessStatus)}</small>
+          <strong>{completeSetup === setup.length ? 'Ready to apply' : `${completeSetup} of ${setup.length} essentials ready`}</strong>
+          <small>{completion.percentage === 100 ? 'Confirmed profile complete' : human(completion.readinessStatus)}</small>
         </div>
       </motion.div>
     </motion.section>
@@ -121,7 +127,7 @@ export function CandidateDashboard({ user, dashboard, completion, onboarding, ma
             <Link href="/">View all jobs <ArrowRight size={15} /></Link>
           </div>
           {!dashboard.matches.length
-            ? <div className="dashboard-empty"><span><Target size={26} /></span><h3>Your matches are getting ready</h3><p>Confirm your profile and add target roles to unlock relevant recommendations.</p><Link className="secondary" href="/preferences">Set job preferences</Link></div>
+            ? <div className="dashboard-empty"><span><Target size={26} /></span><h3>Your matches are getting ready</h3><p>Tell us the roles, skills and locations that matter to you. We will use only confirmed profile details to rank opportunities.</p><div className="dashboard-empty-actions"><Link className="primary" href="/profile">Complete profile</Link><Link className="secondary" href="/preferences">Set preferences</Link></div></div>
             : <div className="dashboard-match-list">{dashboard.matches.slice(0, 4).map(({ job, match }, index) => <motion.div key={job.id} initial={initial} whileInView="visible" viewport={{ once: true, amount: 0.35 }} variants={{ hidden: { opacity: 0, x: -14 }, visible: { opacity: 1, x: 0, transition: { delay: reduceMotion ? 0 : index * 0.06, duration: 0.42, ease } } }} whileHover={reduceMotion ? undefined : { x: 4 }}>
               <Link className="dashboard-match" href={`/jobs/${job.id}`}>
                 <div className="dashboard-match-copy"><span className="dashboard-match-label">{job.category || 'Recommended role'}</span><h3>{job.title}</h3><p><MapPin size={14} /> {[job.city, job.country].filter(Boolean).join(', ') || 'Location flexible'} <i /> {job.mode}</p><small>{match.reasons.filter(Boolean).slice(0, 2).join(' · ') || 'Based on your confirmed profile'}</small></div>
@@ -135,6 +141,7 @@ export function CandidateDashboard({ user, dashboard, completion, onboarding, ma
             <div><span className="dashboard-kicker"><Clock3 size={13} /> APPLICATION TRACKER</span><h2>Recent progress</h2><p>Keep every application and its latest status in one place.</p></div>
             <Link href="/applications">View history <ArrowRight size={15} /></Link>
           </div>
+          {!!dashboard.apps.length && <div className="dashboard-application-summary" aria-label="Application status summary">{applicationStates.map(item => <span key={item.label}><strong>{item.count}</strong>{item.label}</span>)}</div>}
           {!dashboard.apps.length
             ? <div className="dashboard-empty"><span><BriefcaseBusiness size={26} /></span><h3>No applications yet</h3><p>When you find the right role, your confirmed profile will make the process faster.</p><Link className="secondary" href="/">Browse jobs</Link></div>
             : <div className="dashboard-activity-list">{dashboard.apps.slice(0, 4).map((app, index) => <Link href="/applications" className="dashboard-activity" key={app.id}>
@@ -146,12 +153,12 @@ export function CandidateDashboard({ user, dashboard, completion, onboarding, ma
       </div>
 
       <aside className="stack dashboard-side-column">
-        <motion.section className="panel dashboard-section dashboard-readiness" variants={reveal} initial={initial} whileInView="visible" viewport={{ once: true, amount: 0.18 }}>
+        <motion.section className="panel dashboard-section dashboard-readiness" id="application-readiness" variants={reveal} initial={initial} whileInView="visible" viewport={{ once: true, amount: 0.18 }}>
           <div className="dashboard-readiness-top"><span className="dashboard-kicker"><ShieldCheck size={13} /> APPLICATION READINESS</span><strong>{onboarding.completeness}%</strong></div>
           <h2>Your setup checklist</h2>
           <div className="dashboard-mini-progress"><span style={{ width: `${onboarding.completeness}%` }} /></div>
-          <div className="dashboard-checklist">{setup.map(item => <Link href={item.href} key={item.label} className={item.complete ? 'complete' : ''}><span>{item.complete ? <CheckCircle2 size={19} /> : <item.icon size={18} />}</span><div><strong>{item.label}</strong><small>{item.complete ? 'Complete' : 'Continue setup'}</small></div><ArrowRight size={14} /></Link>)}</div>
-          {nextRequired && <p className="dashboard-next-step">Next step <strong>{human(nextRequired.name)}</strong></p>}
+          <div className="dashboard-checklist">{setup.map(item => <Link href={item.href} key={item.label} className={item.complete ? 'complete' : ''}><span>{item.complete ? <CheckCircle2 size={19} /> : <item.icon size={18} />}</span><div><strong>{item.label}</strong><small>{item.complete ? 'Complete' : item.benefit}</small></div><ArrowRight size={14} /></Link>)}</div>
+          {nextSetup && <p className="dashboard-next-step">Recommended next step <strong>{nextSetup.label}</strong><small>{nextSetup.benefit}</small></p>}
         </motion.section>
 
         <motion.section className="panel dashboard-section dashboard-tools" variants={reveal} initial={initial} whileInView="visible" viewport={{ once: true, amount: 0.18 }}>
