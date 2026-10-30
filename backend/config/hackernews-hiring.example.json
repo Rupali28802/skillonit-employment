@@ -1,0 +1,12 @@
+{
+  "id": "hackernews-who-is-hiring",
+  "type": "hackernews",
+  "name": "Hacker News — Who is hiring?",
+  "enabled": false,
+  "approved": false,
+  "publish": false,
+  "publicListing": true,
+  "intervalMinutes": 1440,
+  "maxPages": 1,
+  "policyEvidence": "Documented approval to use the official Hacker News API for attributed hiring discovery, while publishing only employer announcements with an explicit external application link: https://github.com/HackerNews/API"
+}

@@ -431,6 +431,35 @@ test('Freehire connector requires a licensed key and preserves attribution plus 
   }
 });
 
+test('Hacker News hiring discovery is approval-gated and accepts only clear announcements with external apply links', async () => {
+  const prior = process.env.HACKERNEWS_JOB_DISCOVERY_APPROVAL_REFERENCE;
+  const hackernews = sourceSchema.parse({ ...source, id: 'hn-hiring-test', type: 'hackernews', name: 'Hacker News Who is hiring?', board: undefined, company: undefined,
+    intervalMinutes: 1440, maxPages: 1, publicListing: true, policyEvidence: 'Official HN API with platform approval fixture: https://github.com/HackerNews/API' });
+  try {
+    delete process.env.HACKERNEWS_JOB_DISCOVERY_APPROVAL_REFERENCE;
+    let calls = 0;
+    await assert.rejects(fetchFeed(hackernews, async () => { calls++; return []; }), /MISSING_HACKERNEWS_WRITTEN_APPROVAL/);
+    assert.equal(calls, 0);
+    process.env.HACKERNEWS_JOB_DISCOVERY_APPROVAL_REFERENCE = 'HN legal review fixture 001';
+    const batch = await fetchFeed(hackernews, async raw => {
+      const url = new URL(raw);
+      if (url.pathname.endsWith('/askstories.json')) return [100];
+      if (url.pathname.endsWith('/item/100.json')) return { id: 100, title: 'Ask HN: Who is hiring? (October 2026)', kids: [101, 102] };
+      if (url.pathname.endsWith('/item/101.json')) return { id: 101, type: 'comment', time: 1790800000,
+        text: 'Example Labs | Pune, India | Remote | Graduate Software Engineer<br>Apply: https://careers.example.com/jobs/graduate-engineer' };
+      return { id: 102, type: 'comment', time: 1790800000, text: 'Example Labs | Remote | Roles | Email us for details' };
+    });
+    assert.equal(batch.jobs.length, 1); assert.equal(batch.snapshot, false);
+    const job = normalize(batch.jobs[0], hackernews);
+    assert.equal(job.company, 'Example Labs'); assert.equal(job.country, 'India');
+    assert.equal(publicJob(job).sourceLink, 'https://news.ycombinator.com/item?id=100');
+    assert.equal(publicJob(job).publicApplicationLink, 'https://careers.example.com/jobs/graduate-engineer');
+    assert.equal(sourceSchema.safeParse({ ...hackernews, maxPages: 2 }).success, false);
+  } finally {
+    if (prior === undefined) delete process.env.HACKERNEWS_JOB_DISCOVERY_APPROVAL_REFERENCE; else process.env.HACKERNEWS_JOB_DISCOVERY_APPROVAL_REFERENCE = prior;
+  }
+});
+
 test('GitHub hiring discovery is approval-gated and accepts only attributed employer posts with an external apply link', async () => {
   const oldApproval = process.env.GITHUB_JOB_DISCOVERY_APPROVAL_REFERENCE;
   const oldToken = process.env.GITHUB_JOB_DISCOVERY_TOKEN;

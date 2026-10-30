@@ -87,6 +87,15 @@ const githubLocation = (body: string) => {
   const match = body.match(/(?:^|\n)\s*(?:location|locations?)\s*[:\-]\s*([^\n]{1,160})/i);
   return match ? match[1].trim() : 'Not specified';
 };
+const htmlText = (value: unknown) => text(value).replace(/<[^>]*>/g, ' ').replace(/&(amp|quot|#39|lt|gt);/g, (_match, entity: string) => ({ amp: '&', quot: '"', '#39': "'", lt: '<', gt: '>' }[entity] || ' ')).replace(/\s+/g, ' ').trim();
+const hiringAnnouncement = (body: string) => {
+  const first = htmlText(body).split(/(?:\r?\n| {2,})/)[0] || '';
+  const fields = first.split(/\s*\|\s*/).map(value => value.trim()).filter(Boolean);
+  const company = fields[0]?.replace(/^(?:company|employer)\s*:\s*/i, '').slice(0, 150) || '';
+  const location = fields.find((value, index) => index > 0 && /\b(remote|hybrid|on[- ]?site|india|usa|uk|europe|canada|australia|[a-z]+,\s*[a-z]+)/i.test(value)) || 'Not specified';
+  const role = fields.find((value, index) => index > 0 && /\b(?:engineer|developer|designer|manager|analyst|scientist|intern|graduate|sales|support|product|marketing|role|hiring)\b/i.test(value)) || 'Open roles';
+  return { company, location, title: `${role.slice(0, 180)} — ${company}`.slice(0, 240) };
+};
 
 export async function fetchJson(url: string, extraHeaders: Record<string, string> = {}, body?: Record<string, unknown>): Promise<Json | Json[]> {
   const r = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(20000),
@@ -183,6 +192,33 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
         tags: ['GitHub', 'authorized hiring post'], postedAt: iso(issue.created_at), updatedAt: iso(issue.updated_at) });
     }
     return { jobs, complete: true, snapshot: true, requests };
+  }
+  if (source.type === 'hackernews') {
+    // The official HN API is public, but the announcement content is authored
+    // by third parties. A platform-level approval reference is therefore
+    // required before this discovery-only connector can run.
+    if (!process.env.HACKERNEWS_JOB_DISCOVERY_APPROVAL_REFERENCE?.trim()) throw new FeedError('MISSING_HACKERNEWS_WRITTEN_APPROVAL');
+    const askIds = await get('https://hacker-news.firebaseio.com/v0/askstories.json'); requests++;
+    if (!Array.isArray(askIds)) throw new FeedError('INVALID_FEED');
+    let thread: Json | undefined;
+    for (const id of askIds.slice(0, 50)) {
+      const item = await get(`https://hacker-news.firebaseio.com/v0/item/${encodeURIComponent(String(id))}.json`) as Json; requests++;
+      if (/\bwho is hiring\b/i.test(text(item.title)) && Array.isArray(item.kids)) { thread = item; break; }
+    }
+    if (!thread) return { jobs, complete: false, snapshot: false, requests };
+    const threadUrl = `https://news.ycombinator.com/item?id=${encodeURIComponent(String(thread.id))}`;
+    for (const id of (thread.kids as unknown[]).slice(0, 100)) {
+      const comment = await get(`https://hacker-news.firebaseio.com/v0/item/${encodeURIComponent(String(id))}.json`) as Json; requests++;
+      if (comment.deleted || comment.dead || text(comment.type) !== 'comment') continue;
+      const description = htmlText(comment.text);
+      const applicationUrl = githubApplicationUrl(description);
+      const details = hiringAnnouncement(comment.text);
+      if (!applicationUrl || !details.company || details.company.length < 2 || description.length < 30) continue;
+      jobs.push({ externalId: String(comment.id || ''), title: details.title, company: details.company, url: threadUrl, listingUrl: threadUrl,
+        applicationUrl, applicationTarget: 'source-redirect', description, location: details.location,
+        tags: ['Hacker News', 'Who is hiring?'], postedAt: iso(comment.time), updatedAt: iso(comment.time) });
+    }
+    return { jobs, complete: false, snapshot: false, requests };
   }
   if (source.type === 'jobtech') {
     let complete = false;
