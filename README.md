@@ -101,7 +101,7 @@ The existing private avatar/cover/logo and profile appearance APIs remain availa
 Module 2 includes profile, completion, preferences, automation preferences, CV draft/confirmation/versioning, onboarding, consent and taxonomy APIs. Provider requirements and production gates are in `docs/backend/02-production-hardening.md`.
 The current frontend does not yet expose every Module 2 operation: its CV page offers manual profile entry, and complete CV upload/review/versioning and onboarding UI coverage remain separate work. This integration preserves the supplied UI and does not claim those absent screens are complete.
 
-Real CV services require the configured private storage, malware scanner, parser and worker/Redis infrastructure. Contact delivery, mailbox connections and commercial payments also require their existing provider configuration. Passing isolated tests is not proof of production provider readiness.
+Real CV services require the configured private storage, malware scanner, parser and database-backed worker infrastructure. Contact delivery, mailbox connections and commercial payments also require their existing provider configuration. Passing isolated tests is not proof of production provider readiness.
 
 ## Validate
 

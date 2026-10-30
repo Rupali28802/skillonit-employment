@@ -67,7 +67,7 @@ Storage keys are server-generated. MongoDB stores filename, type, size, digest, 
 
 `CvObjectStorage`, `CvScanner` and `CvParser` are vendor-independent interfaces. Runtime `configuredCvProviders()` intentionally returns unavailable until audited adapters are supplied. `ENABLE_CV_UPLOADS=false` is the safe default. Setting the flag alone does not enable uploads. Test adapters exist only in the test harness; they are never runtime fallbacks.
 
-The existing BullMQ worker accepts `cv-process` jobs and runs bounded batches from persistent cvDocuments queued/expired-processing states. Per-document leases prevent duplicate workers from publishing stale results. Provider work runs outside HTTP and database transactions. Configure a recurring cv-process job in the worker deployment once providers are wired.
+The database-backed CV worker runs bounded batches from persistent cvDocuments queued/expired-processing states. Per-document leases prevent duplicate workers from publishing stale results. Provider work runs outside HTTP and database transactions. Configure one dedicated CV worker in the deployment once providers are wired.
 
 ## Collections and indexes
 

@@ -1,6 +1,6 @@
 # Isolated email application sender
 
-The production email sender runs separately from the shared BullMQ operations worker. It polls only queued `email` applications through the existing application engine and Gmail Send integration. It does not schedule Auto Apply or consume CV, discovery, verification, notification, analytics, subscription, or retention tasks.
+The production email sender runs separately from the shared database-backed operations worker. It polls only queued `email` applications through the existing application engine and Gmail Send integration. It does not schedule Auto Apply or consume CV, discovery, verification, notification, analytics, subscription, or retention tasks.
 
 ## Activation prerequisites
 

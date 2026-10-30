@@ -3,11 +3,8 @@ import { z } from 'zod';
 import type { User } from './domain.js';
 import type { Repository, Row } from './store.js';
 import { read, transaction } from './store.js';
-import { redisSettings, deadline } from './module2-redis.js';
-import { cvProcessingMode } from './runtime-config.js';
 import { ApiError, audit } from './security.js';
 import { retentionExpiry } from './data-retention.js';
-
 export const taskNames = ['cv-process', 'cv-maintenance', 'application-sender', 'auto-apply-scheduler', 'auto-apply-user', 'subscription-expiry', 'source-scheduler', 'source-discovery', 'source-fetch', 'job-ingestion', 'job-verify', 'fraud-recheck', 'job-retention', 'notification-dispatch', 'job-dedupe', 'analytics-rollup', 'data-retention'] as const;
 export type QueueTaskName = typeof taskNames[number];
 export type QueueTask = { id: string; name: QueueTaskName; data: unknown; attempt: number };
@@ -36,8 +33,8 @@ export type QueueSchedule = { id: string; name: QueueTaskName; every: number };
 export function configuredSchedules(env = process.env): QueueSchedule[] {
   const schedules: QueueSchedule[] = [];
   const add = (enabled: boolean, name: QueueTaskName, every: number) => { if (enabled) schedules.push({ id: name, name, every }); };
-  const usesQueueForCv = env.ENABLE_CV_UPLOADS === 'true' && cvProcessingMode(env) === 'queue';
-  add(usesQueueForCv, 'cv-process', 60_000); add(usesQueueForCv, 'cv-maintenance', 3_600_000);
+  // CV processing is isolated in the dedicated database-backed CV worker.
+  // Do not schedule it here or a deployment could run two CV pollers.
   add(env.ENABLE_APPLICATION_ENGINE === 'true', 'application-sender', 60_000); add(env.ENABLE_APPLICATION_ENGINE === 'true', 'auto-apply-scheduler', 300_000); add(env.ENABLE_APPLICATION_ENGINE === 'true', 'subscription-expiry', 3_600_000);
   add((env.ENABLE_JOB_DISCOVERY_ENGINE ?? env.ENABLE_JOB_SOURCE_STRATEGY) === 'true', 'source-scheduler', 60_000);
   add(env.ENABLE_JOB_INGESTION_PIPELINE === 'true', 'job-ingestion', 60_000);
@@ -49,11 +46,6 @@ export function configuredSchedules(env = process.env): QueueSchedule[] {
   // PostgreSQL needs the worker to replace MongoDB's background TTL monitor.
   add(env.ENABLE_RETENTION_MAINTENANCE !== 'false', 'data-retention', env.DATABASE_URL?.trim() ? 60_000 : 86_400_000);
   return schedules;
-}
-
-export function queueConnection(env = process.env) {
-  if (!env.DATABASE_URL && !env.MONGODB_URI) throw new Error('QUEUE_DATABASE_REQUIRED');
-  return redisSettings(env);
 }
 
 function failureCode(error: unknown) {
@@ -118,8 +110,4 @@ export async function replayDeadLetter(actor: User, id: string, enqueue: (name: 
   const jobId = `replay-${randomUUID()}`; await enqueue(row.taskName as QueueTaskName, (row.reference || {}) as Record<string, string>, jobId);
   await transaction(async r => { await requireAdmin(r, actor); const current = await r.get<Row>('deadLetterJobs', id); if (!current || current.status !== 'pending') throw new ApiError(409, 'DEAD_LETTER_FINAL', 'Dead-letter job was already replayed.'); await r.put('deadLetterJobs', { ...current, status: 'replayed', replayJobId: jobId, replayedAt: new Date().toISOString(), replayedBy: actor.id }); await audit(r, actor.id, 'queue.dead_letter_replayed', id); });
   return { replayJobId: jobId };
-}
-
-export async function closeQueueResources(resources: { close(): Promise<unknown> }[], timeoutMs = 15_000) {
-  for (const resource of resources) await deadline(resource.close(), timeoutMs, 'QUEUE_SHUTDOWN_TIMEOUT');
 }

@@ -155,8 +155,8 @@ export function providerHealth() {
     },
     { name: 'Search index', status: 'Bounded database fallback' },
     {
-      name: 'Redis / workers',
-      status: process.env.REDIS_URL
+      name: 'Database workers',
+      status: process.env.DATABASE_URL || process.env.MONGODB_URI
         ? 'Configured — worker heartbeat required'
         : 'Not configured',
     },

@@ -4,7 +4,7 @@ import { startJobVerificationWorker } from './job-verification-runtime.js';
 
 async function main() {
   const runtime = await startJobVerificationWorker();
-  safeLog('info', 'job_verification_worker.started', { queue: runtime.queueName, intervalMs: runtime.every, batchSize: runtime.batchSize });
+  safeLog('info', 'job_verification_worker.started', { worker: runtime.workerName, intervalMs: runtime.every, batchSize: runtime.batchSize });
   let closing = false;
   const shutdown = async () => {
     if (closing) return;

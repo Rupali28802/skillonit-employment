@@ -7,7 +7,7 @@ The source strategy is disabled by default. It acquires source records only from
 - `ENABLE_JOB_SOURCE_STRATEGY=true` enables the one-minute scheduler in the operations worker.
 - `JOB_SOURCE_PROVIDER_TIMEOUT_MS` bounds each provider request (default `10000`).
 - `JOB_SOURCE_SCHEDULER_BATCH_SIZE` bounds sources claimed per scheduler pass (default `20`).
-- The worker still requires the repository's existing `MONGODB_URI` and `REDIS_URL` configuration.
+- The worker requires the repository's existing `MONGODB_URI` or `DATABASE_URL` configuration.
 
 Source-specific schedule, rate, retry, compliance evidence, permitted method, jurisdictions and provider configuration are stored in `jobSources`. No provider secrets are accepted by the current API contract.
 

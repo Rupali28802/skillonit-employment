@@ -4,7 +4,7 @@ The discovery engine coordinates the approved providers configured by the Job So
 
 ## Activation
 
-Set `ENABLE_JOB_DISCOVERY_ENGINE=true` only after at least one source has genuine compliance approval. The existing operations worker requires MongoDB and Redis and invokes the discovery scheduler once per minute. `ENABLE_JOB_SOURCE_STRATEGY` remains a compatibility fallback for existing deployments.
+Set `ENABLE_JOB_DISCOVERY_ENGINE=true` only after at least one source has genuine compliance approval. The database-backed operations worker requires MongoDB or PostgreSQL and invokes the discovery scheduler once per minute. `ENABLE_JOB_SOURCE_STRATEGY` remains a compatibility fallback for existing deployments.
 
 The database policy controls the maximum sources per run, source freshness objective, discovered-variant retention (maximum 90 days), and minimum healthy source count. Admins manage it through `PUT /api/v1/admin/discovery/config`.
 

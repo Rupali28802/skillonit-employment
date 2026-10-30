@@ -30,27 +30,23 @@ test('queue execution is idempotent, retry-safe, dead-lettered and auditable wit
 
     const overview = await queue.queueOverview(admin); assert.equal(overview.deadLetters, 1); assert.equal(overview.executions.deadLettered, 1);
     await assert.rejects(queue.queueOverview(student), { code: 'FORBIDDEN' });
-    let replay: { name?: string; data?: Record<string, string>; jobId?: string } = {};
-    const result = await queue.replayDeadLetter(admin, 'job-dedupe:failed-1', async (name, data, jobId) => { replay = { name, data, jobId }; });
-    assert.equal(replay.name, 'job-dedupe'); assert.deepEqual(replay.data, { jobId: 'job-1' }); assert.equal(replay.jobId, result.replayJobId);
+    const replayed: { name?: string; data?: Record<string, string> } = {};
+    const result = await queue.replayDeadLetter(admin, 'job-dedupe:failed-1', async (name, data) => { replayed.name = name; replayed.data = data; });
+    assert.equal(replayed.name, 'job-dedupe'); assert.deepEqual(replayed.data, { jobId: 'job-1' });
     await assert.rejects(queue.replayDeadLetter(admin, 'job-dedupe:failed-1', async () => {}), { code: 'DEAD_LETTER_FINAL' });
     const audits = await store.read(r => r.find<Record<string, unknown>>('auditLogs', {}, 20));
     assert.ok(audits.some(row => row.action === 'queue.dead_lettered')); assert.ok(audits.some(row => row.action === 'queue.dead_letter_replayed'));
   } finally { await store.closeStore(); await replica.stop(); delete process.env.MONGODB_URI; delete process.env.MONGODB_DATABASE; }
 });
 
-test('queue schedules, policies, Redis safety and graceful closure are bounded', async () => {
+test('worker schedules and policies are bounded without Redis', async () => {
   const queue = await import('../src/lib/queue-infrastructure.ts');
   const schedules = queue.configuredSchedules({ ENABLE_APPLICATION_ENGINE: 'true', ENABLE_NOTIFICATION_PLATFORM: 'true', ENABLE_JOB_INGESTION_PIPELINE: 'true', ENABLE_JOB_VERIFICATION: 'true' } as NodeJS.ProcessEnv);
   assert.deepEqual(schedules.map(row => row.name), ['application-sender', 'auto-apply-scheduler', 'subscription-expiry', 'job-ingestion', 'notification-dispatch', 'data-retention']);
   assert.ok(!schedules.some(row => row.name === 'job-verify'), 'job verification is scheduled only by the isolated worker');
-  assert.ok(!queue.configuredSchedules({ ENABLE_CV_UPLOADS: 'true', CV_PROCESSING_MODE: 'direct' } as NodeJS.ProcessEnv).some(row => row.name === 'cv-process'));
+  assert.ok(!queue.configuredSchedules({ ENABLE_CV_UPLOADS: 'true' } as NodeJS.ProcessEnv).some(row => row.name === 'cv-process'));
   assert.equal(schedules.find(row => row.name === 'data-retention')?.every, 86_400_000);
   assert.equal(queue.configuredSchedules({ DATABASE_URL: 'postgresql://localhost/isolated' }).find(row => row.name === 'data-retention')?.every, 60_000);
   assert.ok(!queue.configuredSchedules({ DATABASE_URL: 'postgresql://localhost/isolated', ENABLE_RETENTION_MAINTENANCE: 'false' }).some(row => row.name === 'data-retention'));
   assert.equal(queue.taskPolicies['application-sender'].attempts, 5); assert.ok(queue.taskPolicies['cv-process'].timeoutMs <= 15 * 60_000);
-  assert.throws(() => queue.queueConnection({ REDIS_URL: 'https://example.test', MONGODB_URI: 'configured' } as NodeJS.ProcessEnv));
-  const closed: number[] = [];
-  await queue.closeQueueResources([{ async close() { closed.push(1); } }, { async close() { closed.push(2); } }], 100);
-  assert.deepEqual(closed, [1, 2]);
 });

@@ -6,6 +6,6 @@ Incomplete or unverified provider facts remain explicit in `ingestion.missingFie
 
 Duplicate jobs share one canonical record while retaining every source variant and provenance record. A source record received after the prior canonical job closed or expired is stored as a repost linked through `repostOf`.
 
-Set `ENABLE_JOB_INGESTION_PIPELINE=true` only in the worker environment after MongoDB and Redis are configured. The local search implementation uses MongoDB. Live OpenSearch/vector indexing uses the existing `MATCHING_*` configuration; this pipeline introduces no new provider credentials.
+Set `ENABLE_JOB_INGESTION_PIPELINE=true` only in the worker environment after MongoDB or PostgreSQL is configured. The local search implementation uses MongoDB. Live OpenSearch/vector indexing uses the existing `MATCHING_*` configuration; this pipeline introduces no new provider credentials.
 
 Admin operations are available at `/api/v1/admin/ingestion/status`, `/api/v1/admin/ingestion/config`, and `/api/v1/admin/ingestion/run` and use the existing admin session and audit controls.
