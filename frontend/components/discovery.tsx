@@ -82,7 +82,7 @@ export function Discovery({
   initialJobs: PublicJob[];
   user: User | null;
 }) {
-  const [jobs, setJobs] = useState(initialJobs.slice(0, 12)),
+  const [jobs, setJobs] = useState(initialJobs.slice(0, 6)),
     [query, setQuery] = useState(''),
     [category, setCategory] = useState(''),
     [country, setCountry] = useState(''),
@@ -95,7 +95,7 @@ export function Discovery({
     [state, setState] = useState(''),
     [sort, setSort] = useState('discovered'),
     [page, setPage] = useState(1),
-    [pageSize, setPageSize] = useState(12),
+    [pageSize, setPageSize] = useState(6),
     [filters, setFilters] = useState(false),
     [noticePaused, setNoticePaused] = useState(false),
     [message, setMessage] = useState(''),
@@ -107,7 +107,7 @@ export function Discovery({
   const [removed, setRemoved] = useState<string[]>([]);
   const [updatedAt, setUpdatedAt] = useState('');
   const [total, setTotal] = useState(initialJobs.length);
-  const [hasMore, setHasMore] = useState(initialJobs.length >= 12);
+  const [hasMore, setHasMore] = useState(initialJobs.length >= 6);
   const [listening, setListening] = useState(false);
   const [voiceMessage, setVoiceMessage] = useState('');
   const recognitionRef = useRef<VoiceRecognition | null>(null);
@@ -147,9 +147,10 @@ export function Discovery({
   }, [matchPreferencesOpen]);
 
   useEffect(() => {
-    const desktop = window.matchMedia('(min-width: 761px)');
+    const desktop = window.matchMedia('(min-width: 1101px)');
+    const tablet = window.matchMedia('(min-width: 641px) and (max-width: 1100px)');
     const resizePage = () => {
-      const nextSize = desktop.matches ? 24 : 12;
+      const nextSize = desktop.matches ? 6 : tablet.matches ? 4 : 2;
       setPageSize(current => {
         if (current === nextSize) return current;
         setPage(1);
@@ -158,7 +159,11 @@ export function Discovery({
     };
     resizePage();
     desktop.addEventListener('change', resizePage);
-    return () => desktop.removeEventListener('change', resizePage);
+    tablet.addEventListener('change', resizePage);
+    return () => {
+      desktop.removeEventListener('change', resizePage);
+      tablet.removeEventListener('change', resizePage);
+    };
   }, []);
   useEffect(()=>{const initial=setTimeout(()=>setClock(Date.now()),0);const timer=setInterval(()=>setClock(Date.now()),30000);return()=>{clearTimeout(initial);clearInterval(timer);};},[]);
   useEffect(()=>{
