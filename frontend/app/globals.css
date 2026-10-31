@@ -315,14 +315,11 @@ a:hover {
 }
 .discovery-grid {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   max-width: 1800px;
   margin: 10px auto 60px;
   padding: 0 4%;
   gap: 28px;
-}
-.discovery-grid-public {
-  grid-template-columns: minmax(0, 1fr);
 }
 .section-line {
   display: flex;

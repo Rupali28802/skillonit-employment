@@ -1,7 +1,6 @@
 'use client';
 import '@/app/vertical-feed.css';
-import { useEffect, useState, useCallback, useRef, useMemo, type CSSProperties } from 'react';
-import Image from 'next/image';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import {
   ArrowUpRight,
@@ -22,7 +21,6 @@ import {
 } from 'lucide-react';
 import type { PublicJob, User } from '@/lib/domain';
 import { CategorySlider } from './category-slider';
-import { ProfileSidebar } from './profile-sidebar';
 import { JobActions } from './job-actions';
 import { countries, states } from '@/lib/domain';
 import { searchIntent } from '@/lib/search-intent';
@@ -125,8 +123,6 @@ export function Discovery({
   const [stats, setStats] = useState<DiscoveryStats|null>(null);
   const feed = useRef<HTMLDivElement>(null);
   const [savedIds, setSavedIds] = useState<string[]>([]);
-  const [profileFloat, setProfileFloat] = useState({ visible: false, y: 0 });
-  const profileFloatFrame = useRef(0);
   const [matchPreferencesOpen, setMatchPreferencesOpen] = useState(false);
   const matchPreferencesRef = useRef<HTMLDivElement>(null);
 
@@ -164,41 +160,6 @@ export function Discovery({
     desktop.addEventListener('change', resizePage);
     return () => desktop.removeEventListener('change', resizePage);
   }, []);
-  useEffect(() => {
-    if (!user) return;
-    const updateProfileFloat = () => {
-      cancelAnimationFrame(profileFloatFrame.current);
-      profileFloatFrame.current = requestAnimationFrame(() => {
-        const grid = document.querySelector<HTMLElement>('.discovery-grid');
-        if (!grid || window.innerWidth <= 1150) {
-          setProfileFloat({ visible: false, y: 0 });
-          return;
-        }
-        const gridTop = window.scrollY + grid.getBoundingClientRect().top;
-        const distance = window.scrollY - gridTop;
-        const trigger = 110;
-        const visible = distance > trigger;
-        const followDistance = Math.max(0, distance - trigger);
-        const y = Math.min(
-          grid.offsetHeight - 80,
-          Math.max(0, distance + 230 + followDistance * .1),
-        );
-        setProfileFloat(current =>
-          current.visible === visible && Math.abs(current.y - y) < 1
-            ? current
-            : { visible, y },
-        );
-      });
-    };
-    updateProfileFloat();
-    window.addEventListener('scroll', updateProfileFloat, { passive: true });
-    window.addEventListener('resize', updateProfileFloat);
-    return () => {
-      cancelAnimationFrame(profileFloatFrame.current);
-      window.removeEventListener('scroll', updateProfileFloat);
-      window.removeEventListener('resize', updateProfileFloat);
-    };
-  }, [user]);
   useEffect(()=>{const initial=setTimeout(()=>setClock(Date.now()),0);const timer=setInterval(()=>setClock(Date.now()),30000);return()=>{clearTimeout(initial);clearInterval(timer);};},[]);
   useEffect(()=>{
     let cancelled=false, loading=false;
@@ -422,14 +383,6 @@ export function Discovery({
       setMessage(error instanceof Error ? error.message : 'Could not save job.');
     }
   }
-  const profileInitials = (user?.name || 'Your profile')
-    .split(' ')
-    .slice(0, 2)
-    .map(word => word[0])
-    .join('');
-  const profileSummary = user?.profile.headline ||
-    [user?.profile.city, user?.profile.country].filter(Boolean).join(', ') ||
-    'Building my next career move';
   const radarMetrics = [
     { label: 'Total matching opportunities', value: stats?.totalJobs, Icon: BriefcaseBusiness, tone: 'opportunities' },
     { label: 'Detected today (UTC)', value: stats?.detectedToday, Icon: CalendarDays, tone: 'today' },
@@ -487,22 +440,7 @@ export function Discovery({
         </div>
         <div className="discovery-footnote"><span><Globe2 size={14}/> Across connected worldwide sources</span><span>{listening?'Listening…':updatedAt?`Results updated ${updatedAt}`:'Fresh opportunities, one place'}</span></div>
       </section>
-      <div className={`discovery-grid${user ? '' : ' discovery-grid-public'}`}>
-        {user && <div className="discovery-left-column">
-          <ProfileSidebar user={user} />
-          <div className={`profile-scroll-float${profileFloat.visible ? ' is-visible' : ''}`} style={{ '--profile-scroll-y': `${profileFloat.y}px` } as CSSProperties}>
-            <Link className="moving-profile-pill" href="/profile" aria-label={`Open ${user.name || 'your'} profile`}>
-              <span className="moving-profile-avatar">
-                {user.profile.avatarVersion ? <Image src={`/api/v1/me/profile-image/avatar?v=${user.profile.avatarVersion}`} alt={`${user.name || 'Your'} profile photo`} width={46} height={46} unoptimized /> : <span>{profileInitials}</span>}
-              </span>
-              <span className="moving-profile-copy">
-                <strong>{user.name || 'Your profile'}</strong>
-                <small>{profileSummary}</small>
-              </span>
-              <i className="moving-profile-status" aria-hidden="true" />
-            </Link>
-          </div>
-        </div>}
+      <div className="discovery-grid">
         <section className="results live-job-feed" id="job-results">
           <div className="section-line">
             <div>

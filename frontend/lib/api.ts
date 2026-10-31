@@ -19,7 +19,12 @@ export async function api<T>(path: string): Promise<T> {
     {
       headers: { Cookie: (await cookies()).toString() },
       cache: 'no-store',
-      signal: AbortSignal.timeout(15000),
+      // Dashboard rendering fans out to several authenticated reads. The
+      // database can legitimately take longer than 15 seconds while it is
+      // under discovery/worker load; aborting at that point turns a slow
+      // response into a full-page outage. Keep a finite upper bound so a
+      // genuinely unavailable backend still fails predictably.
+      signal: AbortSignal.timeout(45000),
     },
   );
   // During a proxy/upstream failure an HTML error page must never leak its
