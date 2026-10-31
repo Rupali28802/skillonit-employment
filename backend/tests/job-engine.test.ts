@@ -371,6 +371,21 @@ test('Jobicy keeps attribution, geography and salary period; snapshots are never
   assert.throws(() => normalize({ ...b.jobs[0], url: 'https://other.example.com/job', listingUrl: 'https://other.example.com/job', applicationUrl: 'https://other.example.com/job' }, s));
 });
 
+test('Get on Board public API preserves its job page and supports bounded attributed discovery', async () => {
+  const getonbrd = sourceSchema.parse({ ...source, id: 'getonbrd-test', type: 'getonbrd', name: 'Get on Board', board: undefined, company: undefined,
+    intervalMinutes: 360, maxPages: 1, publicListing: true, policyEvidence: 'Public API permits job-board display: https://www.getonbrd.com/help/what-can-i-do-with-get-on-board-s-api' });
+  const batch = await fetchFeed(getonbrd, async raw => {
+    const url = new URL(raw); assert.equal(url.origin, 'https://www.getonbrd.com'); assert.equal(url.pathname, '/api/v0/categories/programming/jobs');
+    return { data: [{ id: 'graduate-engineer-example-remote', attributes: { title: 'Graduate Software Engineer', description: 'Build accessible software with a supportive product engineering team.', countries: ['Chile'], category_name: 'Programming', remote: true, published_at: 1790800000,
+      company: { data: { attributes: { name: 'Example Labs' } } } }, links: { public_url: 'https://www.getonbrd.com/jobs/graduate-engineer-example-remote' } }] };
+  });
+  assert.equal(batch.complete, true); assert.equal(batch.jobs.length, 1);
+  const job = normalize(batch.jobs[0], getonbrd);
+  assert.equal(job.country, 'Chile'); assert.equal(job.mode, 'Remote');
+  assert.equal(publicJob(job).sourceLink, 'https://www.getonbrd.com/jobs/graduate-engineer-example-remote');
+  assert.equal(sourceSchema.safeParse({ ...getonbrd, intervalMinutes: 60 }).success, false);
+});
+
 test('The Muse requires its registered key and retains the required source job-page link', async () => {
   const oldKey = process.env.THEMUSE_API_KEY;
   delete process.env.THEMUSE_API_KEY;

@@ -4,7 +4,7 @@ import { joobleDomains, joobleKey } from './jooble-regions.js';
 
 export const sourceSchema = z.object({
   id: z.string().regex(/^[a-z0-9_-]{1,80}$/),
-  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'themuse', 'freehire', 'hackernews', 'himalayas', 'remoteok', 'jooble', 'jobtech', 'reed', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever', 'smartrecruiters', 'workable', 'recruitee', 'breezy', 'rippling', 'github', 'github-authorized']),
+  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'getonbrd', 'themuse', 'freehire', 'hackernews', 'himalayas', 'remoteok', 'jooble', 'jobtech', 'reed', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever', 'smartrecruiters', 'workable', 'recruitee', 'breezy', 'rippling', 'github', 'github-authorized']),
   countryCode: z.string().regex(/^[a-z]{2}$/).optional(),
   keywords: z.string().trim().max(100).optional(),
   name: z.string().trim().min(1).max(100),
@@ -32,6 +32,8 @@ export const sourceSchema = z.object({
     ctx.addIssue({ code: 'custom', message: 'Public source attribution and at least an hourly interval required.' });
   if (s.type === 'freehire' && (s.intervalMinutes < 360 || s.maxPages > 4 || !s.publicListing))
     ctx.addIssue({ code: 'custom', message: 'Freehire requires an API/data plan, public attribution, six-hour refresh and at most four pages.' });
+  if (s.type === 'getonbrd' && (s.intervalMinutes < 360 || s.maxPages > 4 || !s.publicListing))
+    ctx.addIssue({ code: 'custom', message: 'Get on Board requires public attribution, six-hour refresh and at most four pages.' });
   if (s.type === 'hackernews' && (s.intervalMinutes < 1440 || s.maxPages !== 1 || !s.publicListing))
     ctx.addIssue({ code: 'custom', message: 'Hacker News hiring discovery requires approval, attribution, one bounded comment page and a daily refresh.' });
   if (['smartrecruiters', 'rippling'].includes(s.type) && (s.maxPages > 4 || s.intervalMinutes < 360 || !s.publicListing)) ctx.addIssue({ code: 'custom', message: 'This paginated ATS connector requires attribution, six-hour refresh and at most four pages.' });
@@ -76,6 +78,8 @@ export const publicSources: FeedSource[] = [
     policyEvidence: 'Public syndication with original-link attribution, ungated listings, no Google Jobs distribution: https://github.com/remotive-com/remote-jobs-api', publicListing: true, publish: true, intervalMinutes: 360, maxPages: 1 },
   { id: 'jobicy-global', type: 'jobicy', name: 'Jobicy', enabled: true, approved: true,
     policyEvidence: 'Public API permits job discovery with canonical source attribution: https://jobicy.com/jobs-rss-feed', publicListing: true, publish: true, intervalMinutes: 360, maxPages: 1 },
+  { id: 'getonbrd-programming', type: 'getonbrd', name: 'Get on Board', enabled: true, approved: true,
+    policyEvidence: 'Public API permits displaying published jobs and building a custom job board: https://www.getonbrd.com/help/what-can-i-do-with-get-on-board-s-api', publicListing: true, publish: true, intervalMinutes: 360, maxPages: 4 },
 ];
 
 // One bounded, once-daily query per country; an empty result is recorded, not filled with worldwide jobs.
