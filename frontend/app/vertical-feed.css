@@ -4,6 +4,7 @@
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   grid-auto-rows: 1fr;
+  align-items: stretch;
   gap: 22px;
 }
 
@@ -15,49 +16,48 @@
 .feed-sentinel { width: 100%; height: 1px; pointer-events: none; }
 
 .live-job-feed .vertical-job-card {
-  position: relative; width: 100%; min-width: 0; min-height: 100%; padding: 0 16px 16px;
+  position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; padding: 0 16px 16px;
   display: flex; flex-direction: column; border: 1px solid #d7e5de; border-radius: 22px;
   background: #fff; box-shadow: 0 10px 28px #163b2814; overflow: hidden;
 }
 .live-job-feed .vertical-job-card:hover { transform: translateY(-3px); border-color: #78b99e; box-shadow: 0 16px 34px #163b2820; }
 
 .vertical-job-card .job-card-hero {
-  min-height: 142px; margin: 0 -16px 14px; padding: 15px 18px 16px; display: flex; flex-direction: column;
+  margin: 0 -16px 14px; padding: 15px 18px 16px; display: grid; align-content: start; gap: 8px;
   background: radial-gradient(circle at 86% 4%, #ffffff25 0 42px, transparent 43px), linear-gradient(145deg, #087452, #07543f 58%, #063d31);
 }
-.vertical-job-card .company-heading { min-height: 39px; margin: 0 0 9px; padding: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.vertical-job-card .company-heading { margin: 0; padding: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .vertical-job-card .job-category {
-  max-width: 58%; padding: 8px 15px; overflow: hidden; border-radius: 11px; color: #0b5943; background: #effbf5;
-  font-size: 11px; font-weight: 800; letter-spacing: .02em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap;
+  max-width: 58%; padding: 8px 15px; border-radius: 11px; color: #0b5943; background: #effbf5;
+  font-size: 11px; font-weight: 800; letter-spacing: .02em; overflow-wrap: anywhere; text-transform: uppercase;
 }
 .vertical-job-card .job-card-hero-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
 .vertical-job-card .job-freshness { display: flex; align-items: center; gap: 6px; max-width: 140px; color: #e3f5ed; font-size: 12px; line-height: 1.3; text-align: right; white-space: nowrap; }
 .vertical-job-card .job-card-hero-actions .icon-button { color: #fff; border: 1px solid #ffffff40; background: #ffffff13; }
 
 .live-job-feed .vertical-job-card .job-title {
-  min-height: 43px; margin: 0 0 5px; display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
-  color: #fff; font-size: clamp(17px, 1.35vw, 21px); font-weight: 780; line-height: 1.3; letter-spacing: -.018em; overflow-wrap: anywhere;
+  margin: 0; display: block; color: #fff; font-size: clamp(17px, 1.35vw, 21px); font-weight: 780; line-height: 1.3; letter-spacing: -.018em; overflow-wrap: break-word;
 }
-.vertical-job-card .company { min-height: 20px; margin: 0; display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; color: #d6eee4; font-size: 13px; line-height: 1.45; }
+.vertical-job-card .company { margin: 0; display: flex; align-items: center; gap: 5px; color: #d6eee4; font-size: 13px; line-height: 1.45; overflow-wrap: break-word; }
 .live-job-feed .vertical-job-card .job-main { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 
-.live-job-feed .vertical-job-card .job-facts { min-height: 64px; margin: 0 -2px; padding: 9px 0; display: grid; grid-template-columns: 1.3fr .85fr .85fr; gap: 0; color: #1b3029; font-size: 12px; }
+.live-job-feed .vertical-job-card .job-facts { margin: 0 -2px; padding: 9px 0; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, .9fr) minmax(0, 1.15fr); gap: 0; color: #1b3029; font-size: 12px; }
 .live-job-feed .vertical-job-card .job-facts > span {
-  min-width: 0; min-height: 46px; padding: 4px 10px; display: flex; align-items: center; justify-content: center; gap: 7px; overflow: hidden;
-  border-right: 1px solid #d7e3dd; text-align: left; text-overflow: ellipsis; overflow-wrap: anywhere; line-height: 1.3;
+  min-width: 0; padding: 4px 10px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; justify-content: start; gap: 7px;
+  border-right: 1px solid #d7e3dd; text-align: left; overflow-wrap: break-word; word-break: normal; hyphens: auto; line-height: 1.35;
 }
 .live-job-feed .vertical-job-card .job-facts svg { flex: none; }
 .live-job-feed .vertical-job-card .job-facts > span:last-child { border-right: 0; }
 
-.vertical-job-card .job-card-salary { min-height: 74px; margin: 0 -16px; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; gap: 10px; background: linear-gradient(105deg, #eaf9f2 10%, #f5fcf8 62%, #e0f6e9); }
+.vertical-job-card .job-card-salary { margin: 0 -16px; padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; gap: 10px; background: linear-gradient(105deg, #eaf9f2 10%, #f5fcf8 62%, #e0f6e9); }
 .vertical-job-card .job-card-salary > div { display: grid; gap: 2px; min-width: 0; }
 .vertical-job-card .job-card-salary small { color: #667d73; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .live-job-feed .vertical-job-card .job-card-salary strong { color: #102923; font-size: 16px; line-height: 1.25; overflow-wrap: anywhere; }
-.vertical-job-card .trust-label { flex: none; display: inline-flex; align-items: center; gap: 7px; margin: 0; padding: 9px 12px; border-radius: 12px; color: #a45a00; background: #fff8e9; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.vertical-job-card .trust-label { flex: none; display: inline-flex; align-items: center; gap: 7px; margin: 0; padding: 9px 12px; border-radius: 12px; color: #a45a00; background: #fff8e9; font-size: 11px; font-weight: 700; text-align: center; }
 .vertical-job-card .trust-label.verified { color: #08734f; background: #e5f8ed; }
 .vertical-job-card .trust-label.flagged { color: #a53636; background: #fff0f0; }
 
-.vertical-job-card .feed-card-actions { min-height: 56px; margin-top: 16px; padding-top: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.vertical-job-card .feed-card-actions { margin-top: auto; padding-top: 16px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .vertical-job-card .feed-card-actions > a, .vertical-job-card .feed-card-actions > button { min-width: 0; min-height: 54px; padding: 12px 8px; display: flex; align-items: center; justify-content: center; gap: 5px; border-radius: 12px; font-size: 14px; font-weight: 750; }
 .vertical-job-card .icon-button[aria-pressed=true] { background: #e3f2ea; color: #16704d; }
 .vertical-job-card .icon-button { min-width: 35px; min-height: 35px; }
