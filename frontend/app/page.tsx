@@ -6,7 +6,7 @@ export const metadata:Metadata={alternates:{canonical:'/'},robots:{index:true,fo
 export const dynamic = 'force-dynamic';
 export default async function Home() {
   const [jobsResult, userResult] = await Promise.allSettled([
-    api<{ jobs: PublicJob[] }>('jobs?sort=discovered&limit=6'),
+    api<{ jobs: PublicJob[] }>('jobs?sort=discovered&limit=24'),
     currentUser(),
   ]);
   const initialJobs = jobsResult.status === 'fulfilled' ? jobsResult.value.jobs : [];
