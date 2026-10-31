@@ -636,12 +636,16 @@ export function Discovery({
             <div className="vertical-job-list" ref={feed}>
               {jobs.map((job) => {
                 const freshness = job.sourcePostedAt || job.discoveredAt;
+                const freshnessLabel = job.sourcePostedAt ? 'Posted' : 'Discovered';
+                const experienceLabel = job.experienceDisclosed === false ? 'Experience not specified' : job.experienceMin === 0 && job.experienceMax === 0
+                  ? 'Fresher welcome'
+                  : `${job.experienceMin}–${job.experienceMax} years`;
                 return <article className="job-card vertical-job-card" data-job-id={job.id} key={job.id}>
                   <div className="job-card-hero">
                     <div className="company-heading">
-                      <span className="job-category">{job.category || 'Other'}</span>
+                      <div className="company-monogram" aria-label={`${job.company} initials`}>{job.company.split(/\s+/).slice(0,2).map(word=>word[0]).join('')}</div>
                       <div className="job-card-hero-actions">
-                        <time className="job-freshness" data-fresh={clock > 0 && clock-Date.parse(freshness)<60000} dateTime={freshness} title={freshness}><Clock3 size={14}/> {discoveredTime(freshness)}</time>
+                        <time className="job-freshness" data-fresh={clock > 0 && clock-Date.parse(freshness)<60000} dateTime={freshness} title={`${freshnessLabel} ${freshness}`}>{freshnessLabel} {discoveredTime(freshness)}</time>
                       <button
                         className="icon-button"
                         aria-label={`${savedIds.includes(job.id) ? 'Saved' : 'Save'} ${job.title}`}
@@ -651,6 +655,10 @@ export function Discovery({
                         <Bookmark size={19} fill={savedIds.includes(job.id) ? 'currentColor' : 'none'} />
                       </button>
                       </div>
+                    </div>
+                    <div className="job-card-badges">
+                      <span className="job-category">{job.category}</span>
+                      <span>{experienceLabel}</span>
                     </div>
                     <Link className="job-title" href={`/jobs/${job.id}`}>
                       {job.title}
@@ -665,10 +673,16 @@ export function Discovery({
                         <MapPin size={14} />
                         {[job.city,job.country].filter((value,index,all)=>value && all.indexOf(value)===index).join(', ')}
                       </span>
-                      <span><BriefcaseBusiness size={14}/>{job.mode || 'Not specified'}</span>
-                      <span><ShieldCheck size={14}/>{job.type || 'Not specified'}</span>
+                      <span>{job.mode}</span>
+                      <span>{job.type}</span>
                     </div>
-                    <div className="job-card-salary"><div><small>Salary</small><strong>
+                    <div className="job-bottom">
+                      <div className="skills">
+                        {job.skills.slice(0, 4).map((s) => (
+                          <span key={s}>{s}</span>
+                        ))}
+                      </div>
+                      <div className="job-card-salary"><small>Salary</small><strong>
                           {job.salaryDisclosed === false ? (job.salaryText || 'Not specified') : <>
                           {new Intl.NumberFormat('en', {
                             style: 'currency',
@@ -688,8 +702,13 @@ export function Discovery({
                           <small>{job.normalizedFacts?.salary?.period ? ` / ${job.normalizedFacts.salary.period}` : ''}</small>
                           </>}
                         </strong></div>
-                      <span className={`trust-label ${job.trust}`}><ShieldCheck size={16}/>{job.trust==='verified'?'Verified':job.trust==='flagged'?'Needs review':'Verification pending'}</span>
                     </div>
+                    <div className="job-card-source">
+                      {job.sourceLink && <a className="small" href={job.sourceLink} target="_blank" rel="noopener noreferrer">Source: {job.source} ↗</a>}
+                      {!job.sourceLink && <span className="small">Source: {job.source}</span>}
+                      <span className={`trust-label ${job.trust}`}>{job.trust==='verified'?'✓ Verified':job.trust==='flagged'?'Needs review':'Verification pending'}</span>
+                    </div>
+                    <span className="job-updated" aria-hidden={!job.sourceUpdatedAt}>{job.sourceUpdatedAt ? `Updated ${discoveredTime(job.sourceUpdatedAt)}` : '\u00a0'}</span>
                     <div className="feed-card-actions">
                     <Link
                       className="secondary job-apply"
