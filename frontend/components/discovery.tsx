@@ -652,16 +652,14 @@ export function Discovery({
                       </button>
                       </div>
                     </div>
+                    <Link className="job-title" href={`/jobs/${job.id}`}>
+                      {job.title}
+                    </Link>
+                    <p className="company">
+                      {job.company} {job.trust === 'verified' && <ShieldCheck size={14} />}
+                    </p>
                   </div>
                   <div className="job-main">
-                    <div className="job-card-title-block">
-                      <Link className="job-title" href={`/jobs/${job.id}`}>
-                        {job.title}
-                      </Link>
-                      <p className="company">
-                        {job.company} {job.trust === 'verified' && <ShieldCheck size={14} />}
-                      </p>
-                    </div>
                     <div className="job-facts">
                       <span>
                         <MapPin size={14} />
