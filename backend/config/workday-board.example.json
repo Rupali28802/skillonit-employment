@@ -1,0 +1,16 @@
+{
+  "id": "approved-workday-employer",
+  "type": "workday",
+  "name": "Approved Workday employer",
+  "company": "Replace with confirmed employer name",
+  "workdayTenant": "replace-with-approved-tenant",
+  "workdayCluster": "wd3",
+  "board": "External",
+  "enabled": false,
+  "approved": false,
+  "publish": false,
+  "publicListing": true,
+  "intervalMinutes": 360,
+  "maxPages": 4,
+  "policyEvidence": "PENDING: record employer/board authorization, permitted display and caching terms, Workday tenant/board validation date, visible attribution and original application-link preservation approval before enabling."
+}

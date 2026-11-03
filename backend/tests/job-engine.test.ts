@@ -276,6 +276,16 @@ test('additional public ATS adapters preserve employer-owned application links',
   });
   assert.equal(ripplingResult.jobs[0].applicationTarget, 'direct-form'); assert.equal(ripplingResult.complete, true);
   assert.equal(sourceSchema.safeParse({ ...rippling, intervalMinutes: 60 }).success, false);
+
+  const workday = sourceSchema.parse({ ...source, id: 'workday-example', type: 'workday', name: 'Example Workday employer', board: 'External', company: 'Example Employer', workdayTenant: 'example', workdayCluster: 'wd3', intervalMinutes: 360, maxPages: 1 });
+  const workdayResult = await fetchFeed(workday, async (raw, _headers, body) => {
+    assert.equal(raw, 'https://example.wd3.myworkdayjobs.com/wday/cxs/example/External/jobs');
+    assert.deepEqual(body, { limit: 20, offset: 0 });
+    return { total: 1, jobPostings: [{ jobReqId: 'R-100', title: 'Software Engineer', externalPath: '/job/Pune/Software-Engineer_R-100', locationsText: 'Pune, India', timeType: 'Full time', postedOn: '2026-10-12T00:00:00Z', bulletFields: ['Build reliable, accessible services with a supportive engineering team.'] }] };
+  });
+  assert.equal(workdayResult.complete, true); assert.equal(workdayResult.jobs[0].applicationTarget, 'source-job-page');
+  assert.equal(workdayResult.jobs[0].url, 'https://example.wd3.myworkdayjobs.com/en-US/External/job/Pune/Software-Engineer_R-100');
+  assert.equal(sourceSchema.safeParse({ ...workday, workdayTenant: undefined }).success, false);
 });
 test('repeated syncs are idempotent, keep first discovery date and respect schedule', async () => {
   await upsertSource(source);

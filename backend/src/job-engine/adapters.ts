@@ -594,6 +594,32 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
     }
     return { jobs, complete: true, snapshot: true, requests: 1 };
   }
+  if (source.type === 'workday') {
+    const tenant = source.workdayTenant!, cluster = source.workdayCluster!;
+    let complete = false;
+    for (let page = 0; page < source.maxPages; page++) {
+      if (page) await pause(2000);
+      // The request target is assembled only from a reviewed tenant, cluster and
+      // board. No source can supply an arbitrary URL or redirect target.
+      const payload = await get(`https://${tenant}.${cluster}.myworkdayjobs.com/wday/cxs/${tenant}/${board}/jobs`, {},
+        { limit: 20, offset: page * 20, ...(source.keywords ? { searchText: source.keywords } : {}) }) as Json;
+      requests++;
+      if (!Array.isArray(payload.jobPostings)) throw new FeedError('INVALID_FEED');
+      for (const j of payload.jobPostings) {
+        const externalPath = text(j.externalPath);
+        if (!externalPath || !/^\/[A-Za-z0-9._~!$&'()*+,;=:@/%-]+$/.test(externalPath) || externalPath.includes('..')) continue;
+        const listingUrl = `https://${tenant}.${cluster}.myworkdayjobs.com/en-US/${board}${externalPath}`;
+        const bullets = list(j.bulletFields);
+        jobs.push({ externalId: text(j.jobReqId) || externalPath, title: text(j.title), company: source.company!,
+          url: listingUrl, listingUrl, applicationUrl: listingUrl, applicationTarget: 'source-job-page',
+          description: [text(j.jobDescription), ...bullets].filter(Boolean).join('\n'), location: text(j.locationsText),
+          employmentType: text(j.timeType), tags: bullets, postedAt: iso(j.postedOn) });
+      }
+      const total = Number(payload.total);
+      if (payload.jobPostings.length < 20 || (Number.isFinite(total) && (page + 1) * 20 >= total)) { complete = true; break; }
+    }
+    return { jobs, complete, snapshot: true, requests };
+  }
   if (source.type === 'workable') {
     const payload = await get(`https://apply.workable.com/api/v1/widget/accounts/${board}?details=true`) as Json; requests++;
     if (!Array.isArray(payload.jobs)) throw new FeedError('INVALID_FEED');
