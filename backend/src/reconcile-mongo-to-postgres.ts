@@ -9,7 +9,11 @@ const insertDocuments = `
   INSERT INTO app_documents(collection,id,data,updated_at)
   SELECT $1,x->>'id',x,now()
   FROM jsonb_array_elements($2::jsonb) x
-  ON CONFLICT(collection,id) DO NOTHING
+  -- Preserve every existing unique-key owner (for example a user with the
+  -- same email but a different legacy id). The reconciliation never replaces
+  -- a target document merely to satisfy a source-only primary key.
+  ON CONFLICT DO NOTHING
+  RETURNING id
 `;
 const insertConflicts = `
   INSERT INTO app_documents(collection,id,data,updated_at)
@@ -78,8 +82,21 @@ async function reconcileCollection(mongo: MongoClient, pg: Pool, database: strin
         });
       }
       if (missing.length) {
-        await pg.query(insertDocuments, [collection, JSON.stringify(missing)]);
-        imported += missing.length;
+        const inserted = await pg.query<{ id: string }>(insertDocuments, [collection, JSON.stringify(missing)]);
+        const insertedIds = new Set(inserted.rows.map(row => row.id));
+        imported += insertedIds.size;
+        for (const source of missing) if (!insertedIds.has(source.id as string)) {
+          conflicts++;
+          audit.push({
+            id: `mongo-postgres:${collection}:${source.id}`,
+            collection,
+            sourceId: source.id,
+            sourceHash: digest(source),
+            targetHash: null,
+            policy: 'preserve-postgres-unique-key-owner',
+            observedAt: new Date().toISOString(),
+          });
+        }
       }
       if (audit.length) await pg.query(insertConflicts, [JSON.stringify(audit)]);
     }
