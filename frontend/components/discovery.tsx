@@ -640,13 +640,12 @@ export function Discovery({
             <div className="vertical-job-list" ref={feed}>
               {jobs.map((job) => {
                 const freshness = job.sourcePostedAt || job.discoveredAt;
-                const freshnessLabel = job.sourcePostedAt ? 'Posted' : 'Discovered';
                 return <article className="job-card vertical-job-card" data-job-id={job.id} key={job.id}>
                   <div className="job-card-hero">
                     <div className="company-heading">
-                      {job.category && <span className="job-category">{job.category}</span>}
+                      <span className="job-category">{job.category || 'Other'}</span>
                       <div className="job-card-hero-actions">
-                        <time className="job-freshness" data-fresh={clock > 0 && clock-Date.parse(freshness)<60000} dateTime={freshness} title={`${freshnessLabel} ${freshness}`}>{freshnessLabel} {discoveredTime(freshness)}</time>
+                        <time className="job-freshness" data-fresh={clock > 0 && clock-Date.parse(freshness)<60000} dateTime={freshness} title={freshness}><Clock3 size={14}/> {discoveredTime(freshness)}</time>
                       <button
                         className="icon-button"
                         aria-label={`${savedIds.includes(job.id) ? 'Saved' : 'Save'} ${job.title}`}
@@ -666,10 +665,15 @@ export function Discovery({
                   </div>
                   <div className="job-main">
                     <div className="job-facts">
-                      {([job.city, job.country].filter((value,index,all)=>value && all.indexOf(value)===index).length > 0) && <span>{[job.city,job.country].filter((value,index,all)=>value && all.indexOf(value)===index).join(', ')}</span>}
+                      <span>
+                        <MapPin size={14} />
+                        {[job.city,job.country].filter((value,index,all)=>value && all.indexOf(value)===index).join(', ')}
+                      </span>
+                      <span><BriefcaseBusiness size={14}/>{job.mode || 'Not specified'}</span>
+                      <span><ShieldCheck size={14}/>{job.type || 'Not specified'}</span>
                     </div>
-                    <div className="job-bottom">
-                      {job.salaryDisclosed !== false && (job.salaryMin > 0 || job.salaryMax > 0 || job.salaryText) && <div className="job-card-salary"><small>Salary</small><strong>
+                    <div className="job-card-salary"><div><small>Salary</small><strong>
+                          {job.salaryDisclosed === false ? (job.salaryText || 'Not specified') : <>
                           {job.salaryMin > 0 || job.salaryMax > 0 ? <>{new Intl.NumberFormat('en', {
                             style: 'currency',
                             currency: job.currency,
@@ -684,9 +688,11 @@ export function Discovery({
                             notation: 'compact',
                             minimumFractionDigits: 0,
                             maximumFractionDigits: 1,
-                          }).format(job.salaryMax)}</> : job.salaryText}
+                          }).format(job.salaryMax)}</> : (job.salaryText || 'Not specified')}
                           <small>{job.normalizedFacts?.salary?.period ? ` / ${job.normalizedFacts.salary.period}` : ''}</small>
-                        </strong></div>}
+                          </>}
+                        </strong></div>
+                      <span className={`trust-label ${job.trust}`}><ShieldCheck size={16}/>{job.trust==='verified'?'Verified':job.trust==='flagged'?'Needs review':'Verification pending'}</span>
                     </div>
                     <div className="feed-card-actions">
                     <Link
