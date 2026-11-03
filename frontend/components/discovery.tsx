@@ -644,7 +644,7 @@ export function Discovery({
                 return <article className="job-card vertical-job-card" data-job-id={job.id} key={job.id}>
                   <div className="job-card-hero">
                     <div className="company-heading">
-                      <div className="company-monogram" aria-label={`${job.company} initials`}>{job.company.split(/\s+/).slice(0,2).map(word=>word[0]).join('')}</div>
+                      {job.category && <span className="job-category">{job.category}</span>}
                       <div className="job-card-hero-actions">
                         <time className="job-freshness" data-fresh={clock > 0 && clock-Date.parse(freshness)<60000} dateTime={freshness} title={`${freshnessLabel} ${freshness}`}>{freshnessLabel} {discoveredTime(freshness)}</time>
                       <button
@@ -666,8 +666,7 @@ export function Discovery({
                   </div>
                   <div className="job-main">
                     <div className="job-facts">
-                      {([job.city, job.country].filter((value,index,all)=>value && all.indexOf(value)===index).length > 0) && <span><MapPin size={14} />{[job.city,job.country].filter((value,index,all)=>value && all.indexOf(value)===index).join(', ')}</span>}
-                      {job.mode && <span>{job.mode}</span>}
+                      {([job.city, job.country].filter((value,index,all)=>value && all.indexOf(value)===index).length > 0) && <span>{[job.city,job.country].filter((value,index,all)=>value && all.indexOf(value)===index).join(', ')}</span>}
                     </div>
                     <div className="job-bottom">
                       {job.salaryDisclosed !== false && (job.salaryMin > 0 || job.salaryMax > 0 || job.salaryText) && <div className="job-card-salary"><small>Salary</small><strong>
@@ -688,9 +687,6 @@ export function Discovery({
                           }).format(job.salaryMax)}</> : job.salaryText}
                           <small>{job.normalizedFacts?.salary?.period ? ` / ${job.normalizedFacts.salary.period}` : ''}</small>
                         </strong></div>}
-                    </div>
-                    <div className="job-card-source">
-                      <span className={`trust-label ${job.trust}`}>{job.trust==='verified'?'✓ Verified':job.trust==='flagged'?'Needs review':'Verification pending'}</span>
                     </div>
                     <div className="feed-card-actions">
                     <Link
