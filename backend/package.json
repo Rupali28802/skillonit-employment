@@ -69,6 +69,7 @@
     "jobs:index-semantic": "node --env-file-if-exists=.env dist/job-engine/cli.js index-semantic",
     "worker:semantic": "node --env-file-if-exists=.env dist/job-engine/cli.js watch-semantic",
     "db:migrate:postgres": "node --env-file-if-exists=.env --import tsx src/migrate-mongo-to-postgres.ts"
+    ,"db:reconcile:postgres": "node --env-file-if-exists=.env --import tsx src/reconcile-mongo-to-postgres.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "4.3.1",
