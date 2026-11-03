@@ -1,0 +1,12 @@
+{
+  "id": "indianapi-jobs",
+  "type": "indianapi",
+  "name": "Indian API Jobs",
+  "enabled": false,
+  "approved": false,
+  "publish": false,
+  "publicListing": true,
+  "intervalMinutes": 360,
+  "maxPages": 1,
+  "policyEvidence": "PENDING: account owner must record the active Indian API Jobs plan, commercial display/caching review date, visible Indian API attribution, and original apply-link preservation approval before enabling."
+}

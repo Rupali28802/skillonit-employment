@@ -118,7 +118,7 @@ export function normalize(c: Candidate, source: FeedSource, now = Date.now()): J
     expiresAt: new Date(Math.min((posted ?? now) + 90 * 86400000, closing ?? Infinity)).toISOString(),
     ...(posted !== undefined ? { sourcePostedAt: new Date(posted).toISOString() } : {}),
     feed: { sourceId: source.id, externalId: c.externalId, publicListing: source.publicListing, applicationTarget,
-      attributionUrl: source.type === 'himalayas' ? 'https://himalayas.app' : canonical, lastSeenAt: stamp },
+      attributionUrl: source.type === 'himalayas' ? 'https://himalayas.app' : canonicalUrl(c.attributionUrl || c.listingUrl || c.url), lastSeenAt: stamp },
   };
 }
 export const duplicateKey = (j: Job) => hash([j.title, j.company, j.city, j.country, j.description].join('|').toLowerCase().replace(/\s+/g, ' ').trim());

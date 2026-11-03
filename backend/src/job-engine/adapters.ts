@@ -8,6 +8,8 @@ export type Candidate = {
   externalId: string; title: string; company: string; url: string; description: string;
   /** Source-owned job details page, when distinct from the application form. */
   listingUrl?: string;
+  /** Provider attribution page, when the source does not expose a job page. */
+  attributionUrl?: string;
   /** Source-owned application form supplied by the authorized feed/API. */
   applicationUrl?: string;
   /** Recruitment mailbox explicitly supplied by the authorized feed/API. */
@@ -518,6 +520,24 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
       postedAt: iso(j.publication_date), salaryText: text(j.salary) });
     }
     return { jobs, complete: !payload['total-job-count'] || payload['total-job-count'] <= jobs.length, snapshot: false, requests: 1 };
+  }
+  if (source.type === 'indianapi') {
+    const key = process.env.INDIANAPI_JOBS_API_KEY?.trim();
+    if (!key) throw new FeedError('MISSING_INDIANAPI_CREDENTIALS');
+    // Only the provider's documented, authenticated endpoint is used. Do not
+    // infer undocumented paging/filter parameters or convert it into a crawl.
+    const payload = await get('https://jobs.indianapi.in/jobs?limit=100', { 'X-Api-Key': key }) as Json;
+    if (!Array.isArray(payload)) throw new FeedError('INVALID_FEED');
+    for (const j of payload) {
+      const applicationUrl = text(j.apply_link);
+      if (!applicationUrl) continue;
+      jobs.push({ externalId: `indianapi:${String(j.id ?? applicationUrl)}`, title: text(j.title) || text(j.job_title), company: text(j.company),
+        url: applicationUrl, listingUrl: applicationUrl, applicationUrl, applicationTarget: 'direct-form',
+        attributionUrl: 'https://indianapi.in/jobs-api',
+        description: [text(j.job_description), text(j.role_and_responsibility), text(j.education_and_skills), text(j.experience)].filter(Boolean).join('\n'),
+        location: text(j.location), employmentType: text(j.job_type), postedAt: iso(j.posted_date), tags: [text(j.experience)].filter(Boolean) });
+    }
+    return { jobs, complete: true, snapshot: false, requests: 1 };
   }
   if (!source.board || !/^[a-zA-Z0-9_-]{1,80}$/.test(source.board)) throw new FeedError('INVALID_BOARD');
   const board = encodeURIComponent(source.board);

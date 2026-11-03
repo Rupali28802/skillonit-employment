@@ -446,6 +446,35 @@ test('Freehire connector requires a licensed key and preserves attribution plus 
   }
 });
 
+test('Indian API requires a key and preserves the original application link', async () => {
+  const oldKey = process.env.INDIANAPI_JOBS_API_KEY;
+  const indianApi = sourceSchema.parse({ ...source, id: 'indianapi-test', type: 'indianapi', name: 'Indian API Jobs', board: undefined, company: undefined,
+    intervalMinutes: 360, maxPages: 1, policyEvidence: 'Licensed Indian API Jobs plan fixture with visible attribution: https://indianapi.in/jobs-api', publicListing: true });
+  try {
+    delete process.env.INDIANAPI_JOBS_API_KEY;
+    let calls = 0;
+    await assert.rejects(fetchFeed(indianApi, async () => { calls++; return []; }), /MISSING_INDIANAPI_CREDENTIALS/);
+    assert.equal(calls, 0);
+    process.env.INDIANAPI_JOBS_API_KEY = 'fixture-key';
+    const batch = await fetchFeed(indianApi, async (raw, headers) => {
+      const url = new URL(raw);
+      assert.equal(url.origin, 'https://jobs.indianapi.in'); assert.equal(url.pathname, '/jobs');
+      assert.equal(url.searchParams.get('limit'), '100'); assert.equal(headers?.['X-Api-Key'], 'fixture-key');
+      return [{ id: 1, title: 'Graduate Software Engineer', company: 'Example India',
+        apply_link: 'https://careers.example.com/jobs/graduate-engineer', job_description: 'Build reliable products with a supportive engineering team.',
+        location: 'Bengaluru, India', job_type: 'Full-time', experience: 'Fresher', posted_date: '2026-10-12T00:00:00Z' }];
+    });
+    assert.equal(batch.complete, true); assert.equal(batch.jobs.length, 1);
+    const job = normalize(batch.jobs[0], indianApi);
+    assert.equal(publicJob(job).sourceLink, 'https://indianapi.in/jobs-api');
+    assert.equal(publicJob(job).publicApplicationLink, 'https://careers.example.com/jobs/graduate-engineer');
+    assert.equal(publicJob(job).applicationTarget, 'direct-form');
+    assert.equal(job.title, 'Graduate Software Engineer');
+  } finally {
+    if (oldKey === undefined) delete process.env.INDIANAPI_JOBS_API_KEY; else process.env.INDIANAPI_JOBS_API_KEY = oldKey;
+  }
+});
+
 test('Hacker News hiring discovery is approval-gated and accepts only clear announcements with external apply links', async () => {
   const prior = process.env.HACKERNEWS_JOB_DISCOVERY_APPROVAL_REFERENCE;
   const hackernews = sourceSchema.parse({ ...source, id: 'hn-hiring-test', type: 'hackernews', name: 'Hacker News Who is hiring?', board: undefined, company: undefined,
