@@ -625,7 +625,11 @@ export function Discovery({
               </button>
             </div>
           )}
-          {jobs.length === 0 ? (
+          {jobs.length === 0 && busy ? (
+            <div className="vertical-job-list job-card-skeleton-grid" aria-label="Loading job opportunities" aria-busy="true">
+              {Array.from({ length: 36 }, (_, index) => <div className="job-card-skeleton" key={index} />)}
+            </div>
+          ) : jobs.length === 0 ? (
             <div className="empty">
               <Search size={32} />
               <h3>No opportunities found</h3>
@@ -637,9 +641,6 @@ export function Discovery({
               {jobs.map((job) => {
                 const freshness = job.sourcePostedAt || job.discoveredAt;
                 const freshnessLabel = job.sourcePostedAt ? 'Posted' : 'Discovered';
-                const experienceLabel = job.experienceDisclosed === false ? 'Experience not specified' : job.experienceMin === 0 && job.experienceMax === 0
-                  ? 'Fresher welcome'
-                  : `${job.experienceMin}–${job.experienceMax} years`;
                 return <article className="job-card vertical-job-card" data-job-id={job.id} key={job.id}>
                   <div className="job-card-hero">
                     <div className="company-heading">
@@ -656,10 +657,6 @@ export function Discovery({
                       </button>
                       </div>
                     </div>
-                    <div className="job-card-badges">
-                      <span className="job-category">{job.category}</span>
-                      <span>{experienceLabel}</span>
-                    </div>
                     <Link className="job-title" href={`/jobs/${job.id}`}>
                       {job.title}
                     </Link>
@@ -669,22 +666,12 @@ export function Discovery({
                   </div>
                   <div className="job-main">
                     <div className="job-facts">
-                      <span>
-                        <MapPin size={14} />
-                        {[job.city,job.country].filter((value,index,all)=>value && all.indexOf(value)===index).join(', ')}
-                      </span>
-                      <span>{job.mode}</span>
-                      <span>{job.type}</span>
+                      {([job.city, job.country].filter((value,index,all)=>value && all.indexOf(value)===index).length > 0) && <span><MapPin size={14} />{[job.city,job.country].filter((value,index,all)=>value && all.indexOf(value)===index).join(', ')}</span>}
+                      {job.mode && <span>{job.mode}</span>}
                     </div>
                     <div className="job-bottom">
-                      <div className="skills">
-                        {job.skills.slice(0, 4).map((s) => (
-                          <span key={s}>{s}</span>
-                        ))}
-                      </div>
-                      <div className="job-card-salary"><small>Salary</small><strong>
-                          {job.salaryDisclosed === false ? (job.salaryText || 'Not specified') : <>
-                          {new Intl.NumberFormat('en', {
+                      {job.salaryDisclosed !== false && (job.salaryMin > 0 || job.salaryMax > 0 || job.salaryText) && <div className="job-card-salary"><small>Salary</small><strong>
+                          {job.salaryMin > 0 || job.salaryMax > 0 ? <>{new Intl.NumberFormat('en', {
                             style: 'currency',
                             currency: job.currency,
                             notation: 'compact',
@@ -698,17 +685,13 @@ export function Discovery({
                             notation: 'compact',
                             minimumFractionDigits: 0,
                             maximumFractionDigits: 1,
-                          }).format(job.salaryMax)}
+                          }).format(job.salaryMax)}</> : job.salaryText}
                           <small>{job.normalizedFacts?.salary?.period ? ` / ${job.normalizedFacts.salary.period}` : ''}</small>
-                          </>}
-                        </strong></div>
+                        </strong></div>}
                     </div>
                     <div className="job-card-source">
-                      {job.sourceLink && <a className="small" href={job.sourceLink} target="_blank" rel="noopener noreferrer">Source: {job.source} ↗</a>}
-                      {!job.sourceLink && <span className="small">Source: {job.source}</span>}
                       <span className={`trust-label ${job.trust}`}>{job.trust==='verified'?'✓ Verified':job.trust==='flagged'?'Needs review':'Verification pending'}</span>
                     </div>
-                    <span className="job-updated" aria-hidden={!job.sourceUpdatedAt}>{job.sourceUpdatedAt ? `Updated ${discoveredTime(job.sourceUpdatedAt)}` : '\u00a0'}</span>
                     <div className="feed-card-actions">
                     <Link
                       className="secondary job-apply"
