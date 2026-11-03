@@ -485,6 +485,34 @@ test('Indian API requires a key and preserves the original application link', as
   }
 });
 
+test('TheirStack requires a credited key and only accepts open jobs with original final URLs', async () => {
+  const oldKey = process.env.THEIRSTACK_API_KEY;
+  const theirstack = sourceSchema.parse({ ...source, id: 'theirstack-india', type: 'theirstack', name: 'TheirStack India', board: undefined, company: undefined,
+    countryCode: 'in', intervalMinutes: 1440, maxPages: 1, policyEvidence: 'Licensed TheirStack plan fixture with visible attribution: https://theirstack.com/en/job-posting-api', publicListing: true });
+  try {
+    delete process.env.THEIRSTACK_API_KEY;
+    let calls = 0;
+    await assert.rejects(fetchFeed(theirstack, async () => { calls++; return {}; }), /MISSING_THEIRSTACK_CREDENTIALS/);
+    assert.equal(calls, 0);
+    process.env.THEIRSTACK_API_KEY = 'fixture-key';
+    const batch = await fetchFeed(theirstack, async (raw, headers, body) => {
+      assert.equal(raw, 'https://api.theirstack.com/v1/jobs/search'); assert.equal(headers?.Authorization, 'Bearer fixture-key');
+      assert.deepEqual(body, { limit: 25, page: 0, job_country_code_or: ['IN'], posted_at_max_age_days: 30, is_closed: false, property_exists_or: ['final_url'] });
+      return { data: [{ id: 1, job_title: 'Graduate Software Engineer', company: 'Example India', final_url: 'https://careers.example.com/jobs/graduate-engineer',
+        description: 'Build reliable products with a supportive engineering team.', locations: [{ display_name: 'Bengaluru, India', name: 'Bengaluru', state: 'Karnataka' }], country_codes: ['IN'],
+        employment_statuses: ['full_time'], technology_slugs: ['typescript'], keyword_slugs: ['node-js'], date_posted: '2026-10-12', discovered_at: '2026-10-12T00:00:00Z', remote: false },
+        { id: 2, job_title: 'Closed role', company: 'Example India', final_url: 'https://careers.example.com/jobs/closed', description: 'This record must be ignored because the source says it closed.', closed_at: '2026-10-13T00:00:00Z' }] };
+    });
+    assert.equal(batch.complete, false); assert.equal(batch.jobs.length, 1);
+    const job = normalize(batch.jobs[0], theirstack);
+    assert.equal(publicJob(job).sourceLink, 'https://theirstack.com/en/job-posting-api');
+    assert.equal(publicJob(job).publicApplicationLink, 'https://careers.example.com/jobs/graduate-engineer');
+    assert.equal(job.country, 'India');
+  } finally {
+    if (oldKey === undefined) delete process.env.THEIRSTACK_API_KEY; else process.env.THEIRSTACK_API_KEY = oldKey;
+  }
+});
+
 test('Hacker News hiring discovery is approval-gated and accepts only clear announcements with external apply links', async () => {
   const prior = process.env.HACKERNEWS_JOB_DISCOVERY_APPROVAL_REFERENCE;
   const hackernews = sourceSchema.parse({ ...source, id: 'hn-hiring-test', type: 'hackernews', name: 'Hacker News Who is hiring?', board: undefined, company: undefined,

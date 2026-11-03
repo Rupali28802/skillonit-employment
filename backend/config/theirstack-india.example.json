@@ -1,0 +1,13 @@
+{
+  "id": "theirstack-india",
+  "type": "theirstack",
+  "name": "TheirStack India",
+  "countryCode": "in",
+  "enabled": false,
+  "approved": false,
+  "publish": false,
+  "publicListing": true,
+  "intervalMinutes": 1440,
+  "maxPages": 1,
+  "policyEvidence": "PENDING: account owner must record the active TheirStack plan, permitted commercial display/caching scope, daily credit budget, visible TheirStack attribution and original final-URL preservation approval before enabling."
+}

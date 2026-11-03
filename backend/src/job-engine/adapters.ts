@@ -539,6 +539,41 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
     }
     return { jobs, complete: true, snapshot: false, requests: 1 };
   }
+  if (source.type === 'theirstack') {
+    const key = process.env.THEIRSTACK_API_KEY?.trim();
+    if (!key) throw new FeedError('MISSING_THEIRSTACK_CREDENTIALS');
+    // A paid/credited search is deliberately country-scoped and bounded. It is
+    // not a licence to mirror TheirStack's complete catalogue or underlying
+    // third-party sources.
+    let payload: Json;
+    try {
+      payload = await get('https://api.theirstack.com/v1/jobs/search', { Authorization: `Bearer ${key}` }, {
+        limit: 25, page: 0, job_country_code_or: [source.countryCode!.toUpperCase()], posted_at_max_age_days: 30,
+        is_closed: false, property_exists_or: ['final_url'], ...(source.keywords ? { job_title_or: [source.keywords] } : {}),
+      }) as Json;
+    } catch (error) {
+      throw new FeedError(error instanceof FeedError && /^HTTP_\d{3}$/.test(error.code) ? error.code : 'THEIRSTACK_REQUEST_FAILED', error instanceof FeedError ? error.retryAfterMs : 0);
+    }
+    if (!Array.isArray(payload.data)) throw new FeedError('INVALID_FEED');
+    for (const j of payload.data) {
+      const applicationUrl = text(j.final_url);
+      if (!applicationUrl || j.has_blurred_data === true || j.closed_at) continue;
+      const locations: Json[] = Array.isArray(j.locations) ? j.locations : [];
+      const countries = list(j.country_codes).filter(Boolean);
+      const location = locations.map(value => text(value?.display_name)).filter(Boolean).join('; ') || text(j.long_location) || text(j.short_location) || text(j.location);
+      const company = text(j.company_object?.name) || text(j.company);
+      jobs.push({ externalId: `theirstack:${String(j.id ?? applicationUrl)}`, title: text(j.job_title), company,
+        url: applicationUrl, listingUrl: applicationUrl, applicationUrl, applicationTarget: 'source-job-page', attributionUrl: 'https://theirstack.com/en/job-posting-api',
+        description: text(j.description), location, countryCodes: countries, country: text(j.country), city: locations.length === 1 ? text(locations[0]?.name) : undefined,
+        state: locations.length === 1 ? text(locations[0]?.state) : undefined, tags: [...list(j.technology_slugs), ...list(j.keyword_slugs)].slice(0, 100),
+        employmentType: list(j.employment_statuses).join(', '), mode: j.remote === true ? 'Remote' : j.hybrid === true ? 'Hybrid' : undefined,
+        postedAt: iso(j.date_posted), updatedAt: iso(j.discovered_at), salaryText: text(j.salary_string),
+        salary: { min: j.min_salary, max: j.max_salary, currency: text(j.salary_currency), period: text(j.salary_period) } });
+    }
+    // Free/trial credits and pagination caps mean the response cannot prove a
+    // complete source snapshot; never withdraw prior variants from it.
+    return { jobs, complete: false, snapshot: false, requests: 1 };
+  }
   if (!source.board || !/^[a-zA-Z0-9_-]{1,80}$/.test(source.board)) throw new FeedError('INVALID_BOARD');
   const board = encodeURIComponent(source.board);
   if (source.type === 'smartrecruiters') {

@@ -4,7 +4,7 @@ import { joobleDomains, joobleKey } from './jooble-regions.js';
 
 export const sourceSchema = z.object({
   id: z.string().regex(/^[a-z0-9_-]{1,80}$/),
-  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'getonbrd', 'themuse', 'freehire', 'indianapi', 'hackernews', 'himalayas', 'remoteok', 'jooble', 'jobtech', 'reed', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever', 'workday', 'smartrecruiters', 'workable', 'recruitee', 'breezy', 'rippling', 'github', 'github-authorized']),
+  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'getonbrd', 'themuse', 'freehire', 'indianapi', 'theirstack', 'hackernews', 'himalayas', 'remoteok', 'jooble', 'jobtech', 'reed', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever', 'workday', 'smartrecruiters', 'workable', 'recruitee', 'breezy', 'rippling', 'github', 'github-authorized']),
   countryCode: z.string().regex(/^[a-z]{2}$/).optional(),
   keywords: z.string().trim().max(100).optional(),
   name: z.string().trim().min(1).max(100),
@@ -38,6 +38,8 @@ export const sourceSchema = z.object({
     ctx.addIssue({ code: 'custom', message: 'Get on Board requires public attribution, six-hour refresh and at most four pages.' });
   if (s.type === 'indianapi' && (s.intervalMinutes < 360 || s.maxPages !== 1 || !s.publicListing))
     ctx.addIssue({ code: 'custom', message: 'Indian API requires an API key, visible attribution, one bounded request and a six-hour refresh.' });
+  if (s.type === 'theirstack' && (!s.countryCode || s.intervalMinutes < 1440 || s.maxPages !== 1 || !s.publicListing))
+    ctx.addIssue({ code: 'custom', message: 'TheirStack requires a licensed key, one country-scoped request, visible attribution and a daily refresh.' });
   if (s.type === 'workday' && (!s.board || !s.company || !s.workdayTenant || !s.workdayCluster || s.intervalMinutes < 360 || s.maxPages > 4 || !s.publicListing))
     ctx.addIssue({ code: 'custom', message: 'Workday requires an approved employer, tenant, board, fixed Workday cluster, attribution, six-hour refresh and at most four pages.' });
   if (s.type === 'hackernews' && (s.intervalMinutes < 1440 || s.maxPages !== 1 || !s.publicListing))
