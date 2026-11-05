@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { ApplicationDetails } from './application-details';
 
 type Row = { id: string; [key: string]: unknown };
@@ -64,11 +64,85 @@ async function request(path: string, init?: RequestInit) {
   return payload.data;
 }
 
+const localDateTime = () => {
+  const date = new Date();
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().slice(0, 16);
+};
+
+const intakeInitial = () => ({
+  title: '', company: '', domain: '', country: 'India', state: '', city: '', category: 'Technology', skills: '',
+  mode: 'Remote', type: 'Full-time', salaryMin: '0', salaryMax: '0', currency: 'INR', experienceMin: '0', experienceMax: '0',
+  description: '', requirements: '', sourceName: '', sourceUrl: '', originalApplicationUrl: '', authorizationReference: '', activeCheckedAt: localDateTime(),
+});
+
+function ManualVerifiedJobIntake({ onCreated, allowed }: { onCreated: () => Promise<void>; allowed: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState(intakeInitial);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const update = (key: keyof ReturnType<typeof intakeInitial>, value: string) => setForm(current => ({ ...current, [key]: value }));
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true); setMessage('');
+    try {
+      const payload = {
+        ...form,
+        skills: form.skills.split(',').map(item => item.trim()).filter(Boolean),
+        salaryMin: Number(form.salaryMin), salaryMax: Number(form.salaryMax),
+        experienceMin: Number(form.experienceMin), experienceMax: Number(form.experienceMax),
+        activeCheckedAt: new Date(form.activeCheckedAt).toISOString(),
+      };
+      await request('admin/console/jobs', { method: 'POST', body: JSON.stringify(payload) });
+      setForm(intakeInitial()); setMessage('Submitted for review. It is not live until a second admin review confirms the evidence.');
+      await onCreated();
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'The verified-job intake could not be saved.'); }
+    finally { setBusy(false); }
+  }
+  return <section className="admin-card verified-job-intake">
+    <div className="admin-card-head"><div><p className="eyebrow">VERIFIED JOB INTAKE</p><h2>Publish real opportunities safely</h2><p>Use only an authorized source or an employer-provided listing. New entries always start in review and retain their original source and application links.</p></div><button type="button" disabled={!allowed} title={allowed ? 'Add a verified job' : 'Your admin role cannot create job intakes.'} onClick={() => { setOpen(current => !current); setMessage(''); }}>{open ? 'Close form' : 'Add verified job'}</button></div>
+    {!allowed && <div className="admin-notice is-error" role="alert">Your current admin role can view jobs but cannot create verified-job intakes.</div>}
+    {open && <form className="verified-job-form" onSubmit={event => void submit(event)}>
+      <p className="verified-job-rule">Do not enter a copied, guessed, expired, or unauthorised listing. The application URL must be the employer&apos;s or authorised source&apos;s original link.</p>
+      <div className="verified-job-grid">
+        <label>Job title<input required value={form.title} onChange={event => update('title', event.target.value)} /></label>
+        <label>Company<input required value={form.company} onChange={event => update('company', event.target.value)} /></label>
+        <label>Company domain<input required placeholder="company.com" value={form.domain} onChange={event => update('domain', event.target.value)} /></label>
+        <label>Category<input required value={form.category} onChange={event => update('category', event.target.value)} /></label>
+        <label>Country<input required value={form.country} onChange={event => update('country', event.target.value)} /></label>
+        <label>State / region<input value={form.state} onChange={event => update('state', event.target.value)} /></label>
+        <label>City<input required value={form.city} onChange={event => update('city', event.target.value)} /></label>
+        <label>Work arrangement<select value={form.mode} onChange={event => update('mode', event.target.value)}><option>Remote</option><option>Hybrid</option><option>On-site</option></select></label>
+        <label>Employment type<input required value={form.type} onChange={event => update('type', event.target.value)} /></label>
+        <label>Skills, comma separated<input required placeholder="TypeScript, Node.js" value={form.skills} onChange={event => update('skills', event.target.value)} /></label>
+        <label>Minimum experience<input required type="number" min="0" max="70" value={form.experienceMin} onChange={event => update('experienceMin', event.target.value)} /></label>
+        <label>Maximum experience<input required type="number" min="0" max="70" value={form.experienceMax} onChange={event => update('experienceMax', event.target.value)} /></label>
+        <label>Minimum salary (0 if undisclosed)<input required type="number" min="0" value={form.salaryMin} onChange={event => update('salaryMin', event.target.value)} /></label>
+        <label>Maximum salary (0 if undisclosed)<input required type="number" min="0" value={form.salaryMax} onChange={event => update('salaryMax', event.target.value)} /></label>
+        <label>Currency<input required maxLength={3} value={form.currency} onChange={event => update('currency', event.target.value.toUpperCase())} /></label>
+        <label>Checked active at<input required type="datetime-local" value={form.activeCheckedAt} onChange={event => update('activeCheckedAt', event.target.value)} /></label>
+      </div>
+      <label>Job description<textarea required minLength={30} value={form.description} onChange={event => update('description', event.target.value)} placeholder="Use the real description supplied by the original source." /></label>
+      <label>Requirements and eligibility<textarea required minLength={10} value={form.requirements} onChange={event => update('requirements', event.target.value)} placeholder="Include verified eligibility criteria, education or experience requirements." /></label>
+      <div className="verified-job-grid">
+        <label>Source name<input required value={form.sourceName} onChange={event => update('sourceName', event.target.value)} placeholder="Employer career page, authorised partner, etc." /></label>
+        <label>Original source URL<input required type="url" value={form.sourceUrl} onChange={event => update('sourceUrl', event.target.value)} placeholder="https://…" /></label>
+        <label>Original application URL<input required type="url" value={form.originalApplicationUrl} onChange={event => update('originalApplicationUrl', event.target.value)} placeholder="https://…" /></label>
+        <label>Authorisation / review reference<textarea required minLength={10} value={form.authorizationReference} onChange={event => update('authorizationReference', event.target.value)} placeholder="Record the written permission, API/display terms, or employer-authorised review reference." /></label>
+      </div>
+      <div className="admin-modal-actions"><button type="submit" className="primary" disabled={busy || !allowed}>{busy ? 'Saving…' : 'Submit for review'}</button><span>{message}</span></div>
+    </form>}
+    {!open && message && <div className="admin-notice is-success" role="status">{message}</div>}
+  </section>;
+}
+
 function AdminAction({ section, row, onDone, permissions }: { section: string; row: Row; onDone: () => void; permissions: string[] }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [reason, setReason] = useState('');
+  const [manualConfirmed, setManualConfirmed] = useState(false);
+  const isManualJob = section === 'jobs' && typeof row.manualEvidence === 'object' && row.manualEvidence !== null;
   const actions = section === 'users'
     ? [row.disabled ? 'enable' : 'disable']
     : section === 'employers' && row.hasEmployerProfile ? ['verified', 'rejected']
@@ -99,23 +173,23 @@ function AdminAction({ section, row, onDone, permissions }: { section: string; r
         body = { status: action, note: reason };
       } else if (section === 'jobs') {
         endpoint = `admin/console/jobs/${encodeURIComponent(row.id)}/moderation`;
-        body = { action, reason };
+        body = { action, reason, ...(isManualJob && action === 'publish' ? { confirmManualEvidence: manualConfirmed } : {}) };
       } else {
         endpoint = `admin/console/fraud/${encodeURIComponent(row.id)}/review`;
         body = { status: action, note: reason };
       }
       await request(endpoint, { method, body: JSON.stringify(body) });
-      setMessage('Saved and audited.'); setPendingAction(null); setReason(''); onDone();
+      setMessage('Saved and audited.'); setPendingAction(null); setReason(''); setManualConfirmed(false); onDone();
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Operation failed.'); }
     finally { setBusy(false); }
   }
   return <div className="admin-actions" aria-live="polite">
     {actions.map(action => {
       const blocked = disabledReason(action);
-      return <button key={action} type="button" disabled={busy || Boolean(blocked)} title={blocked} onClick={() => { setMessage(''); setReason(''); setPendingAction(action); }}>{label(action)}</button>;
+      return <button key={action} type="button" disabled={busy || Boolean(blocked)} title={blocked} onClick={() => { setMessage(''); setReason(''); setManualConfirmed(false); setPendingAction(action); }}>{label(action)}</button>;
     })}
     {message && <span>{message}</span>}
-    {pendingAction && <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) { setPendingAction(null); setReason(''); } }}><dialog className="admin-role-modal" open aria-labelledby="employer-verification-title"><p className={`eyebrow ${pendingAction === 'rejected' ? 'danger-text' : ''}`}>EMPLOYER VERIFICATION</p><h2 id="employer-verification-title">{pendingAction === 'verified' ? 'Verify employer?' : 'Reject employer?'}</h2><p>{pendingAction === 'verified' ? 'This confirms the submitted company evidence has been reviewed.' : 'This records a rejection and notifies the employer.'}</p><label>Reason for this decision<textarea autoFocus value={reason} maxLength={2000} onChange={event => setReason(event.target.value)} placeholder="Enter an audit reason (required)" /></label><div className="admin-modal-actions"><button type="button" disabled={busy} onClick={() => { setPendingAction(null); setReason(''); }}>Cancel</button><button className={pendingAction === 'rejected' ? 'admin-danger' : 'primary'} type="button" disabled={busy || reason.trim().length < 3} onClick={() => void run()}>{busy ? 'Saving…' : pendingAction === 'verified' ? 'Verify employer' : 'Reject employer'}</button></div></dialog></div>}
+    {pendingAction && <div className="admin-modal-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !busy) { setPendingAction(null); setReason(''); setManualConfirmed(false); } }}><dialog className="admin-role-modal" open aria-labelledby="job-moderation-title"><p className={`eyebrow ${pendingAction === 'remove' ? 'danger-text' : ''}`}>{section === 'jobs' ? 'JOB MODERATION' : section === 'employers' ? 'EMPLOYER VERIFICATION' : 'ADMINISTRATION'}</p><h2 id="job-moderation-title">{section === 'jobs' ? `${label(pendingAction)} this job?` : pendingAction === 'verified' ? 'Verify employer?' : 'Reject employer?'}</h2><p>{isManualJob && pendingAction === 'publish' ? 'Confirm you checked the original source and application URL, and that the vacancy is still active.' : section === 'jobs' ? 'This change is recorded in the job lifecycle and audit trail.' : pendingAction === 'verified' ? 'This confirms the submitted company evidence has been reviewed.' : 'This records a rejection and notifies the employer.'}</p>{isManualJob && pendingAction === 'publish' && <label className="verified-job-confirm"><input type="checkbox" checked={manualConfirmed} onChange={event => setManualConfirmed(event.target.checked)} />I confirmed the source, original application link, authorisation reference, and active status.</label>}<label>Reason for this decision<textarea autoFocus value={reason} maxLength={2000} onChange={event => setReason(event.target.value)} placeholder="Enter an audit reason (required)" /></label><div className="admin-modal-actions"><button type="button" disabled={busy} onClick={() => { setPendingAction(null); setReason(''); setManualConfirmed(false); }}>Cancel</button><button className={pendingAction === 'remove' || pendingAction === 'rejected' ? 'admin-danger' : 'primary'} type="button" disabled={busy || reason.trim().length < 3 || (isManualJob && pendingAction === 'publish' && !manualConfirmed)} onClick={() => void run()}>{busy ? 'Saving…' : section === 'jobs' ? label(pendingAction) : pendingAction === 'verified' ? 'Verify employer' : 'Reject employer'}</button></div></dialog></div>}
   </div>;
 }
 
@@ -156,7 +230,7 @@ export function AdminConsolePanel({ section }: { section: string }) {
         const [page, engine, currentAccess] = await Promise.all([
           pageRequest,
           section === 'sources' ? request('admin/job-engine') as Promise<JobEngineStatus> : Promise.resolve(null),
-          ['users', 'employers'].includes(section) ? request('admin/console/access') as Promise<AdminAccess> : Promise.resolve(null),
+          ['users', 'employers', 'jobs'].includes(section) ? request('admin/console/access') as Promise<AdminAccess> : Promise.resolve(null),
         ]);
         setRows(page.items); setNextCursor(page.nextCursor);
         if (engine) {
@@ -208,6 +282,7 @@ export function AdminConsolePanel({ section }: { section: string }) {
   const columns = useMemo(() => headings[section] ?? [], [section]);
   const managedUserId = (row: Row) => section === 'employers' ? ownerUserId(row) : row.id;
   const canManageUsers = Boolean(access?.permissions.includes('admin.users.manage'));
+  const canCreateVerifiedJobs = Boolean(access?.permissions.includes('jobs.moderate'));
   if (loading) return <output className="admin-state"><span className="admin-spinner" />Loading secure admin data…</output>;
   if (error) return <div className="admin-state is-error" role="alert"><strong>Unable to load this section</strong><p>{error}</p><button onClick={() => void load()}>Retry</button></div>;
   if (!resource && overview) return <>
@@ -222,6 +297,7 @@ export function AdminConsolePanel({ section }: { section: string }) {
     {section === 'sources' && sourceHealth && <div className="admin-kpis">
       <article><span>Sources online</span><strong>{sourceHealth.online.toLocaleString()}</strong><small>{sourceHealth.online} of {sourceHealth.configured} approved feeds reporting normally</small></article>
     </div>}
+    {section === 'jobs' && <ManualVerifiedJobIntake allowed={canCreateVerifiedJobs} onCreated={load} />}
     <section className="admin-card">
     <div className="admin-card-head"><div><p className="eyebrow">SECURE OPERATIONS</p><h2>{label(section)}</h2></div><button onClick={() => void load()}>Refresh</button></div>
     <form className="admin-filters" onSubmit={event => { event.preventDefault(); setCursor(''); setHistory([]); void load(); }}>

@@ -142,7 +142,11 @@ export async function assessJob(r: Repository, job: Job, now = new Date()) {
   const legacySource = job.source ? await r.get<Source>('jobSources', job.source) : null;
   const feedSource = job.feed?.sourceId ? await r.get<Source>('jobFeedSources', job.feed.sourceId) : null;
   const feedState = job.feed?.sourceId ? await r.get<{ status?: string; failures?: number }>('jobFeedStates', job.feed.sourceId) : null;
-  const source = legacySource || (feedSource ? { ...feedSource, health: { status: feedState?.status === 'failed' ? 'failed' : (feedState?.failures || 0) >= 3 ? 'degraded' : 'healthy', consecutiveFailures: feedState?.failures || 0 } } : null);
+  const manualSource = job.manualEvidence ? {
+    id: `manual-evidence:${job.id}`, enabled: true, approved: true,
+    compliance: { status: 'approved' }, health: { status: 'healthy', consecutiveFailures: 0 },
+  } satisfies Source : null;
+  const source = legacySource || (feedSource ? { ...feedSource, health: { status: feedState?.status === 'failed' ? 'failed' : (feedState?.failures || 0) >= 3 ? 'degraded' : 'healthy', consecutiveFailures: feedState?.failures || 0 } } : manualSource);
   const employerRisk = await assessEmployer(r, employer, now);
   const sourceRisk = await assessSource(r, source, now);
   const destinationRisk = await assessDestination(r, job, now);
@@ -165,9 +169,13 @@ export async function persistJobFraudAssessment(r: Repository, job: Job, now = n
   await r.put('jobRiskAssessments', assessment);
   const employer = job.employerId ? await r.get<Employer>('employers', job.employerId) : null;
   const source = job.source ? await r.get<Source>('jobSources', job.source) : null;
+  const manualSource = job.manualEvidence ? {
+    id: `manual-evidence:${job.id}`, enabled: true, approved: true,
+    compliance: { status: 'approved' }, health: { status: 'healthy', consecutiveFailures: 0 },
+  } satisfies Source : null;
   const destination = await assessDestination(r, job, now);
   await r.put('entityRiskAssessments', await assessEmployer(r, employer, now));
-  await r.put('entityRiskAssessments', await assessSource(r, source, now));
+  await r.put('entityRiskAssessments', await assessSource(r, source || manualSource, now));
   await r.put('entityRiskAssessments', destination);
   return assessment;
 }

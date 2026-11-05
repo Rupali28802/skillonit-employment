@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
-import type { Job, User } from '../src/lib/domain.ts';
+import { publicJob, type Job, type User } from '../src/lib/domain.ts';
 
 const blank = { name: '', headline: '', skills: [], experience: null, education: '', country: '', city: '', confirmed: false };
 const preferences = { roles: [], relatedRoles: [], countries: [], modes: [], exclusions: [], automation: false, dailyCap: 5 };
@@ -72,6 +72,37 @@ test('admin console securely manages and oversees existing backend resources', a
 
     const moderated = await adminConsole.moderateAdminJob(admin, job.id, { action: 'close', reason: 'Employer closed this opportunity.' });
     assert.equal(moderated.status, 'closed'); assert.equal(moderated.lifecycle?.state, 'closed');
+    await store.transaction(r => r.put('systemConfig', {
+      id: 'fraud-policy', revision: 4,
+      value: { reviewThreshold: 20, highThreshold: 50, blockedThreshold: 80, reportReviewCount: 1, reportHighCount: 3 },
+    }));
+    const manualNow = new Date();
+    const manual = await adminConsole.createManualVerifiedJob(admin, {
+      title: 'Junior Platform Engineer', company: 'Example', domain: 'example.test', country: 'India', state: 'Karnataka', city: 'Bengaluru',
+      category: 'Technology', skills: ['TypeScript', 'Node.js'], mode: 'Hybrid', type: 'Full-time', salaryMin: 0, salaryMax: 0, currency: 'INR',
+      experienceMin: 0, experienceMax: 1, description: 'Build and operate secure platform services with a collaborative engineering team.',
+      requirements: 'Entry-level applicants need TypeScript experience and a completed degree or equivalent experience.',
+      sourceName: 'Example careers', sourceUrl: 'https://careers.example.test/jobs/junior-platform-engineer',
+      originalApplicationUrl: 'https://careers.example.test/jobs/junior-platform-engineer/apply',
+      authorizationReference: 'Employer public careers listing reviewed by the platform administrator.', activeCheckedAt: manualNow.toISOString(),
+    }, manualNow);
+    assert.equal(manual.status, 'review');
+    await assert.rejects(adminConsole.moderateAdminJob(admin, manual.id, { action: 'publish', reason: 'Source reviewed.' }), { code: 'MANUAL_EVIDENCE_CONFIRMATION_REQUIRED' });
+    const manualPublished = await adminConsole.moderateAdminJob(admin, manual.id, { action: 'publish', reason: 'Original source and application link were checked.', confirmManualEvidence: true });
+    assert.equal(manualPublished.status, 'published');
+    assert.equal(manualPublished.manualEvidence?.reviewedBy, admin.id);
+    const visibleManual = publicJob(manualPublished);
+    assert.equal(visibleManual.sourceLink, manual.manualEvidence?.sourceUrl);
+    assert.equal(visibleManual.publicApplicationLink, manual.manualEvidence?.originalApplicationUrl);
+    await assert.rejects(adminConsole.createManualVerifiedJob(admin, {
+      title: 'Junior Platform Engineer', company: 'Example', domain: 'example.test', country: 'India', state: 'Karnataka', city: 'Bengaluru',
+      category: 'Technology', skills: ['TypeScript'], mode: 'Hybrid', type: 'Full-time', salaryMin: 0, salaryMax: 0, currency: 'INR',
+      experienceMin: 0, experienceMax: 1, description: 'Build and operate secure platform services with a collaborative engineering team.',
+      requirements: 'Entry-level applicants need TypeScript experience and a completed degree or equivalent experience.',
+      sourceName: 'Example careers', sourceUrl: 'https://careers.example.test/jobs/junior-platform-engineer',
+      originalApplicationUrl: 'https://careers.example.test/jobs/junior-platform-engineer/apply',
+      authorizationReference: 'Employer public careers listing reviewed by the platform administrator.', activeCheckedAt: manualNow.toISOString(),
+    }, manualNow), { code: 'MANUAL_JOB_DUPLICATE' });
     const reviewed = await adminConsole.reviewAdminFraud(admin, 'report-one', { status: 'resolved', note: 'Evidence reviewed and retained.' });
     assert.equal(reviewed.status, 'resolved');
     await assert.rejects(adminConsole.reviewAdminFraud(admin, 'report-one', { status: 'rejected', note: 'Second decision is forbidden.' }), { code: 'FRAUD_REPORT_FINAL' });

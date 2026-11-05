@@ -48,11 +48,27 @@ export type Job = {
     normalizedAt: string; method: 'source-fields';
   };
   feed?: { sourceId: string; externalId: string; publicListing: boolean; attributionUrl: string; lastSeenAt: string; applicationTarget?: 'direct-form' | 'source-job-page' | 'source-redirect'; closedByEngine?: boolean };
+  /**
+   * Evidence for an administrator-entered referral. This is deliberately
+   * separate from an automated feed: it records where a human saw the role
+   * and the permission/review evidence required before publication.
+   */
+  manualEvidence?: {
+    sourceName: string;
+    sourceUrl: string;
+    originalApplicationUrl: string;
+    authorizationReference: string;
+    activeCheckedAt: string;
+    submittedBy: string;
+    submittedAt: string;
+    reviewedBy?: string;
+    reviewedAt?: string;
+  };
   verification?: { rulesVersion: 'job-trust-v1'; decision: 'verified'; reasonCodes: string[]; verifiedAt: string; sourceId: string; sourceLastSuccessAt: string; contentHash: string };
   matching?: JobMatching;
   lifecycle?: { schemaVersion: 1; state: 'publishing' | 'active' | 'expired' | 'closed' | 'removed' | 'reposted'; revision: number; changedAt: string; reasonCode: string; declaredExpiresAt?: string; effectiveExpiresAt?: string };
 };
-export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company' | 'feed'> & {
+export type PublicJob = Omit<Job, 'email' | 'domain' | 'url' | 'company' | 'feed' | 'manualEvidence'> & {
   company: string;
   identityVisible: boolean;
   sourceLink?: string;
@@ -306,10 +322,11 @@ export function publicJob(
 ): PublicJob {
   const identityVisible =
     job.feed?.publicListing === true ||
+    !!job.manualEvidence?.reviewedAt ||
     user?.role === 'admin' ||
     user?.id === job.employerId ||
     !!configuredPlans.find((p) => p.code === user?.plan)?.identity;
-  const { email: _email, domain: _domain, url: _url, company, feed, ...safe } = job;
+  const { email: _email, domain: _domain, url: _url, company, feed, manualEvidence, ...safe } = job;
   const scrub = (text: string) => {
     if (identityVisible) return text;
     let result = text;
@@ -333,6 +350,7 @@ export function publicJob(
     company: identityVisible ? company : 'Company identity protected',
     identityVisible,
     ...(feed?.publicListing ? { sourceLink: feed.attributionUrl, publicApplicationLink: job.url, applicationTarget: feed.applicationTarget, sourceJobId: feed.externalId } : {}),
+    ...(manualEvidence?.reviewedAt ? { sourceLink: manualEvidence.sourceUrl, publicApplicationLink: manualEvidence.originalApplicationUrl, applicationTarget: 'source-job-page' as const } : {}),
   };
 }
 export function isRecent(job: Job, days = 90, now = Date.now()) {

@@ -12,6 +12,7 @@ import { read, transaction, type Repository, type Row } from './store.js';
 import { ApiError, audit, id, safeUser } from './security.js';
 import { revokeSessions } from './auth-lifecycle.js';
 import { assignAdminRole, listAdminRoles, requireAdminPermission, resolveAdminAccess, type AdminPermission } from './admin-rbac.js';
+import { canonicalIdentityFingerprint } from './job-deduplication.js';
 
 type AdminList = { items: unknown[]; nextCursor: string | null };
 type AuditRecord = Row & { actorId?: string; action?: string; entityId?: string; createdAt?: string };
@@ -26,9 +27,26 @@ const pageSchema = z.object({
 const userStateSchema = z.object({ disabled: z.boolean(), reason: z.string().trim().min(3).max(500) }).strict();
 const userRoleSchema = z.object({ role: z.enum(['student', 'employer', 'admin']), reason: z.string().trim().min(3).max(500) }).strict();
 const verificationSchema = z.object({ status: z.enum(['verified', 'rejected', 'pending']), note: z.string().trim().min(3).max(2000).optional() }).strict();
-const moderationSchema = z.object({ action: z.enum(['publish', 'review', 'close', 'remove']), reason: z.string().trim().min(3).max(500) }).strict();
+const moderationSchema = z.object({ action: z.enum(['publish', 'review', 'close', 'remove']), reason: z.string().trim().min(3).max(500), confirmManualEvidence: z.literal(true).optional() }).strict();
 const fraudReviewSchema = z.object({ status: z.enum(['resolved', 'rejected']), note: z.string().trim().min(3).max(1000) }).strict();
 const sourceApprovalSchema = z.object({ revision: z.number().int().positive() }).strict();
+const httpsUrl = z.url().refine(value => new URL(value).protocol === 'https:', 'Only HTTPS URLs are allowed.');
+const manualJobSchema = z.object({
+  title: z.string().trim().min(1).max(200), company: z.string().trim().min(1).max(200),
+  domain: z.string().trim().regex(/^[a-z0-9.-]+\.[a-z]{2,}$/i),
+  country: z.string().trim().min(1).max(200), state: z.string().trim().max(100).default(''), city: z.string().trim().min(1).max(200),
+  category: z.string().trim().min(1).max(200), skills: z.array(z.string().trim().min(1).max(200)).min(1).max(50),
+  mode: z.enum(['Remote', 'Hybrid', 'On-site']), type: z.string().trim().min(1).max(200),
+  salaryMin: z.number().min(0), salaryMax: z.number().min(0), currency: z.string().regex(/^[A-Z]{3}$/),
+  experienceMin: z.number().min(0).max(70), experienceMax: z.number().min(0).max(70),
+  description: z.string().trim().min(30).max(15000), requirements: z.string().trim().min(10).max(10000),
+  sourceName: z.string().trim().min(2).max(200), sourceUrl: httpsUrl, originalApplicationUrl: httpsUrl,
+  authorizationReference: z.string().trim().min(10).max(2000), activeCheckedAt: z.string().datetime({ offset: true }),
+  expiresAt: z.string().datetime({ offset: true }).optional(),
+}).strict().superRefine((value, context) => {
+  if (value.salaryMax < value.salaryMin) context.addIssue({ code: 'custom', path: ['salaryMax'], message: 'Maximum salary must not be lower than minimum salary.' });
+  if (value.experienceMax < value.experienceMin) context.addIssue({ code: 'custom', path: ['experienceMax'], message: 'Maximum experience must not be lower than minimum experience.' });
+});
 
 const collectionPermission: Record<string, AdminPermission> = { users:'users.read', employers:'employers.read', jobs:'jobs.read', jobSources:'sources.read', applications:'applications.read', fraudReports:'fraud.read', payments:'payments.read', auditLogs:'audit.read' };
 async function requireAdmin(r: Repository, actor: User, permission?: AdminPermission) {
@@ -223,6 +241,66 @@ export async function verifyAdminEmployer(actor: User, employerId: string, input
 }
 
 export const listAdminJobs = (actor: User, params: URLSearchParams) => listRows(actor, 'jobs', params);
+
+/**
+ * Creates a referral from facts checked by an administrator. It is never
+ * published here: a second explicit publish action verifies that the evidence
+ * is still current. This avoids converting search results or copied snippets
+ * into live vacancies without provenance.
+ */
+export async function createManualVerifiedJob(actor: User, input: unknown, now = new Date()) {
+  const value = manualJobSchema.parse(input);
+  const checkedAt = new Date(value.activeCheckedAt);
+  if (checkedAt.getTime() > now.getTime() + 5 * 60_000 || now.getTime() - checkedAt.getTime() > 7 * 86400000)
+    throw new ApiError(422, 'MANUAL_EVIDENCE_STALE', 'The active-listing check must be within the last seven days.');
+  const expiresAt = value.expiresAt ? new Date(value.expiresAt) : new Date(Math.min(now.getTime() + 30 * 86400000, checkedAt.getTime() + 30 * 86400000));
+  if (expiresAt.getTime() <= now.getTime()) throw new ApiError(422, 'MANUAL_JOB_EXPIRED', 'The original listing is already expired.');
+  const parsedUrl = new URL(value.originalApplicationUrl);
+  if (parsedUrl.username || parsedUrl.password) throw new ApiError(422, 'APPLICATION_URL_UNSAFE', 'Application URLs cannot contain embedded credentials.');
+  return transaction(async r => {
+    await requireAdmin(r, actor, 'jobs.moderate');
+    const timestamp = now.toISOString();
+    const job: Job = {
+      id: id(), title: value.title, company: value.company, domain: value.domain.toLowerCase(),
+      country: value.country, state: value.state, city: value.city, category: value.category, skills: value.skills,
+      mode: value.mode, type: value.type, salaryMin: value.salaryMin, salaryMax: value.salaryMax, currency: value.currency,
+      experienceMin: value.experienceMin, experienceMax: value.experienceMax, description: value.description,
+      requirements: value.requirements, method: 'external', url: value.originalApplicationUrl,
+      status: 'review', trust: 'pending', employerId: '', source: value.sourceName,
+      discoveredAt: timestamp, sourcePostedAt: value.activeCheckedAt, expiresAt: expiresAt.toISOString(),
+      lifecycle: { schemaVersion: 1, state: 'publishing', revision: 0, changedAt: timestamp, reasonCode: 'MANUAL_EVIDENCE_SUBMITTED' },
+      manualEvidence: {
+        sourceName: value.sourceName, sourceUrl: value.sourceUrl, originalApplicationUrl: value.originalApplicationUrl,
+        authorizationReference: value.authorizationReference, activeCheckedAt: value.activeCheckedAt,
+        submittedBy: actor.id, submittedAt: timestamp,
+      },
+    };
+    const canonicalId = canonicalIdentityFingerprint(job);
+    // A repository transaction shares one PostgreSQL connection, so keep
+    // these reads sequential rather than issuing concurrent client queries.
+    const identity = await r.get<{ activeJobId: string }>('canonicalJobIdentities', canonicalId);
+    const sameApplication = await r.find<Job>('jobs', { url: value.originalApplicationUrl }, 1);
+    if (identity || sameApplication[0]) {
+      const existingJobId = identity?.activeJobId || sameApplication[0]!.id;
+      throw new ApiError(409, 'MANUAL_JOB_DUPLICATE', 'This opportunity is already recorded. Review the existing job instead.', { existingJobId });
+    }
+    await r.put('jobs', { ...job, canonicalIdentityId: canonicalId });
+    await r.put('canonicalJobIdentities', {
+      id: canonicalId, schemaVersion: 1, policyVersion: 'job-dedupe-v1', activeJobId: job.id,
+      jobIds: [job.id], occurrenceCount: 1, createdAt: timestamp, updatedAt: timestamp,
+    });
+    await audit(r, actor.id, 'admin.manual_job_submitted', job.id);
+    return job;
+  });
+}
+
+function manualEvidenceReady(job: Job, now: Date) {
+  const evidence = job.manualEvidence;
+  if (!evidence || job.method !== 'external' || job.url !== evidence.originalApplicationUrl) return false;
+  const checkedAt = Date.parse(evidence.activeCheckedAt);
+  return Number.isFinite(checkedAt) && checkedAt <= now.getTime() + 5 * 60_000 && now.getTime() - checkedAt <= 7 * 86400000;
+}
+
 export async function moderateAdminJob(actor: User, jobId: string, input: unknown) {
   const value = moderationSchema.parse(input);
   return transaction(async r => {
@@ -230,15 +308,34 @@ export async function moderateAdminJob(actor: User, jobId: string, input: unknow
     const job = await r.get<Job>('jobs', jobId);
     if (!job) throw new ApiError(404, 'JOB_NOT_FOUND', 'Job not found.');
     if (value.action === 'publish') {
-      const employer = await r.get<{ status: string }>('employers', job.employerId);
-      if (!employer || employer.status !== 'verified') throw new ApiError(409, 'VERIFICATION_REQUIRED', 'Verify the employer before publishing.');
+      if (job.manualEvidence) {
+        if (value.confirmManualEvidence !== true) throw new ApiError(422, 'MANUAL_EVIDENCE_CONFIRMATION_REQUIRED', 'Confirm that the source, original application link and active status were checked.');
+        if (!manualEvidenceReady(job, new Date())) throw new ApiError(409, 'MANUAL_EVIDENCE_RECHECK_REQUIRED', 'Recheck the original listing before publishing this referral.');
+      } else {
+        const employer = await r.get<{ status: string }>('employers', job.employerId);
+        if (!employer || employer.status !== 'verified') throw new ApiError(409, 'VERIFICATION_REQUIRED', 'Verify the employer before publishing.');
+      }
       const risk = await persistJobFraudAssessment(r, job);
       if (risk.riskLevel === 'high' || risk.riskLevel === 'blocked') throw new ApiError(409, 'FRAUD_REVIEW_REQUIRED', 'Complete fraud review before publishing.');
+    }
+    const reviewedAt = new Date().toISOString();
+    if (value.action === 'publish') {
+      // Lifecycle activation requires trust to be established first. Keeping
+      // this write in the same transaction makes a partially verified job
+      // impossible to observe.
+      await r.put('jobs', {
+        ...job,
+        trust: 'verified',
+        ...(job.manualEvidence ? { manualEvidence: { ...job.manualEvidence, reviewedBy: actor.id, reviewedAt } } : {}),
+      });
     }
     const target = value.action === 'publish' ? 'active' : value.action === 'review' ? 'publishing' : value.action === 'close' ? 'closed' : 'removed';
     const transitioned = await transitionJobLifecycle(r, jobId, target, actor.id, `ADMIN_${value.action.toUpperCase()}`);
     const status: Job['status'] = value.action === 'publish' ? 'published' : value.action === 'review' ? 'review' : value.action === 'close' ? 'closed' : 'disabled';
-    const next = { ...transitioned, status, ...(value.action === 'publish' ? { trust: 'verified' as const } : {}) };
+    const next = { ...transitioned, status, ...(value.action === 'publish' ? {
+      trust: 'verified' as const,
+      ...(job.manualEvidence ? { manualEvidence: { ...job.manualEvidence, reviewedBy: actor.id, reviewedAt } } : {}),
+    } : {}) };
     await r.put('jobs', next);
     await audit(r, actor.id, `admin.job_${value.action}`, jobId);
     return next;
@@ -372,6 +469,7 @@ export async function adminConsoleRoute(actor: User, parts: string[], method: st
   if (resource === 'employers' && id && !action && method === 'GET') return adminEmployer(actor, id);
   if (resource === 'employers' && id && action === 'verification' && method === 'PUT') return verifyAdminEmployer(actor, id, await body());
   if (resource === 'jobs' && !id && method === 'GET') return listAdminJobs(actor, params);
+  if (resource === 'jobs' && !id && method === 'POST') return createManualVerifiedJob(actor, await body());
   if (resource === 'jobs' && id && action === 'moderation' && method === 'POST') return moderateAdminJob(actor, id, await body());
   if (resource === 'sources' && !id && method === 'GET') return listAdminSources(actor, params);
   if (resource === 'sources' && !id && method === 'POST') return createAdminSource(actor, await body());
