@@ -228,12 +228,15 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
       const ranked = candidates.map(job => ({ id: job.id, score: keywordRelevance(job, words, query, now.getTime()) }))
         .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
       const selected = ranked.slice((page - 1) * limit, page * limit);
-      const jobs = [];
-      for (const { id, score } of selected) {
-        const job = await r.get<Job>('jobs', id);
+      const documents = selected.length
+        ? await r.page<Job>('jobs', { id: { $in: selected.map(({ id }) => id) } }, { id: 1 }, 0, selected.length)
+        : [];
+      const byId = new Map(documents.map(job => [job.id, job]));
+      const jobs = selected.map(({ id, score }) => {
+        const job = byId.get(id);
         if (!job) throw new Error('Search projection references a missing job');
-        jobs.push({ ...publicJob(job, user, plans), relevanceScore: score });
-      }
+        return { ...publicJob(job, user, plans), relevanceScore: score };
+      });
       return { jobs, total: ranked.length, page, limit, hasMore: page * limit < ranked.length, searchMode: 'relevant' };
     }, indexedKeywords, true);
   }
