@@ -484,7 +484,7 @@ export async function handle(
           tenMinuteSourcesDegraded:fastSources.filter(source=>!isFresh(source)).length,
           tenMinuteSourcesOnCadence:fastSourcesOnCadence.length,
           tenMinuteSourcesOverdue:fastSources.length-fastSourcesOnCadence.length,
-          totalJobs:counts?.totalJobs ?? await r.count('jobs'),
+          totalJobs:counts?.totalJobs ?? await r.count('jobs',base),
           workerOnline: !!heartbeat && now.getTime()-Date.parse(heartbeat.updatedAt)<600000,
           workerLastSeenAt: heartbeat?.updatedAt ?? null,
           workerStatus: heartbeat?.status ?? 'unknown',

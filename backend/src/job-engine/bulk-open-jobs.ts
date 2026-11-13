@@ -55,6 +55,16 @@ function mapJob(row: Row) {
 
 async function persist(jobs: Job[], closures: string[]) {
   if (!apply) return;
+  try {
+    await persistBatch();
+  } catch (error) {
+    if ((error as { code?: string }).code !== '57014' || jobs.length + closures.length < 2) throw error;
+    const middle = Math.ceil((jobs.length + closures.length) / 2);
+    await persist(jobs.slice(0, middle), closures.slice(0, Math.max(0, middle - jobs.length)));
+    await persist(jobs.slice(middle), closures.slice(Math.max(0, middle - jobs.length)));
+  }
+
+  async function persistBatch() {
   await transaction(async r => {
     let changed = false;
     for (const job of jobs) {
@@ -75,7 +85,9 @@ async function persist(jobs: Job[], closures: string[]) {
         await r.put('jobs', job);
         changed = true;
       }
-      await r.put('bulkJobReferences', { id, source: provider, jobId: job.id, active: true, seen: job.feed!.lastSeenAt });
+      if (!ref?.active || ref.jobId !== job.id || ref.seen !== job.feed!.lastSeenAt) {
+        await r.put('bulkJobReferences', { id, source: provider, jobId: job.id, active: true, seen: job.feed!.lastSeenAt });
+      }
       if (ref && ref.jobId !== job.id) await closeUnreferenced(ref.jobId);
     }
     for (const sourceJobId of closures) {
@@ -97,6 +109,7 @@ async function persist(jobs: Job[], closures: string[]) {
       changed = true;
     }
   });
+  }
 }
 
 async function run() {

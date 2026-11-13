@@ -204,7 +204,7 @@ export async function postgresDiscoveryCounts(now: string, today: string, recent
       [now, since].map(value => JSON.stringify(value)),
     );
     if (since !== null) await client.query('SET LOCAL enable_indexscan = on');
-    const totalJobs = await count("SELECT count(*)::int AS count FROM app_documents WHERE collection = 'jobs'");
+    const totalJobs = await count(published, [JSON.stringify(now)]);
     await client.query('COMMIT');
     return { totalJobs, detectedToday, newJobs, newSince };
   } catch (error) {

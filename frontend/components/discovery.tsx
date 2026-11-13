@@ -386,7 +386,7 @@ export function Discovery({
     }
   }
   const radarMetrics = [
-    { label: 'Total matching opportunities', value: stats?.totalJobs, Icon: BriefcaseBusiness, tone: 'opportunities' },
+    { label: 'Active opportunities', value: stats?.totalJobs, Icon: BriefcaseBusiness, tone: 'opportunities' },
     { label: 'Detected today (UTC)', value: stats?.detectedToday, Icon: CalendarDays, tone: 'today' },
     { label: 'New in 10 minutes', value: displayedNewJobs, Icon: Clock3, tone: 'live' },
     { label: 'Countries / territories · includes eligibility', value: stats?.countries, Icon: Globe2, tone: 'coverage' },
