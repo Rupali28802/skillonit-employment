@@ -78,7 +78,8 @@ googleAuth.get('/google', async (req, res) => {
     const client = new OAuth2Client(c.GOOGLE_CLIENT_ID, c.GOOGLE_CLIENT_SECRET, c.GOOGLE_CALLBACK_URL);
     const { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
     const state = randomBytes(32).toString('base64url'), nonce = randomBytes(32).toString('base64url');
-    const returnTo = req.query.next === '/connect-email' ? '/connect-email' : undefined;
+    const next = req.query.next;
+    const returnTo = typeof next === 'string' && (next === '/connect-email' || /^\/jobs\/[A-Za-z0-9_-]{1,200}$/.test(next)) ? next : undefined;
     const registrationRole = z.enum(['student', 'employer']).catch('student').parse(req.query.role);
     const user = await currentUser();
     safeLog('info', 'google_oauth.start_session', {

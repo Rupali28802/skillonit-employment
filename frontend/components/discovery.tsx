@@ -423,7 +423,7 @@ export function Discovery({
         <div className="live-discovery-top">
           <div><div className="discovery-kicker"><Sparkles size={15}/> SKILLONIT EMPLOYMENT</div>
             <h1 id="live-discovery-heading">Find the Right Job. <span>Faster, Smarter, Globally.</span></h1>
-            <p>Discover jobs from around the world, explore roles that match your skills and take your next step—all in one place.</p></div>
+            <p>Discover jobs from around the world, explore roles that match your skills and take your next step—all in one place. <a href="#job-results">Browse jobs and apply</a>.</p></div>
           <span className={`discovery-status${discoveryConnected ? ' is-connected' : ''}`} aria-live="polite"><i/>{discoveryStatusLabel}</span>
         </div>
         <form className="discovery-search" onSubmit={event=>{event.preventDefault();void search();document.getElementById('job-results')?.scrollIntoView({behavior:'smooth',block:'start'});}}>

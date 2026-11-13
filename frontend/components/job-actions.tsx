@@ -38,6 +38,8 @@ export function JobActions({
   sample?: boolean;
   compact?: boolean;
 }) {
+  const jobPath = `/jobs/${encodeURIComponent(jobId)}`;
+  const signInUrl = `/login?${new URLSearchParams({ next: jobPath })}`;
   const [message, setMessage] = useState(''),
     [open, setOpen] = useState(false),
     [report, setReport] = useState(false),
@@ -54,7 +56,7 @@ export function JobActions({
         body: JSON.stringify({ jobId, ...(templateId?{templateId}:{}) }),
       });
       if (response.status === 401) {
-        window.location.href = '/login';
+        window.location.href = signInUrl;
         return;
       }
       const result = await readBrowserApiPayload<ApplicationPreview>(response);
@@ -78,7 +80,7 @@ export function JobActions({
         body: JSON.stringify({ jobId, confirmed: true,...(preview?.selectedTemplateId?{templateId:preview.selectedTemplateId}:{}),...(preview?.action==='send_authorized_email'&&subject&&emailBody?{subject,body:emailBody}:{}) }),
       });
       if (r.status === 401) {
-        window.location.href = '/login';
+        window.location.href = signInUrl;
         return;
       }
       const j = await readBrowserApiPayload<{ method: string; status: string }>(r);
@@ -161,7 +163,13 @@ export function JobActions({
             </div>}
             {!!preview.missingRequirements.length && <div className="notice small">
               <strong>Complete these before applying:</strong>
-              <ul>{preview.missingRequirements.map(item => <li key={item.code}><a href={item.href}>{item.label}</a></li>)}</ul>
+              <ul>{preview.missingRequirements.map(item => (
+                <li key={item.code}>
+                  <a href={['/profile', '/cvs', '/templates', '/mail', '/settings'].includes(item.href)
+                    ? `${item.href}?${new URLSearchParams({ returnToJob: jobPath })}`
+                    : item.href}>{item.label}</a>
+                </li>
+              ))}</ul>
             </div>}
           </div>}
           <p className="small">Nothing is submitted until you select the confirmation button below.</p>

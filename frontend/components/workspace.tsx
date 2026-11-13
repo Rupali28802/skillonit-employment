@@ -77,7 +77,7 @@ const adminLinkPermission: Record<string, string> = {
   'admin/audit':'audit.read','admin/privacy':'privacy.read','admin/roles':'admin.roles.manage','admin/settings':'configuration.read',
   'admin/referrals':'referrals.read',
 };
-export async function Workspace({ section }: { section: string }) {
+export async function Workspace({ section, returnToJob }: { section: string; returnToJob?: string | null }) {
   const user = await currentUser();
   if (!user) redirect('/login');
   const group = section.startsWith('admin')
@@ -123,6 +123,7 @@ export async function Workspace({ section }: { section: string }) {
           <div className="eyebrow">{group === 'student' ? 'MY CAREER WORKSPACE' : `${group.toUpperCase()} WORKSPACE`}</div>
           <h1>{links.find(([p]) => p === section)?.[1] || 'Workspace'}</h1>
           {group === 'student' && <p>Manage your job search, profile and applications from one focused place.</p>}
+          {group === 'student' && returnToJob && <Link href={returnToJob}>← Return to the job listing</Link>}
         </div>
         <div className="actions">
           <span className="pill workspace-user-pill">{user.name}</span>
