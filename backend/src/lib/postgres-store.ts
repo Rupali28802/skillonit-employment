@@ -33,22 +33,31 @@ const matches = (row: Row, query: Query): boolean => Object.entries(query).every
   return Array.isArray(actual) ? actual.includes(value) : actual === value;
 });
 function repository(db: Pool | PoolClient, keywordCandidates: string[][] = []): Repository {
+  // Keyword page and count run against the same filter in one read transaction.
+  const keywordRows = new WeakMap<Query, Promise<Row[]>>();
   const rows = async <T>(collection: string, query: Query) => {
     const filter = postgresReadFilter(query);
     if (collection === 'jobs' && keywordCandidates.length) {
+      const cached = keywordRows.get(query);
+      if (cached) return await cached as T[];
       const values = [collection, ...filter.values];
       const terms = keywordCandidates.map(alternatives => '(' + alternatives.map(word => {
-        values.push('%' + word.replace(/[\\%_]/g, '\\$&') + '%');
-        return `search_text ILIKE $${values.length}`;
+        values.push(word.toLowerCase().split(/\s+/).map(token => token + ':*').join(' & '));
+        return `to_tsvector('simple', search_text) @@ to_tsquery('simple', $${values.length})`;
       }).join(' OR ') + ')');
-      return (await db.query<{ data: T }>(
+      const pending = db.query<{ data: Row }>(
         `WITH candidates AS MATERIALIZED (
           SELECT id FROM job_keyword_projection WHERE ${terms.join(' AND ')}
         )
-        SELECT data FROM candidates JOIN app_documents USING (id)
-        WHERE collection=$1${filter.sql}`,
+        SELECT document.data FROM candidates
+        CROSS JOIN LATERAL (
+          SELECT data FROM app_documents WHERE collection=$1 AND id=candidates.id${filter.sql}
+          LIMIT 1
+        ) AS document`,
         values,
-      )).rows.map(row => row.data);
+      ).then(result => result.rows.map(row => row.data));
+      keywordRows.set(query, pending);
+      return await pending as T[];
     }
     return (await db.query<{ data: T }>('SELECT data FROM app_documents WHERE collection=$1' + filter.sql, [collection, ...filter.values])).rows.map(row => row.data);
   };
