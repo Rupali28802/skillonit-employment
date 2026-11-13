@@ -39,10 +39,14 @@ function repository(db: Pool | PoolClient, keywordCandidates: string[][] = []): 
       const values = [collection, ...filter.values];
       const terms = keywordCandidates.map(alternatives => '(' + alternatives.map(word => {
         values.push('%' + word.replace(/[\\%_]/g, '\\$&') + '%');
-        return `public_job_keyword_text(data) ILIKE $${values.length}`;
+        return `search_text ILIKE $${values.length}`;
       }).join(' OR ') + ')');
       return (await db.query<{ data: T }>(
-        `SELECT data FROM app_documents WHERE collection=$1 AND collection='jobs'${filter.sql} AND ${terms.join(' AND ')}`,
+        `WITH candidates AS MATERIALIZED (
+          SELECT id FROM job_keyword_projection WHERE ${terms.join(' AND ')}
+        )
+        SELECT data FROM candidates JOIN app_documents USING (id)
+        WHERE collection=$1${filter.sql}`,
         values,
       )).rows.map(row => row.data);
     }
