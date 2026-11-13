@@ -186,19 +186,19 @@ export default async function Page({
     privacy: {
       title: 'Your privacy and control.',
       intro:
-        'This development preview uses local test data. Production privacy terms, retention schedules and jurisdiction-specific notices must be reviewed before launch.',
+        'Learn how Skillonit Employment uses your information to help you find jobs, manage your profile and prepare applications.',
       sections: [
         [
           'Data used by the platform',
-          'Account identity, candidate-confirmed experience, preferences and application events support the workflows you choose. Do not enter real sensitive documents into a demo.',
+          'The platform uses account details, job preferences, profile information and application activity to provide your workspace and support your applications. Upload only documents relevant to your job search.',
         ],
         [
           'Access and exports',
-          'Your settings include an export of your profile and application records and a request for account deletion. Some production records may require retention for legal or audit obligations.',
+          'Use workspace settings to export your information or request account deletion. You can also review and change your consent choices.',
         ],
         [
           'Email and automation',
-          'Mailbox access must use OAuth and separate consent. No mailbox credentials should be placed in your profile, message or source code.',
+          'If you connect Gmail, Skillonit Employment requests permission to send email on your behalf. When you authorize an email application, the recipient receives your application message and any documents included with it. You can disconnect Gmail from your workspace.',
         ],
         [
           'Contact',
@@ -209,11 +209,11 @@ export default async function Page({
     terms: {
       title: 'Platform terms and availability.',
       intro:
-        'This is a development preview. Final service terms and commercial policies require review before production launch.',
+        'Skillonit Employment helps candidates discover vacancies, prepare applications and track their progress.',
       sections: [
         [
           'Job discovery',
-          'Sample vacancies are clearly marked and are not real hiring opportunities. Production vacancies require approved sources or verified employer submissions.',
+          'Vacancies can change or close after they appear on the platform. Check the employer’s listing for current requirements and deadlines.',
         ],
         [
           'Candidate responsibility',
@@ -221,7 +221,7 @@ export default async function Page({
         ],
         [
           'Subscriptions',
-          'Final prices and billing periods are not configured. No plan should be advertised as paid or activated based only on a checkout redirect.',
+          'Review the plan details and any price and billing period shown before you subscribe.',
         ],
         [
           'Acceptable use',
