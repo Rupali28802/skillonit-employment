@@ -81,13 +81,9 @@ try {
       }
       downloaded += page.data.length;
       let inserted = 0;
-      for (const job of candidates.values()) {
-        const added = await transaction(async r => {
-          if (await r.get<Job>('jobs', job.id)) return false;
-          await r.put('jobs', job);
-          return true;
-        });
-        if (added) inserted++;
+      const verified = [...candidates.values()];
+      for (let offset = 0; offset < verified.length; offset += 10) {
+        inserted += await publishBatch(verified.slice(offset, offset + 10));
       }
       const published = await transaction(async r => {
         if (candidates.size) await r.put('jobEngineState', { id: 'feed-version', version: randomUUID(), updatedAt: new Date().toISOString() });
@@ -103,4 +99,21 @@ try {
   }
 } finally {
   await closeStore();
+}
+
+async function publishBatch(jobs: Job[]): Promise<number> {
+  try {
+    return await transaction(async r => {
+      const existing = await r.find<Job>('jobs', { id: { $in: jobs.map(job => job.id) } }, jobs.length);
+      const byId = new Map(existing.map(job => [job.id, job]));
+      const missing = jobs.filter(job => !byId.has(job.id));
+      if (missing.length) await r.putMany('jobs', missing);
+      // A restarted page can contain rows already written before its checkpoint.
+      return missing.length + existing.filter(job => job.feed?.sourceId === source.id && job.status === 'published').length;
+    });
+  } catch (error) {
+    if ((error as { code?: string }).code !== '57014' || jobs.length < 2) throw error;
+    const midpoint = Math.ceil(jobs.length / 2);
+    return await publishBatch(jobs.slice(0, midpoint)) + await publishBatch(jobs.slice(midpoint));
+  }
 }
