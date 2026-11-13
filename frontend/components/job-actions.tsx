@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import Link from 'next/link';
 import {
   Dialog,
   DialogContent,
@@ -41,6 +42,7 @@ export function JobActions({
   const jobPath = `/jobs/${encodeURIComponent(jobId)}`;
   const signInUrl = `/login?${new URLSearchParams({ next: jobPath })}`;
   const [message, setMessage] = useState(''),
+    [externalPlanSaved, setExternalPlanSaved] = useState(false),
     [open, setOpen] = useState(false),
     [report, setReport] = useState(false),
     [busy, setBusy] = useState(false),
@@ -48,6 +50,7 @@ export function JobActions({
     [subject,setSubject]=useState(''),[emailBody,setEmailBody]=useState('');
   async function review(templateId?:string) {
     setBusy(true);
+    setExternalPlanSaved(false);
     setMessage('');
     try {
       const response = await fetch('/api/v1/applications/preview', {
@@ -86,11 +89,12 @@ export function JobActions({
       const j = await readBrowserApiPayload<{ method: string; status: string }>(r);
       if (!r.ok) throw Error(j.error?.message);
       if (!j.data) throw Error('Application could not be completed. Please try again.');
+      setExternalPlanSaved(!sample && j.data.method === 'external');
       setMessage(
         sample
           ? 'Demo application recorded. No real employer has been contacted.'
           : j.data.method === 'external'
-            ? 'Application plan saved. It still requires an authorized employer-form integration or your further action; no data was submitted externally.'
+            ? 'Application plan saved. Open your application tracker to continue on the employer’s website.'
           : j.data.method === 'email' && j.data.status === 'QUEUED'
             ? 'Application confirmed and queued to send from your connected Gmail.'
             : 'Application recorded: ' + j.data.status.replaceAll('_', ' '),
@@ -119,6 +123,7 @@ export function JobActions({
       {message && (
         <p className="notice" aria-live="polite" style={{ marginTop: 15 }}>
           {message}
+          {externalPlanSaved && <> <Link href="/applications">View applications</Link></>}
         </p>
       )}
       <Dialog open={open} onOpenChange={setOpen}>
