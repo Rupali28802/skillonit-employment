@@ -154,7 +154,13 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
   // Keep the common search-box query on the database. Facets, semantic search,
   // and non-default ordering retain the existing repository matcher because
   // they carry more detailed Mongo-compatible semantics.
-  const simpleKeywordSearch = optimizedPublicSearch && postgresConfigured() && words.length > 0 && !semantic &&
+  const indexedKeywords = process.env.ENABLE_POSTGRES_KEYWORD_PREFILTER === 'true' && !semantic
+    ? words.filter(word => /^[a-z0-9]{3,}$/i.test(word)).map(word => {
+        const country = normalizeCountry(word);
+        return country && country !== word ? [word, country] : [word];
+      })
+    : [];
+  const simpleKeywordSearch = !indexedKeywords.length && optimizedPublicSearch && postgresConfigured() && words.length > 0 && !semantic &&
     [...params.keys()].every(key => ['q', 'page', 'limit', 'sort'].includes(key)) &&
     params.get('sort') !== 'salary';
   if (simpleKeywordSearch) {
@@ -196,7 +202,7 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
     const run = async (r: Parameters<Parameters<typeof read>[0]>[0]) => ({
       jobs: await r.page<Job>('jobs', filter, sort, (page - 1) * limit, limit), total: await r.count('jobs', filter),
     });
-    return postgresConfigured() ? postgresReadWithTimeout(8000, run) : read(run);
+    return postgresConfigured() ? postgresReadWithTimeout(8000, run, indexedKeywords) : read(run);
   };
   // Cache only the anonymous/default public listing in production. Faceted and
   // semantic searches remain live, while repeated homepage refreshes share one
@@ -212,18 +218,19 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
   const feedVersion = isDefaultPublicFeed
     ? await read(r => r.get<{ version?: string }>('jobEngineState', 'feed-version'))
     : null;
-  const result = postgresConfigured() && isDefaultPublicFeed
-    ? await cachedPublicFeed(`${publicFeedCacheKey(params)}:${feedVersion?.version || 'initial'}`, load)
-    : await load();
   const plans = await configuredPlans();
   const relevant = !semantic && params.get('sort') === 'relevant' && words.length > 0;
   if (semantic || relevant) {
     // Apply every eligibility/facet filter before ranking or pagination.
-    const jobs = await read(r => r.find<Job>('jobs',filter,10000));
+    const find = (r: Parameters<Parameters<typeof read>[0]>[0]) => r.find<Job>('jobs',filter,10000);
+    const jobs = postgresConfigured() ? await postgresReadWithTimeout(8000, find, indexedKeywords) : await read(find);
     const scores = semantic ? new Map(semantic.map(m=>[m.id,m.score]))
       : new Map(jobs.map(job => [job.id, keywordRelevance(job, words, query, now.getTime())]));
     jobs.sort((a,b)=>(scores.get(b.id)||0)-(scores.get(a.id)||0)||a.id.localeCompare(b.id));
     return {jobs:jobs.slice((page-1)*limit,page*limit).map(j=>({ ...publicJob(j,user,plans), ...(semantic ? { semanticScore: scores.get(j.id) } : { relevanceScore: scores.get(j.id) }) })),total:jobs.length,page,limit,hasMore:page*limit<jobs.length,searchMode:semantic?'semantic':'relevant',...(semantic ? { indexScope:'public indexed vacancies' } : {})};
   }
+  const result = postgresConfigured() && isDefaultPublicFeed
+    ? await cachedPublicFeed(`${publicFeedCacheKey(params)}:${feedVersion?.version || 'initial'}`, load)
+    : await load();
   return { jobs: result.jobs.map(j => publicJob(j, user, plans)), total: result.total, page, limit, hasMore: page * limit < result.total };
 }
