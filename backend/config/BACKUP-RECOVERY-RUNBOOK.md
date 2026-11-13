@@ -4,6 +4,8 @@ Production uses Lightsail managed PostgreSQL. Use managed backups and restrict r
 
 Set `BACKUP_ENABLED=true` after verifying backup retention and completing an isolated restore. Use **Restore to new database** and keep the restored database private. Validate representative collection counts, critical indexes, authentication isolation, and a representative read against the restored database. Record the recovery point, restore duration, and outcome through `POST /api/v1/admin/recovery-drills`. Keep credentials and candidate data out of drill notes. The readiness endpoint also checks for a recent successful drill within the configured RPO and RTO and for pending dead-letter work.
 
+Use the authenticated `GET /api/v1/admin/production-readiness` endpoint to check recovery policy, drill status, and the pending dead-letter count.
+
 In PostgreSQL, the `data-retention` worker prunes expired documents in bounded batches. Verify that the production worker is scheduled and that its runs complete. Audit records default to 365 days and operational worker and ingestion records default to 90 days. Candidate CV retention uses the CV deletion worker and provider deletion receipts.
 
 For deployments using dedicated workers, build the backend and install the data-retention service and timer from this directory into `/etc/systemd/system`. Before the first production run, verify a recoverable database backup and check whether another worker already schedules data retention. Run `sudo systemctl daemon-reload` and `sudo systemctl enable --now skillonit-employment-data-retention.timer`. Check the service journal and confirm a completed data-retention run in the admin queue view.

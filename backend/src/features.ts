@@ -32,6 +32,7 @@ import { queueOverview } from './lib/queue-infrastructure.js';
 import { runAssistant } from './lib/ai-assistant.js';
 import { analyticsOverview, recordAnalyticsSnapshot } from './lib/analytics-platform.js';
 import { observabilityOverview } from './lib/observability.js';
+import { productionReadiness, recordRecoveryDrill } from './lib/production-readiness.js';
 
 const searchSchema = z.object({
   name: z.string().trim().min(1).max(100),
@@ -83,6 +84,14 @@ export async function featureRoute(
   params = new URLSearchParams(),
 ): Promise<{ data: unknown; status?: number } | undefined> {
   const parts = p.split('/');
+  if (p === 'admin/production-readiness' && method === 'GET') {
+    const user = await requireUser('admin');
+    return { data: await productionReadiness(user) };
+  }
+  if (p === 'admin/recovery-drills' && method === 'POST') {
+    const user = await requireUser('admin');
+    return { data: await recordRecoveryDrill(user, await body()), status: 201 };
+  }
   if (p === 'admin/queue/status' && method === 'GET') {
     const user = await requireUser('admin'); return { data: await queueOverview(user) };
   }

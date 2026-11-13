@@ -17,9 +17,27 @@ test('retention, recovery readiness, TTL indexes and graceful shutdown', async (
     const { runRetentionMaintenance } = await import('../src/lib/data-retention.js');
     const removed = await runRetentionMaintenance(); assert.equal(removed.auditLogs, 1);
     assert.equal(await store.read(r => r.get('auditLogs', 'old')), null); assert.ok(await store.read(r => r.get('auditLogs', 'fresh')));
-    const { recordRecoveryDrill, productionReadiness } = await import('../src/lib/production-readiness.js');
-    const now = Date.now(); await recordRecoveryDrill(admin, { recoveryPointAt: new Date(now - 30 * 60000).toISOString(), backupCreatedAt: new Date(now - 20 * 60000).toISOString(), restoreStartedAt: new Date(now - 10 * 60000).toISOString(), restoreCompletedAt: new Date(now - 60000).toISOString(), status: 'passed' });
-    const readiness = await productionReadiness(admin); assert.equal(readiness.ready, true); assert.equal(readiness.checks.recoveryObjectives, true);
+    const { featureRoute } = await import('../src/features.js');
+    const { requestContext } = await import('../src/request-context.js');
+    const { digest } = await import('../src/lib/security.js');
+    const token = 'recovery-test-session';
+    const now = Date.now();
+    await store.transaction(r => r.put('sessions', { id: digest(token), userId: admin.id, expiresAt: new Date(now + 60000).toISOString() }));
+    const context = { request: { headers: {} }, response: { locals: {} } } as Parameters<typeof requestContext.run>[0];
+    const drill = { recoveryPointAt: new Date(now - 30 * 60000).toISOString(), backupCreatedAt: new Date(now - 20 * 60000).toISOString(), restoreStartedAt: new Date(now - 10 * 60000).toISOString(), restoreCompletedAt: new Date(now - 60000).toISOString(), status: 'passed' };
+    await requestContext.run(context, async () => {
+      await assert.rejects(featureRoute('admin/production-readiness', 'GET', async () => null), { status: 401 });
+      await assert.rejects(featureRoute('admin/recovery-drills', 'POST', async () => drill), { status: 401 });
+      context.request.headers.cookie = `skillonit_session=${token}`;
+      assert.equal((await featureRoute('admin/recovery-drills', 'POST', async () => drill))?.status, 201);
+      const readiness = await featureRoute('admin/production-readiness', 'GET', async () => null);
+      assert.deepEqual(readiness?.data, {
+        ready: true,
+        checks: { persistence: true, managedBackups: true, recentRestoreDrill: true, recoveryObjectives: true, deadLettersClear: true },
+        recovery: { rpoMinutes: 60, rtoMinutes: 240, backupRetentionDays: 35, latestDrillAt: drill.restoreCompletedAt },
+        pendingDeadLetters: 0,
+      });
+    });
     const { MongoClient } = await import('mongodb'); const client = new MongoClient(process.env.MONGODB_URI); await client.connect();
     for (const name of ['auditLogs', 'workerRuns', 'jobIngestionEvents']) assert.ok((await client.db(process.env.MONGODB_DATABASE).collection(name).indexes()).some(i => i.key.expiresAtDate === 1 && i.expireAfterSeconds === 0));
     await client.close();
