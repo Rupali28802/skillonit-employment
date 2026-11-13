@@ -5,7 +5,7 @@ export function postgresReadFilter(query: Record<string, unknown>) {
   const clauses: string[] = [];
   let complete = true;
   const scalar = (value: unknown) => typeof value === 'string' || typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value));
-  const indexed = new Set(['status','sample','expiresAt','discoveredAt','sourcePostedAt']);
+  const indexed = new Set(['status','sample','expiresAt','discoveredAt','sourcePostedAt','employerId']);
   // Equality for these JSON arrays means membership under MongoDB semantics.
   // Leave them to the repository matcher unless a dedicated query handles it.
   const membershipFields = new Set(['eligibleCountries', 'skills']);

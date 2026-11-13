@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import Link from 'next/link';
 import {
   Dialog,
   DialogContent,
@@ -38,7 +39,10 @@ export function JobActions({
   sample?: boolean;
   compact?: boolean;
 }) {
+  const jobPath = `/jobs/${encodeURIComponent(jobId)}`;
+  const signInUrl = `/login?${new URLSearchParams({ next: jobPath })}`;
   const [message, setMessage] = useState(''),
+    [externalPlanSaved, setExternalPlanSaved] = useState(false),
     [open, setOpen] = useState(false),
     [report, setReport] = useState(false),
     [busy, setBusy] = useState(false),
@@ -46,6 +50,7 @@ export function JobActions({
     [subject,setSubject]=useState(''),[emailBody,setEmailBody]=useState('');
   async function review(templateId?:string) {
     setBusy(true);
+    setExternalPlanSaved(false);
     setMessage('');
     try {
       const response = await fetch('/api/v1/applications/preview', {
@@ -54,7 +59,7 @@ export function JobActions({
         body: JSON.stringify({ jobId, ...(templateId?{templateId}:{}) }),
       });
       if (response.status === 401) {
-        window.location.href = '/login';
+        window.location.href = signInUrl;
         return;
       }
       const result = await readBrowserApiPayload<ApplicationPreview>(response);
@@ -78,17 +83,18 @@ export function JobActions({
         body: JSON.stringify({ jobId, confirmed: true,...(preview?.selectedTemplateId?{templateId:preview.selectedTemplateId}:{}),...(preview?.action==='send_authorized_email'&&subject&&emailBody?{subject,body:emailBody}:{}) }),
       });
       if (r.status === 401) {
-        window.location.href = '/login';
+        window.location.href = signInUrl;
         return;
       }
       const j = await readBrowserApiPayload<{ method: string; status: string }>(r);
       if (!r.ok) throw Error(j.error?.message);
       if (!j.data) throw Error('Application could not be completed. Please try again.');
+      setExternalPlanSaved(!sample && j.data.method === 'external');
       setMessage(
         sample
           ? 'Demo application recorded. No real employer has been contacted.'
           : j.data.method === 'external'
-            ? 'Application plan saved. It still requires an authorized employer-form integration or your further action; no data was submitted externally.'
+            ? 'Application plan saved. Open your application tracker to continue on the employer’s website.'
           : j.data.method === 'email' && j.data.status === 'QUEUED'
             ? 'Application confirmed and queued to send from your connected Gmail.'
             : 'Application recorded: ' + j.data.status.replaceAll('_', ' '),
@@ -117,6 +123,7 @@ export function JobActions({
       {message && (
         <p className="notice" aria-live="polite" style={{ marginTop: 15 }}>
           {message}
+          {externalPlanSaved && <> <Link href="/applications">View applications</Link></>}
         </p>
       )}
       <Dialog open={open} onOpenChange={setOpen}>
@@ -161,7 +168,13 @@ export function JobActions({
             </div>}
             {!!preview.missingRequirements.length && <div className="notice small">
               <strong>Complete these before applying:</strong>
-              <ul>{preview.missingRequirements.map(item => <li key={item.code}><a href={item.href}>{item.label}</a></li>)}</ul>
+              <ul>{preview.missingRequirements.map(item => (
+                <li key={item.code}>
+                  <a href={['/profile', '/cvs', '/templates', '/mail', '/settings'].includes(item.href)
+                    ? `${item.href}?${new URLSearchParams({ returnToJob: jobPath })}`
+                    : item.href}>{item.label}</a>
+                </li>
+              ))}</ul>
             </div>}
           </div>}
           <p className="small">Nothing is submitted until you select the confirmation button below.</p>

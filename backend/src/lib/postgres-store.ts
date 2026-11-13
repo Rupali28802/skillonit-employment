@@ -81,6 +81,26 @@ function repository(db: Pool | PoolClient): Repository {
   };
 }
 export const postgresRead = async <T>(fn:(repo:Repository)=>Promise<T>) => fn(repository(database()));
+
+export async function postgresAdminJobPage<T>(cursor: string, limit: number, status?: string, query?: string) {
+  const values: unknown[] = [cursor, limit];
+  const clauses = ["collection='jobs'", 'id > $1'];
+  if (status) {
+    values.push(JSON.stringify(status));
+    clauses.push(`(data #> ARRAY['status']) = $${values.length}::jsonb`);
+  }
+  if (query) {
+    values.push(query);
+    const parameter = `$${values.length}`;
+    const fields = ['id', 'email', 'name', 'company', 'title', 'domain', 'provider', 'board'];
+    clauses.push(`(${fields.map(field => `strpos(lower(coalesce(data->>'${field}', '')), lower(${parameter}::text)) > 0`).join(' OR ')})`);
+  }
+  const result = await database().query<{ data: T }>(
+    `SELECT data FROM app_documents WHERE ${clauses.join(' AND ')} ORDER BY id LIMIT $2`,
+    values,
+  );
+  return result.rows.map(row => row.data);
+}
 // Public search must never leave an unbounded read running after a browser,
 // proxy, or client disconnects. Keep the limit scoped to this explicit helper;
 // discovery and transactional writes retain their own execution budgets.
@@ -346,6 +366,7 @@ export async function bootstrapPostgres() {
     // expression index, PostgreSQL must scan the full jobs collection for every
     // pending-review count and can exceed the reverse-proxy timeout.
     await ensurePostgresIndex(db, 'app_documents_collection_status_idx', `CREATE INDEX app_documents_collection_status_idx ON app_documents(collection, (data #> ARRAY['status']))`);
+    await ensurePostgresIndex(db, 'app_documents_collection_employer_idx', `CREATE INDEX app_documents_collection_employer_idx ON app_documents(collection, (data #> ARRAY['employerId']))`);
     // A feed refresh closes only variants for the current source.  This index
     // keeps that reconciliation bounded instead of scanning every historical
     // feed variant on each short-interval discovery run.

@@ -7,6 +7,7 @@ import { Workspace } from '@/components/workspace';
 import { PublicPricing } from '@/components/public-pricing';
 import { ReferralAttribution } from '@/components/referral-attribution';
 import { demoMode, configuredPlans, currentUser } from '@/lib/api';
+import { jobReturnPath } from '@/lib/auth-return';
 export const dynamic = 'force-dynamic';
 export async function generateMetadata({
   params,
@@ -28,7 +29,7 @@ export default async function Page({
   searchParams,
 }: {
   params: Promise<{ page: string[] }>;
-  searchParams: Promise<{ ref?: string | string[] }>;
+  searchParams: Promise<{ ref?: string | string[]; returnToJob?: string | string[] }>;
 }) {
   const page = (await params).page.join('/');
   const applicationTemplatesPage = /^applications\/templates(?:\/new|\/[^/]+\/edit)?$/.test(page);
@@ -96,7 +97,7 @@ export default async function Page({
       'admin/referrals',
     ].includes(page)
   )
-    return <Workspace section={page} />;
+    return <Workspace section={page} returnToJob={jobReturnPath((await searchParams).returnToJob)} />;
   if (page === 'pricing') {
     const [plans, user] = await Promise.all([configuredPlans(), currentUser()]);
     return <PublicPricing plans={plans} currentPlan={user?.role === 'student' ? user.plan : null} role={user?.role} />;

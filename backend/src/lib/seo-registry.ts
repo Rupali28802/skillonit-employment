@@ -51,7 +51,7 @@ const clean = (value: unknown) => typeof value === 'string' ? value.trim().repla
 const labelType = (value: string) => value.split(/[-_ ]+/).filter(Boolean).map(word => word[0].toUpperCase() + word.slice(1).toLowerCase()).join(' ');
 const validCity = (value: string) => value.length >= 2 && value.length <= 80 && /^[\p{L}\p{M} .'-]+$/u.test(value) && !/^(unknown|not specified|remote|multiple locations)$/i.test(value);
 const mapPush = (map: Map<string, Job[]>, key: string, job: Job) => { const list = map.get(key) ?? []; list.push(job); map.set(key, list); };
-export const isSeoJobEligible = (job: Job) => job.status === 'published' && job.trust === 'verified' && !job.sample && isRecent(job) && job.feed?.publicListing === true && Boolean(job.sourcePostedAt) && Boolean(normalizeCountry(clean(job.country))) && Boolean(clean(job.title)) && Boolean(clean(job.description));
+export const isSeoJobEligible = (job: Job, now = Date.now()) => job.status === 'published' && job.trust === 'verified' && !job.sample && isRecent(job, 90, now) && job.feed?.publicListing === true && Boolean(job.sourcePostedAt) && Boolean(normalizeCountry(clean(job.country))) && Boolean(clean(job.title)) && Boolean(clean(job.description));
 
 function page(input: Omit<SeoRegistryPage, 'publicationStatus' | 'indexable' | 'sitemapEligible' | 'lastVerifiedAt' | 'contentVersion' | 'jobIds'> & { jobs: Job[] }, now: string): SeoRegistryPage {
   const {jobs,...metadata}=input;
@@ -93,7 +93,7 @@ export function buildSeoRegistry(jobs: Job[], generatedAt = new Date().toISOStri
   for(const [workArrangement,list] of arrangements)if(list.length>=MIN_FACET)add(page({pageType:'work-arrangement',canonicalPath:`/jobs/work-arrangement/${slug(workArrangement)}`,workArrangement,intent:'Work-arrangement discovery',title:`${workArrangement} Jobs | SkillOnIT Employment`,description:`Explore current ${workArrangement.toLowerCase()} jobs on SkillOnIT Employment. Browse relevant roles, locations and application options.`,h1:`${workArrangement} Jobs`,topics:['jobs',workArrangement],jobCount:list.length,jobs:list},generatedAt));
   for(const [experienceLevel,list] of experience)if(list.length>=MIN_FACET)add(page({pageType:'experience',canonicalPath:`/jobs/experience/${slug(experienceLevel)}`,experienceLevel,intent:'Experience-level discovery',title:`${experienceLevel} Jobs | SkillOnIT Employment`,description:`Explore current jobs with structured ${experienceLevel.toLowerCase()} experience requirements on SkillOnIT Employment.`,h1:`${experienceLevel} Jobs`,topics:['jobs',experienceLevel],jobCount:list.length,jobs:list},generatedAt));
   pages.sort((a,b)=>a.canonicalPath.localeCompare(b.canonicalPath));
-  const eligibleJobIds=current.filter(isSeoJobEligible).map(job=>job.id).sort();
+  const eligibleJobIds=current.filter(job=>isSeoJobEligible(job, Date.parse(generatedAt))).map(job=>job.id).sort();
   return { generatedAt, expiresAt:new Date(Date.parse(generatedAt)+TTL_MS).toISOString(), referenceCountries:countryEntries.length, countriesWithJobs:countries.size, approvedCountries:pages.filter(item=>item.pageType==='country').length, pages, eligibleJobIds, noindexJobs:current.length-eligibleJobIds.length, duplicatesPrevented, totalJobs:jobs.length, scannedJobs:jobs.length, truncated };
 }
 

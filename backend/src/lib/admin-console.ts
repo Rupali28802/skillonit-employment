@@ -13,6 +13,7 @@ import { ApiError, audit, id, safeUser } from './security.js';
 import { revokeSessions } from './auth-lifecycle.js';
 import { assignAdminRole, listAdminRoles, requireAdminPermission, resolveAdminAccess, type AdminPermission } from './admin-rbac.js';
 import { canonicalIdentityFingerprint } from './job-deduplication.js';
+import { postgresAdminJobPage, postgresConfigured } from './postgres-store.js';
 
 type AdminList = { items: unknown[]; nextCursor: string | null };
 type AuditRecord = Row & { actorId?: string; action?: string; entityId?: string; createdAt?: string };
@@ -240,7 +241,14 @@ export async function verifyAdminEmployer(actor: User, employerId: string, input
   });
 }
 
-export const listAdminJobs = (actor: User, params: URLSearchParams) => listRows(actor, 'jobs', params);
+export async function listAdminJobs(actor: User, params: URLSearchParams): Promise<AdminList> {
+  if (!postgresConfigured()) return listRows(actor, 'jobs', params);
+  const input = pageSchema.parse(Object.fromEntries(params));
+  await read(r => requireAdmin(r, actor, 'jobs.read'));
+  const rows = await postgresAdminJobPage<Job>(input.cursor, input.limit + 1, input.status, input.query);
+  const items = rows.slice(0, input.limit);
+  return { items, nextCursor: rows.length > input.limit ? items.at(-1)?.id ?? null : null };
+}
 
 /**
  * Creates a referral from facts checked by an administrator. It is never

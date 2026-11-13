@@ -1,4 +1,5 @@
 'use client';
+import { authReturnPath } from '@/lib/auth-return';
 import { display } from '@/lib/display';
 import { readBrowserApiPayload } from '@/lib/browser-api';
 import { useState, useSyncExternalStore } from 'react';
@@ -270,7 +271,8 @@ export function AuthForm({
     [showPassword, setShowPassword] = useState(false),
     [accountType, setAccountType] = useState('student');
   const authError = useSyncExternalStore(noAuthSubscription, () => new URLSearchParams(window.location.search).get('auth_error'), () => null);
-  const nextPath = useSyncExternalStore(noAuthSubscription, () => new URLSearchParams(window.location.search).get('next') === '/connect-email' ? '/connect-email' : null, () => null);
+  const nextPath = useSyncExternalStore(noAuthSubscription, () => authReturnPath(new URLSearchParams(window.location.search).get('next')), () => null);
+  const nextQuery = nextPath ? `?${new URLSearchParams({ next: nextPath })}` : '';
   const providerMessage = authError === 'google_email_proof' ? 'Sign in with your password first to link this Google email safely.' : authError ? 'Google sign-in was not completed. Please try again.' : '';
   return (
     <div className="auth-page">
@@ -322,7 +324,7 @@ export function AuthForm({
               </p>
               <Link
                 className="auth-outline"
-                href={register ? '/login' : '/register'}
+                href={(register ? '/login' : '/register') + nextQuery}
               >
                 {register ? 'Sign in' : 'Create an account'}
                 <ArrowRight size={16} />
@@ -435,7 +437,7 @@ export function AuthForm({
                 if (!user) throw Error('The sign-in response was incomplete. Please try again.');
                 if (register && !user.verified) {
                   sessionStorage.setItem('skillonit-verification-email', typeof data.email === 'string' ? data.email : '');
-                  window.location.assign('/verify-email');
+                  window.location.assign('/verify-email' + nextQuery);
                 } else
                   window.location.href = nextPath ||
                     (user.role === 'employer'
@@ -533,7 +535,7 @@ export function AuthForm({
           )}
           <p className="auth-bottom-link">
             {register ? 'Already have an account?' : 'New to SkillonIT?'}{' '}
-            <Link href={register ? '/login' : '/register'}>
+            <Link href={(register ? '/login' : '/register') + nextQuery}>
               {register ? 'Sign in' : 'Create an account'}
             </Link>
           </p>
@@ -558,7 +560,7 @@ export function AuthForm({
                 endpoint="auth/demo"
                 label={'Demo ' + role}
                 payload={{ role }}
-                redirect={role === 'student' ? '/dashboard' : '/' + role}
+                redirect={role === 'student' ? nextPath || '/dashboard' : '/' + role}
               />
             ))}
           </div>
