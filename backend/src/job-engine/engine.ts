@@ -1,6 +1,7 @@
+import { isDeepStrictEqual } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { read, transaction, type Repository } from '../lib/store.js';
-import { expireJobsBatch } from '../lib/lifecycle.js';
+import { expectedJobExpiry, expireJobsBatch } from '../lib/lifecycle.js';
 import type { Job } from '../lib/domain.js';
 import { fetchFeed, FeedError, type FeedBatch } from './adapters.js';
 import { normalize, duplicateKey, hash } from './normalize.js';
@@ -118,12 +119,30 @@ async function ingest(source: FeedSource, batch: FeedBatch, owner: string, runId
         } else if (existing.feed) {
           const blocked = existing.status === 'disabled' || existing.status === 'review' || (existing.status === 'closed' && !existing.feed.closedByEngine);
           const verificationUnchanged = existing.trust === 'verified' && verificationContentUnchanged(existing, candidate);
-          jobWrites.set(jobId, { ...candidate, id: jobId, discoveredAt: existing.discoveredAt,
+          const updated: Job = { ...candidate, id: jobId, discoveredAt: existing.discoveredAt,
             ...(existing.sourcePostedAt ? { sourcePostedAt: existing.sourcePostedAt } : {}),
             status: blocked ? existing.status : candidate.status,
             trust: verificationUnchanged ? 'verified' : candidate.trust,
-            ...(verificationUnchanged && existing.verification ? { verification: existing.verification } : {}) });
-          if (isOtherSource) result.duplicates++; else result.updated++;
+            ...(verificationUnchanged && existing.verification ? { verification: existing.verification } : {}) };
+          updated.expiresAt = expectedJobExpiry(updated);
+          // Variant tracking records every poll. Refresh the job's coverage
+          // timestamp at least daily, and persist content changes immediately.
+          const lastSeen = Date.parse(existing.feed.lastSeenAt);
+          const comparable = {
+            ...updated,
+            feed: { ...updated.feed, lastSeenAt: existing.feed.lastSeenAt },
+            risk: updated.risk && { ...updated.risk, assessedAt: existing.risk?.assessedAt },
+            normalizedFacts: updated.normalizedFacts && {
+              ...updated.normalizedFacts, normalizedAt: existing.normalizedFacts?.normalizedAt,
+            },
+          };
+          if (Date.now() - lastSeen < 86_400_000 &&
+              isDeepStrictEqual(JSON.parse(JSON.stringify(existing)), JSON.parse(JSON.stringify(comparable)))) {
+            if (isOtherSource) result.duplicates++;
+          } else {
+            jobWrites.set(jobId, updated);
+            if (isOtherSource) result.duplicates++; else result.updated++;
+          }
         } else result.duplicates++;
         const variant = { id: variantId, sourceId: source.id, jobId, lastSeenRun: runId, missing: 0, active: true };
         variantWrites.push(variant); variants.set(variantId, variant);
