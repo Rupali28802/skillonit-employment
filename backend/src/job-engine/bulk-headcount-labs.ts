@@ -15,7 +15,7 @@ const source: FeedSource = {
   enabled: true, approved: true, publicListing: true, publish: true,
   policyEvidence: 'https://headcountlabs.com/license/', intervalMinutes: 60, maxPages: 4,
 };
-const checkpointId = 'headcount-labs-greenhouse-' + new Date().toISOString().slice(0, 7);
+const checkpointId = 'headcount-labs-greenhouse-v2-' + new Date().toISOString().slice(0, 7);
 const boards = new Map<string, Map<number, BoardJob>>();
 
 async function loadBoard(board: string) {
@@ -35,7 +35,10 @@ async function loadBoard(board: string) {
 async function verify(listing: Listing) {
   for (const posting of listing.postings ?? []) {
     if (posting.source !== 'greenhouse' || posting.attribution?.required) continue;
-    const match = posting.posting_url?.value?.match(/^https:\/\/(?:boards|job-boards)\.greenhouse\.io\/([a-z0-9_-]+)\/jobs\/(\d+)(?:[?#]|$)/i);
+    const listingUrl = posting.posting_url?.value ?? '';
+    const match = listingUrl.match(/^https:\/\/(?:boards|job-boards)\.greenhouse\.io\/([a-z0-9_-]+)\/jobs\/(\d+)(?:[?#]|$)/i)
+      ?? listingUrl.replace(/^https:\/\/flix\.careers\/job\//, 'https://boards.greenhouse.io/flix/jobs/')
+        .match(/^https:\/\/boards\.greenhouse\.io\/(flix)\/jobs\/(\d+)(?:[?#]|$)/);
     if (!match || match[2] !== posting.source_posting_id) continue;
     const board = await loadBoard(match[1]);
     const active = board.get(Number(match[2]));
