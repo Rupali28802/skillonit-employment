@@ -62,6 +62,7 @@ async function closeVariant(r: Repository, v: Variant) {
   const others = await r.find<Variant>('jobFeedVariants', { jobId: v.jobId, active: true }, 1);
   const j = await r.get<Job>('jobs', v.jobId);
   if (j?.feed && j.status === 'published' && (!others.length || j.feed.sourceId === v.sourceId)) {
+    if ((await r.find('bulkJobReferences', { jobId: j.id, active: true, seen: { $gte: new Date(Date.now() - 7 * 86_400_000).toISOString() } }, 1)).length) return 0;
     await r.put('jobs', { ...j, status: 'closed', feed: { ...j.feed, closedByEngine: true } }); return 1;
   }
   return 0;

@@ -4,7 +4,7 @@ import { joobleDomains, joobleKey } from './jooble-regions.js';
 
 export const sourceSchema = z.object({
   id: z.string().regex(/^[a-z0-9_-]{1,80}$/),
-  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'getonbrd', 'themuse', 'freehire', 'indianapi', 'theirstack', 'hackernews', 'himalayas', 'remoteok', 'jooble', 'jobtech', 'reed', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever', 'workday', 'smartrecruiters', 'workable', 'recruitee', 'breezy', 'rippling', 'github', 'github-authorized']),
+  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'getonbrd', 'themuse', 'freehire', 'indianapi', 'theirstack', 'hackernews', 'himalayas', 'remoteok', 'jooble', 'jobtech', 'reed', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever', 'workday', 'smartrecruiters', 'workable', 'recruitee', 'breezy', 'rippling', 'github', 'github-authorized', 'openjobdata']),
   countryCode: z.string().regex(/^[a-z]{2}$/).optional(),
   keywords: z.string().trim().max(100).optional(),
   name: z.string().trim().min(1).max(100),

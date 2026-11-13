@@ -417,6 +417,8 @@ export async function bootstrapIndexes() {
   await db.collection('jobIngestionRuns').createIndex({ status: 1, startedAt: -1 });
   await db.collection('jobFingerprints').createIndex({ jobId: 1 });
   await db.collection('canonicalJobIdentities').createIndex({ activeJobId: 1 }, { unique: true });
+  await db.collection('jobFeedVariants').createIndex({ jobId: 1, active: 1 });
+  await db.collection('bulkJobReferences').createIndex({ jobId: 1, active: 1 });
   await db.collection('jobSourceReferences').createIndex({ sourceId: 1, sourceJobId: 1 }, { unique: true });
   await db.collection('jobSourceReferences').createIndex({ canonicalIdentityId: 1, lastSeenAt: -1 });
   await db.collection('jobDeduplicationDecisions').createIndex({ canonicalJobId: 1, createdAt: -1 });
