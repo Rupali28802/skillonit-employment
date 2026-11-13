@@ -80,14 +80,17 @@ try {
         }
       }
       downloaded += page.data.length;
-      const published = await transaction(async r => {
-        let inserted = 0;
-        for (const job of candidates.values()) {
-          if (await r.get<Job>('jobs', job.id)) continue;
+      let inserted = 0;
+      for (const job of candidates.values()) {
+        const added = await transaction(async r => {
+          if (await r.get<Job>('jobs', job.id)) return false;
           await r.put('jobs', job);
-          inserted++;
-        }
-        if (inserted) await r.put('jobEngineState', { id: 'feed-version', version: randomUUID(), updatedAt: new Date().toISOString() });
+          return true;
+        });
+        if (added) inserted++;
+      }
+      const published = await transaction(async r => {
+        if (candidates.size) await r.put('jobEngineState', { id: 'feed-version', version: randomUUID(), updatedAt: new Date().toISOString() });
         const next = { id: checkpointId, cursor: page.next_cursor, downloaded, published: (checkpoint?.published ?? 0) + inserted };
         await r.put('jobEngineState', next);
         return next;
