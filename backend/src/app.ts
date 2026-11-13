@@ -76,6 +76,7 @@ app.get('/api/v1/jobs/stream', (req, res) => {
   res.set({
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
+    'X-Accel-Buffering': 'no',
     Connection: 'keep-alive',
   });
   res.flushHeaders();
