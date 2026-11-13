@@ -20,7 +20,9 @@ Record a deployment image digest and previous known-good release. Deploy a canar
 
 ## Backup and incidents
 
-Set business-approved RPO/RTO before launch. Use encrypted MongoDB backups and private object-storage lifecycle policies; restore into an isolated staging environment and record measured recovery time. Do not claim backup readiness until that drill passes. Rotate affected secrets and revoke sessions if credentials are exposed. For incorrect delivery, stop the sender queue immediately, preserve provider IDs and audit history, and investigate before replaying any message.
+Production uses Lightsail managed PostgreSQL. Follow the [backup, recovery and retention runbook](../backend/config/BACKUP-RECOVERY-RUNBOOK.md) to verify backup coverage, restore into a private database, measure RPO and RTO, and record the drill. Remove the temporary restore after collecting the verification evidence. The authenticated production-readiness endpoint reports the recorded drill status.
+
+Rotate affected secrets and revoke sessions if credentials are exposed. For incorrect delivery, stop the application sender, preserve provider IDs and audit history, and investigate before replaying any message.
 
 ## Capacity acceptance
 
