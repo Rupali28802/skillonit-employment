@@ -52,7 +52,9 @@ RETURNS text LANGUAGE sql AS $$
   ), written AS (
     INSERT INTO job_keyword_projection(id, search_text, search_facts)
     SELECT batch.id, public_job_keyword_text(batch.data), public_job_search_facts(batch.data)
-    FROM batch LEFT JOIN job_keyword_projection AS projection ON projection.id = batch.id
+    FROM batch LEFT JOIN LATERAL (
+      SELECT search_facts FROM job_keyword_projection WHERE id = batch.id LIMIT 1
+    ) AS projection ON true
     WHERE projection.search_facts IS DISTINCT FROM public_job_search_facts(batch.data)
     ON CONFLICT (id) DO UPDATE SET search_facts = EXCLUDED.search_facts
       WHERE job_keyword_projection.search_facts IS DISTINCT FROM EXCLUDED.search_facts
