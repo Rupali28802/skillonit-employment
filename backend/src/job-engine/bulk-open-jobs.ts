@@ -67,10 +67,13 @@ async function persist(jobs: Job[], closures: string[]) {
   async function persistBatch() {
   await transaction(async r => {
     let changed = false;
+    const jobWrites = new Map<string, Job>();
+    const referenceWrites = new Map<string, Reference>();
+    const displacedJobs = new Set<string>();
     for (const job of jobs) {
       const id = hash(provider + ':' + job.feed!.externalId);
-      const ref = await r.get<Reference>('bulkJobReferences', id);
-      const existing = await r.get<Job>('jobs', job.id);
+      const ref = referenceWrites.get(id) ?? await r.get<Reference>('bulkJobReferences', id);
+      const existing = jobWrites.get(job.id) ?? await r.get<Job>('jobs', job.id);
       // The existing discovery engine uses the same canonical application URL hash.
       // Keep native jobs authoritative when both providers point to them.
       const managed = existing?.feed && ['openjobdata', 'open-jobs'].includes(existing.feed.sourceId);
@@ -82,14 +85,17 @@ async function persist(jobs: Job[], closures: string[]) {
           if (!job.sourcePostedAt) job.expiresAt = existing.expiresAt;
           if (existing.status === 'review') job.status = 'review';
         }
-        await r.put('jobs', job);
+        jobWrites.set(job.id, job);
         changed = true;
       }
       if (!ref?.active || ref.jobId !== job.id || ref.seen !== job.feed!.lastSeenAt) {
-        await r.put('bulkJobReferences', { id, source: provider, jobId: job.id, active: true, seen: job.feed!.lastSeenAt });
+        referenceWrites.set(id, { id, source: provider, jobId: job.id, active: true, seen: job.feed!.lastSeenAt });
       }
-      if (ref && ref.jobId !== job.id) await closeUnreferenced(ref.jobId);
+      if (ref && ref.jobId !== job.id) displacedJobs.add(ref.jobId);
     }
+    if (jobWrites.size) await r.putMany('jobs', [...jobWrites.values()]);
+    if (referenceWrites.size) await r.putMany('bulkJobReferences', [...referenceWrites.values()]);
+    for (const jobId of displacedJobs) await closeUnreferenced(jobId);
     for (const sourceJobId of closures) {
       const id = hash(provider + ':' + sourceJobId);
       const ref = await r.get<Reference>('bulkJobReferences', id);
