@@ -57,7 +57,7 @@ type DiscoveryStats = {
   tenMinuteSourcesOnCadence?: number;
   tenMinuteSourcesOverdue?: number;
 };
-type JobSearchResult = { jobs: PublicJob[]; total: number; hasMore: boolean };
+type JobSearchResult = { jobs: PublicJob[]; total: number; totalIsLowerBound?: boolean; hasMore: boolean };
 type ApiPayload<T> = { data?: T; error?: { message?: string } };
 
 // A reverse proxy can return an HTML 502/504 during a deploy or a short
@@ -107,6 +107,7 @@ export function Discovery({
   const [removed, setRemoved] = useState<string[]>([]);
   const [updatedAt, setUpdatedAt] = useState('');
   const [total, setTotal] = useState(initialJobs.length);
+  const [totalIsLowerBound, setTotalIsLowerBound] = useState(true);
   const [hasMore, setHasMore] = useState(initialJobs.length >= 12);
   const [listening, setListening] = useState(false);
   const [voiceMessage, setVoiceMessage] = useState('');
@@ -352,6 +353,7 @@ export function Discovery({
             return unique;
           });
           setTotal(j.total);
+          setTotalIsLowerBound(j.totalIsLowerBound === true);
           setHasMore(j.hasMore);setUpdatedAt(new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));}
       } catch (e) {
         if(requestId===sequence.current){setMessage((e as Error).message);setLoadFailed(true);}
@@ -712,7 +714,7 @@ export function Discovery({
             </section>
           )}
           <div className="feed-load-more">
-            <output>Showing {jobs.length.toLocaleString()} of {total.toLocaleString()} matching opportunities</output>
+            <output>Showing {jobs.length.toLocaleString()}{!totalIsLowerBound && ` of ${total.toLocaleString()}`} matching opportunities</output>
             {hasMore && <button className="secondary" disabled={busy} onClick={loadMore}>Load more jobs</button>}
             {busy && <span>Loading jobs…</span>}
             {loadFailed && <button className="secondary" onClick={()=>void search()}>Retry loading jobs</button>}

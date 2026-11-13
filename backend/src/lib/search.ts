@@ -5,7 +5,7 @@ import { normalizeCountry } from './countries.js';
 import { semanticMatches } from '../job-engine/semantic.js';
 import { postgresConfigured, postgresPublicCountrySearch, postgresPublicFacetSearch, postgresPublicKeywordSearch, postgresPublicTypeSearch, postgresReadWithTimeout } from './postgres-store.js';
 
-type RawSearchResult = { jobs: Job[]; total: number };
+type RawSearchResult = { jobs: Job[]; total: number; totalIsLowerBound?: boolean; hasMore?: boolean };
 
 // The public landing page and its live-discovery panel can request the same first
 // page at once. Coalesce that work for a few seconds so concurrent visitors do
@@ -231,8 +231,19 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
     jobs.sort((a,b)=>(scores.get(b.id)||0)-(scores.get(a.id)||0)||a.id.localeCompare(b.id));
     return {jobs:jobs.slice((page-1)*limit,page*limit).map(j=>({ ...publicJob(j,user,plans), ...(semantic ? { semanticScore: scores.get(j.id) } : { relevanceScore: scores.get(j.id) }) })),total:jobs.length,page,limit,hasMore:page*limit<jobs.length,searchMode:semantic?'semantic':'relevant',...(semantic ? { indexScope:'public indexed vacancies' } : {})};
   }
-  const result = postgresConfigured() && isDefaultPublicFeed
-    ? await cachedPublicFeed(`${publicFeedCacheKey(params)}:${feedVersion?.version || 'initial'}`, load)
+  const useFeedLookahead = postgresConfigured() && !demoMode() && isDefaultPublicFeed && params.get('sort') !== 'salary';
+  const loadFeed = () => postgresReadWithTimeout(8000, async r => {
+    const offset = (page - 1) * limit;
+    const jobs = await r.page<Job>('jobs', filter, sort, offset, limit + 1);
+    return {
+      jobs: jobs.slice(0, limit),
+      total: jobs.length ? offset + jobs.length : 0,
+      totalIsLowerBound: jobs.length === 0 ? page > 1 : jobs.length > limit,
+      hasMore: jobs.length > limit,
+    };
+  });
+  const result: RawSearchResult = postgresConfigured() && isDefaultPublicFeed
+    ? await cachedPublicFeed(`${publicFeedCacheKey(params)}:${feedVersion?.version || 'initial'}`, useFeedLookahead ? loadFeed : load)
     : await load();
-  return { jobs: result.jobs.map(j => publicJob(j, user, plans)), total: result.total, page, limit, hasMore: page * limit < result.total };
+  return { jobs: result.jobs.map(j => publicJob(j, user, plans)), total: result.total, totalIsLowerBound: result.totalIsLowerBound, page, limit, hasMore: result.hasMore ?? page * limit < result.total };
 }
