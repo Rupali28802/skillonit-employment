@@ -4,7 +4,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import type { Job } from '../lib/domain.js';
-import { bootstrapIndexes, closeStore, read, transaction } from '../lib/store.js';
+import { closeStore, read, transaction } from '../lib/store.js';
 import { hash, normalize } from './normalize.js';
 import { sourceSchema } from './sources.js';
 
@@ -103,7 +103,6 @@ async function run() {
   if (apply && !process.env.DATABASE_URL?.trim() && !process.env.MONGODB_URI?.trim()) {
     throw new Error('A persistent database is required for import');
   }
-  if (apply) await bootstrapIndexes();
   const cursor = apply ? await read(async r => (await r.get<{ cursor: string }>('jobEngineState', checkpointId))?.cursor || '') : process.env.OPEN_JOB_IMPORT_PREVIEW_CURSOR || '';
   const script = fileURLToPath(new URL('../../scripts/read-open-job-data.py', import.meta.url));
   const args = [script, provider, '--cursor', cursor, ...(snapshot ? ['--snapshot', snapshot] : [])];
@@ -116,7 +115,8 @@ async function run() {
   void result.catch(() => undefined);
   const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
   let jobs: Job[] = [], closures: string[] = [];
-  const limit = apply ? Infinity : 1000;
+  const configuredLimit = process.env.OPEN_JOB_IMPORT_MAX_ROWS;
+  const limit = configuredLimit ? z.coerce.number().int().positive().parse(configuredLimit) : apply ? Infinity : 1000;
   try {
     for await (const line of lines) {
       const event = JSON.parse(line);
@@ -149,9 +149,10 @@ async function run() {
         jobs = []; closures = [];
       }
       if (stats.accepted + stats.skipped + stats.closed >= limit) {
+        await persist(jobs, closures);
         child.kill();
         await result;
-        console.log({ provider, dryRun: true, ...stats });
+        console.log({ provider, dryRun: !apply, limited: true, ...stats });
         return;
       }
     }
