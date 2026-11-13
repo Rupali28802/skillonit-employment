@@ -25,8 +25,8 @@ test('universal application integration: durable reviews, delivery evidence, cre
   process.env.MONGODB_URI = replica.getUri(); process.env.MONGODB_DATABASE = 'universal_application'; process.env.DEMO_MODE = 'true'; process.env.APP_URL = 'http://localhost:3102';
   const store = await import('../src/lib/store.ts'), engine = await import('../src/lib/application-engine.ts'), security = await import('../src/lib/security.ts');
   const { app } = await import('../src/app.ts');
-  const { listAdminApplications, adminApplication } = await import('../src/lib/admin-console.ts');
-  const { listEmployerApplicants } = await import('../src/lib/employer-portal.ts');
+  const { listAdminApplications, adminApplication, verifyAdminEmployer, moderateAdminJob } = await import('../src/lib/admin-console.ts');
+  const { listEmployerApplicants, createEmployerJob, submitEmployerVerification } = await import('../src/lib/employer-portal.ts');
   const server = app.listen(0,'127.0.0.1'); await once(server,'listening');
   const base = `http://127.0.0.1:${(server.address() as {port:number}).port}/api/v1/`;
   const now = new Date(), stamp = now.toISOString();
@@ -44,12 +44,27 @@ test('universal application integration: durable reviews, delivery evidence, cre
     await store.transaction(async r=>{
       for(const u of [user,admin,{...user,id:'other',email:'other@example.test'},{...user,id:'employer',email:'employer@example.test',role:'employer' as const}])await r.put('users',u);
       await r.put('adminAssignments',{id:admin.id,userId:admin.id,roleId:'super_admin',revision:0,assignedBy:'test',assignedAt:stamp});
-      await r.put('employers',{id:'employer',ownerId:'employer',name:'Example',status:'verified',domain:'example.com'});
+      await r.put('employers',{id:'employer',ownerId:'employer',name:'Example',status:'pending',domain:'example.com',revision:0});
       await r.put('studentSubscriptions',{id:user.id,userId:user.id,planCode:'premium',status:'active',currentPeriodStart:stamp,currentPeriodEnd:new Date(now.getTime()+86400000).toISOString(),planSnapshot:{...plans[2],dailyCap:100},revision:1});
       await r.put('cvVersions',{id:'cv-approved',userId:user.id,confirmed:true,name:'Approved resume',createdAt:stamp,profile:user.profile,content:'Confirmed CV content'});
       await r.put('applicationTemplates',{id:user.id,subject:'Application for {{job_title}}',body:'Please consider my application.',signature:'{{name}}',updatedAt:stamp});
-      await r.put('jobs',job);
     });
+    const { id, company, domain, status, trust, employerId, source, discoveredAt, expiresAt, ...posting } = job;
+    const submitted = await createEmployerJob(employerId, {
+      ...posting,
+      description: 'Build and maintain software with the engineering team.',
+      submission: 'review',
+    });
+    assert.equal(submitted.status, 'review');
+    await assert.rejects(moderateAdminJob(admin, submitted.id, { action: 'publish', reason: 'Local verification' }), { code: 'VERIFICATION_REQUIRED' });
+    await submitEmployerVerification(employerId, { expectedRevision: 0, evidence: [{ type: 'domain', reference: domain }] });
+    await verifyAdminEmployer(admin, employerId, { status: 'verified', note: 'Local verification' });
+    await moderateAdminJob(admin, submitted.id, { action: 'publish', reason: 'Local verification' });
+    const published = await store.read(r => r.get<Job>('jobs', submitted.id));
+    assert.ok(published);
+    assert.equal(published.status, 'published');
+    assert.equal(published.trust, 'verified');
+    Object.assign(job, published);
     process.env.DEMO_MODE='false'; process.env.ENABLE_APPLICATION_ENGINE='true';
     let disconnected=await engine.createApplication(user.id,{jobId:job.id,confirmed:true});
     assert.equal(disconnected.application.status,'NEEDS_REVIEW'); assert.ok(disconnected.application.reviewReasons?.includes('MAILBOX_REQUIRED')); assert.equal(await used(),0);
