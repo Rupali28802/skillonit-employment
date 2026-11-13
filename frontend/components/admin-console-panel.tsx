@@ -1,6 +1,6 @@
 'use client';
 
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { type SubmitEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { ApplicationDetails } from './application-details';
 
 type Row = { id: string; [key: string]: unknown };
@@ -82,7 +82,7 @@ function ManualVerifiedJobIntake({ onCreated, allowed }: { onCreated: () => Prom
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const update = (key: keyof ReturnType<typeof intakeInitial>, value: string) => setForm(current => ({ ...current, [key]: value }));
-  async function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true); setMessage('');
     try {
@@ -132,7 +132,7 @@ function ManualVerifiedJobIntake({ onCreated, allowed }: { onCreated: () => Prom
       </div>
       <div className="admin-modal-actions"><button type="submit" className="primary" disabled={busy || !allowed}>{busy ? 'Saving…' : 'Submit for review'}</button><span>{message}</span></div>
     </form>}
-    {!open && message && <div className="admin-notice is-success" role="status">{message}</div>}
+    {!open && message && <output className="admin-notice is-success">{message}</output>}
   </section>;
 }
 

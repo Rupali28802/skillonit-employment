@@ -77,7 +77,7 @@ async function readApiPayload<T>(response: Response): Promise<ApiPayload<T>> {
 
 export function Discovery({
   initialJobs,
-  user,
+  user: _user,
 }: {
   initialJobs: PublicJob[];
   user: User | null;

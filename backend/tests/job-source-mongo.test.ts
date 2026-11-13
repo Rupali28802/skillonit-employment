@@ -44,7 +44,8 @@ test('job source strategy persists atomically with production MongoDB indexes', 
       compliance: { status: 'pending', policyEvidence: 'A second record must not reuse the same provider identity.', permittedMethod: 'official_api', jurisdictions: [] },
       schedule: { intervalMinutes: 60 }, rate: { requestsPerMinute: 1 },
       retry: { maxAttempts: 2, baseDelaySeconds: 30, maxDelaySeconds: 60 },
-    }), { code: 11000 });
+    }), { status: 409, code: 'SOURCE_ALREADY_REGISTERED' });
+    assert.equal(await db.collection('jobSources').countDocuments({ provider: 'greenhouse', 'configuration.board': 'mongo-fixture' }), 1);
   } finally {
     await store.closeStore(); await client.close(); await replica.stop(); process.env = env;
   }

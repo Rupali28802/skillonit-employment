@@ -173,7 +173,7 @@ export function CvManager({ documents, profileRevision, currentProfile = {}, upl
           request.onerror = () => reject(new Error('Network error while uploading the CV.')); request.send(file);
         });
       })}>{busy === 'upload' ? 'Uploading…' : 'Upload and process CV'}</button>
-      {!uploadsAvailable && <p className="notice" role="status">CV uploads are temporarily unavailable while secure processing is being restored. You can continue with manual profile entry.</p>}
+      {!uploadsAvailable && <p><output className="notice">CV uploads are temporarily unavailable while secure processing is being restored. You can continue with manual profile entry.</output></p>}
       {uploadProgress !== null && busy === 'upload' && <p aria-live="polite">Upload progress: {uploadProgress}%</p>}
       {message && <p className="notice" aria-live="polite">{message}</p>}
     </div>
