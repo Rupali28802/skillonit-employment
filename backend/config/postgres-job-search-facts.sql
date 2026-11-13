@@ -5,11 +5,22 @@ ALTER TABLE job_keyword_projection ADD COLUMN IF NOT EXISTS search_facts jsonb;
 CREATE OR REPLACE FUNCTION public_job_search_facts(job jsonb)
 RETURNS jsonb LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $$
   SELECT coalesce(jsonb_object_agg(key, value), '{}'::jsonb)
+    || jsonb_build_object(
+      'feed', jsonb_build_object(
+        'publicListing', job #> '{feed,publicListing}',
+        'applicationTarget', job #> '{feed,applicationTarget}'
+      ),
+      'normalizedFacts', jsonb_build_object(
+        'sourceCategory', job #> '{normalizedFacts,sourceCategory}',
+        'sourceTags', job #> '{normalizedFacts,sourceTags}',
+        'salary', jsonb_build_object('period', job #> '{normalizedFacts,salary,period}')
+      )
+    )
   FROM jsonb_each(job)
   WHERE key IN (
     'id', 'status', 'sample', 'expiresAt', 'title', 'company', 'description',
     'category', 'state', 'city', 'country', 'eligibleCountries', 'mode',
-    'skills', 'type', 'source', 'trust', 'mnc', 'feed', 'normalizedFacts',
+    'skills', 'type', 'source', 'trust', 'mnc',
     'sourcePostedAt', 'discoveredAt', 'experienceMin', 'experienceMax',
     'experienceDisclosed', 'salaryDisclosed', 'currency', 'salaryMin', 'salaryMax'
   )
@@ -42,9 +53,9 @@ RETURNS text LANGUAGE sql AS $$
     INSERT INTO job_keyword_projection(id, search_text, search_facts)
     SELECT batch.id, public_job_keyword_text(batch.data), public_job_search_facts(batch.data)
     FROM batch LEFT JOIN job_keyword_projection AS projection ON projection.id = batch.id
-    WHERE projection.search_facts IS NULL
+    WHERE projection.search_facts IS DISTINCT FROM public_job_search_facts(batch.data)
     ON CONFLICT (id) DO UPDATE SET search_facts = EXCLUDED.search_facts
-      WHERE job_keyword_projection.search_facts IS NULL
+      WHERE job_keyword_projection.search_facts IS DISTINCT FROM EXCLUDED.search_facts
   )
   SELECT max(id) FROM batch
 $$;
