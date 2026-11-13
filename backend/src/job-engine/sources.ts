@@ -4,7 +4,7 @@ import { joobleDomains, joobleKey } from './jooble-regions.js';
 
 export const sourceSchema = z.object({
   id: z.string().regex(/^[a-z0-9_-]{1,80}$/),
-  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'getonbrd', 'themuse', 'freehire', 'indianapi', 'theirstack', 'hackernews', 'himalayas', 'remoteok', 'jooble', 'jobtech', 'reed', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever', 'workday', 'smartrecruiters', 'workable', 'recruitee', 'breezy', 'rippling', 'github', 'github-authorized', 'openjobdata']),
+  type: z.enum(['arbeitnow', 'arbeitnow-uk', 'remotive', 'jobicy', 'getonbrd', 'themuse', 'freehire', 'indianapi', 'theirstack', 'hackernews', 'himalayas', 'remoteok', 'jooble', 'jobtech', 'reed', 'adzuna', 'usajobs', 'ashby', 'greenhouse', 'lever', 'workday', 'smartrecruiters', 'workable', 'recruitee', 'breezy', 'rippling', 'github', 'github-authorized', 'openjobdata', 'headcount-labs']),
   countryCode: z.string().regex(/^[a-z]{2}$/).optional(),
   keywords: z.string().trim().max(100).optional(),
   name: z.string().trim().min(1).max(100),
@@ -71,6 +71,15 @@ export function configuredTheMuseSource(): FeedSource[] {
     id: 'themuse-global', type: 'themuse', name: 'The Muse', enabled: true, approved: true,
     policyEvidence: 'Registered The Muse API app; listings link back to The Muse as required: https://www.themuse.com/developers/api/v2/terms',
     publicListing: true, publish: true, intervalMinutes: 360, maxPages: 2,
+  })];
+}
+
+export function configuredHeadcountLabsSource(): FeedSource[] {
+  if (!process.env.HEADCOUNT_LABS_API_KEY?.trim()) return [];
+  return [sourceSchema.parse({
+    id: 'headcount-labs-global', type: 'headcount-labs', name: 'Headcount Labs',
+    enabled: true, approved: true, publicListing: true, publish: true, intervalMinutes: 60, maxPages: 4,
+    policyEvidence: 'ODbL 1.0 job data with public attribution and original links: https://headcountlabs.com/license/',
   })];
 }
 

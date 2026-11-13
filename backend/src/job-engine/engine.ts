@@ -117,7 +117,7 @@ async function ingest(source: FeedSource, batch: FeedBatch, owner: string, runId
         const isOtherSource = !!existing?.feed && existing.feed.sourceId !== source.id;
         if (!existing) {
           jobWrites.set(jobId, { ...candidate, id: jobId }); result.added++;
-        } else if (existing.feed) {
+        } else if (existing.feed && !(source.type === 'headcount-labs' && isOtherSource)) {
           const blocked = existing.status === 'disabled' || existing.status === 'review' || (existing.status === 'closed' && !existing.feed.closedByEngine);
           const verificationUnchanged = existing.trust === 'verified' && verificationContentUnchanged(existing, candidate);
           const updated: Job = { ...candidate, id: jobId, discoveredAt: existing.discoveredAt,

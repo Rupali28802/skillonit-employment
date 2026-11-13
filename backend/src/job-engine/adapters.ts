@@ -125,6 +125,61 @@ export async function fetchJson(url: string, extraHeaders: Record<string, string
 export async function fetchFeed(source: FeedSource, get = fetchJson, pause = delay, reserve = reserveJoobleRequest): Promise<FeedBatch> {
   if (!source.enabled || !source.approved) throw new FeedError('SOURCE_DISABLED');
   const jobs: Candidate[] = []; let requests = 0;
+  if (source.type === 'headcount-labs') {
+    const key = process.env.HEADCOUNT_LABS_API_KEY?.trim();
+    if (!key) throw new FeedError('HEADCOUNT_LABS_API_KEY_REQUIRED');
+    const now = Date.now();
+    const freshness = 86_400_000;
+    const since = new Date(now - freshness).toISOString();
+    const query = new URLSearchParams({
+      currentness: 'current', stale: 'false', posting_status: 'listed',
+      last_fetch_since: since, application_check: 'available', application_check_since: since,
+      has_application_url: 'true', sort: 'updated', limit: '100',
+      fields: 'job_id,currentness,stale,title,employer_name,work_arrangement,locations,postings',
+    });
+    if (source.countryCode) query.set('country', source.countryCode.toUpperCase());
+    const seenCursors = new Set<string>();
+    for (let page = 0; page < source.maxPages; page++) {
+      const payload = await get(`https://api.headcountlabs.com/v1/jobs?${query}`, { Authorization: `Bearer ${key}` }) as Json;
+      requests++;
+      if (!Array.isArray(payload?.data) || !(payload.next_cursor === null || typeof payload.next_cursor === 'string'))
+        throw new FeedError('INVALID_HEADCOUNT_LABS_RESPONSE');
+      for (const job of payload.data) {
+        const externalId = text(job?.job_id);
+        const title = text(job?.title?.value);
+        const company = text(job?.employer_name?.value);
+        if (!externalId || !title || !company || job.currentness !== 'current' || job.stale !== false || !Array.isArray(job.postings)) continue;
+        const posting = job.postings.find((entry: Json) => {
+          const checked = Date.parse(text(entry?.latest_application_check?.checked_at));
+          const listed = Date.parse(text(entry?.last_completed_fetch_at));
+          return entry?.posting_status === 'listed' && entry.latest_application_check?.result === 'available'
+            && Math.min(checked, listed) > now - freshness && Math.max(checked, listed) <= now
+            && /^https:\/\//i.test(text(entry.posting_url?.value))
+            && /^https:\/\//i.test(text(entry.application_url?.value))
+            && entry.attribution?.required !== true;
+        });
+        if (!posting) continue;
+        const locations: Json[] = Array.isArray(job.locations) ? job.locations.flatMap((entry: Json) => entry?.value ? [entry.value] : []) : [];
+        const location = locations.map(entry => [entry.city, entry.region, entry.country].filter(Boolean).join(', ')).filter(Boolean).join(' · ');
+        const mode = ({ remote: 'Remote', hybrid: 'Hybrid', in_person: 'On-site' } as const)[job.work_arrangement?.value as 'remote' | 'hybrid' | 'in_person'];
+        const listingUrl = text(posting.posting_url.value);
+        const applicationUrl = text(posting.application_url.value);
+        jobs.push({
+          externalId, title, company, url: applicationUrl, listingUrl, applicationUrl,
+          location: location || 'Not specified', countryCodes: locations.map(entry => text(entry.country)).filter(Boolean), mode,
+          description: 'See the original posting for the job description. Job data: Headcount Labs, ODbL 1.0. Location data: OpenStreetMap contributors and Overture Maps.',
+          attributionUrl: 'https://headcountlabs.com/license/',
+          postedAt: iso(posting.source_posted_at),
+          closesAt: new Date(Math.min(Date.parse(posting.latest_application_check.checked_at), Date.parse(posting.last_completed_fetch_at)) + freshness).toISOString(),
+        });
+      }
+      if (!payload.next_cursor) return { jobs, requests, complete: true, snapshot: false };
+      if (seenCursors.has(payload.next_cursor)) throw new FeedError('REPEATED_HEADCOUNT_LABS_CURSOR');
+      seenCursors.add(payload.next_cursor);
+      query.set('cursor', payload.next_cursor);
+    }
+    return { jobs, requests, complete: false, snapshot: false };
+  }
   if (source.type === 'github') {
     if (!source.board || !source.company) throw new FeedError('INVALID_GITHUB_ORGANIZATION');
     const query = [
