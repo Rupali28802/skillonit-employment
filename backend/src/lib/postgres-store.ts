@@ -52,7 +52,10 @@ function repository(db: Pool | PoolClient, keywordCandidates: string[][] = []): 
       ).join(' | ') + ')').join(' & ');
       if (terms) {
         values.push(terms);
-        punctuation.push(`to_tsvector('simple', search_text) @@ to_tsquery('simple', $${values.length})`);
+        const vector = process.env.ENABLE_POSTGRES_STORED_SEARCH_VECTOR === 'true'
+          ? 'search_vector'
+          : "to_tsvector('simple', search_text)";
+        punctuation.push(`${vector} @@ to_tsquery('simple', $${values.length})`);
       }
       const pending = db.query<{ data: Row }>(
         `WITH candidates AS MATERIALIZED (
