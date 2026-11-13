@@ -41,13 +41,16 @@ function repository(db: Pool | PoolClient, keywordCandidates: string[][] = []): 
       const cached = keywordRows.get(query);
       if (cached) return await cached as T[];
       const values = [collection, ...filter.values];
-      const terms = keywordCandidates.map(alternatives => '(' + alternatives.map(word => {
-        values.push(word.toLowerCase().split(/\s+/).map(token => token + ':*').join(' & '));
-        return `to_tsvector('simple', search_text) @@ to_tsquery('simple', $${values.length})`;
-      }).join(' OR ') + ')');
+      // Give GIN the complete intersection in one tsquery so it can combine
+      // posting lists before fetching and rechecking candidate rows.
+      const terms = keywordCandidates.map(alternatives => '(' + alternatives.map(word =>
+        '(' + word.toLowerCase().split(/\s+/).map(token => token + ':*').join(' & ') + ')',
+      ).join(' | ') + ')').join(' & ');
+      values.push(terms);
       const pending = db.query<{ data: Row }>(
         `WITH candidates AS MATERIALIZED (
-          SELECT id FROM job_keyword_projection WHERE ${terms.join(' AND ')}
+          SELECT id FROM job_keyword_projection
+          WHERE to_tsvector('simple', search_text) @@ to_tsquery('simple', $${values.length})
         )
         SELECT document.data FROM candidates
         CROSS JOIN LATERAL (
