@@ -289,10 +289,11 @@ test('additional public ATS adapters preserve employer-owned application links',
 });
 test('repeated syncs are idempotent, keep first discovery date and respect schedule', async () => {
   await upsertSource(source);
-  const first = await runEngine(async () => batch()); assert.equal(first.results[0].counts?.added, 1);
+  const jobs = [candidate()];
+  const first = await runEngine(async () => batch(jobs)); assert.equal(first.results[0].counts?.added, 1);
   const j = (await read(r => r.find<Job>('jobs')))[0];
   assert.equal((await runEngine(async () => { throw Error('must not fetch'); })).results[0].status, 'not_due');
-  await due(); const second = await runEngine(async () => batch()); assert.equal(second.results[0].counts?.updated, 1);
+  await due(); const second = await runEngine(async () => batch(jobs)); assert.equal(second.results[0].counts?.updated, 0);
   assert.equal(await read(r => r.count('jobs')), 1);
   assert.equal((await read(r => r.get<Job>('jobs', j.id)))!.discoveredAt, j.discoveredAt);
 });
