@@ -157,6 +157,16 @@ try {
   }
   const unsafeReturn = await (await request('/cvs?returnToJob=%2F%2Fexample.org', 200, cookie)).text();
   assert.ok(!unsafeReturn.includes('← Return to the job listing'), 'External return URLs are ignored');
+  const applicationPreview = await (await request('/api/v1/applications/preview', 200, cookie, 'POST', { jobId: feedJob.id })).json();
+  assert.equal(applicationPreview.data.action, 'prepare_assisted_application');
+  const savedApplication = await (await request('/api/v1/applications', 201, cookie, 'POST', { jobId: feedJob.id, confirmed: true })).json();
+  assert.equal(savedApplication.data.status, 'NEEDS_REVIEW');
+  const tracker = await (await request('/applications', 200, cookie)).text();
+  assert.ok(tracker.includes('Integration clinical nurse'), 'The saved plan appears in the candidate tracker');
+  const trackedApplication = await payload(`/api/v1/applications/${savedApplication.data.id}`, cookie);
+  assert.equal(trackedApplication.external.url, 'https://careers.example.com/nurse-1');
+  assert.deepEqual(trackedApplication.external.fieldsSubmitted, []);
+  assert.ok(!Object.hasOwn(trackedApplication, 'snapshot'), 'The tracker response excludes the private application snapshot');
   for (const path of ['/', '/dashboard', '/onboarding', '/profile', '/preferences', '/automation', '/cvs', '/cv-versions', '/saved', '/alerts', '/notifications', '/assistant', '/taxonomy', '/insights', '/applications', '/billing', '/settings']) await request(path, 200, cookie);
   const onboarding = await payload('/api/v1/me/onboarding', cookie);
   assert.equal(onboarding.profileCreationPath, null);

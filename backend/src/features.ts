@@ -184,12 +184,6 @@ export async function featureRoute(
     const user = await requireUser('admin');
     return { data: await fetchJobSource(parts[2], id(), user.id) };
   }
-  if (parts[0] === 'applications' && parts.length === 2 && method === 'GET') {
-    const user = await requireUser('student');
-    return {
-      data: await read((r) => owned(r, 'applications', parts[1], user.id)),
-    };
-  }
   if (p === 'me/saved-searches') {
     const user = await requireUser('student');
     if (method === 'GET')
