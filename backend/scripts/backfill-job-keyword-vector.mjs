@@ -12,14 +12,20 @@ const client = new pg.Client({
   ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
 });
 
+let committed = 0;
 try {
   await client.connect();
+  const lock = await client.query(
+    "SELECT pg_try_advisory_lock(hashtext('backfill_job_keyword_vector')) AS acquired",
+  );
+  if (!lock.rows[0].acquired) {
+    throw Object.assign(new Error('Another search-vector backfill is running.'), { code: 'BACKFILL_ALREADY_RUNNING' });
+  }
   await client.query("SET lock_timeout = '2s'");
   await client.query("SET statement_timeout = '8s'");
   let cursor = '';
   let batchSize = 100;
   let retries = 0;
-  let committed = 0;
   while (committed < maxBatches) {
     try {
       const result = await client.query(
@@ -40,10 +46,10 @@ try {
       await delay(retries * 2000);
     }
   }
-  console.log(`Committed batches: ${committed}`);
 } catch (error) {
   console.error('Backfill stopped', error.code ?? error.name);
   process.exitCode = 1;
 } finally {
+  console.log(`Committed batches: ${committed}`);
   await client.end();
 }
