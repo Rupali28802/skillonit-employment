@@ -19,7 +19,7 @@ import {
   Play,
   Mic, SlidersHorizontal, X,
 } from 'lucide-react';
-import type { PublicJob, User } from '@/lib/domain';
+import type { PublicJob } from '@/lib/domain';
 import { CategorySlider } from './category-slider';
 import { JobActions } from './job-actions';
 import { countries, states } from '@/lib/domain';
@@ -77,11 +77,9 @@ async function readApiPayload<T>(response: Response): Promise<ApiPayload<T>> {
 
 export function Discovery({
   initialJobs,
-  user: _user,
   featuredJob,
 }: {
   initialJobs: PublicJob[];
-  user: User | null;
   featuredJob?: Pick<PublicJob, 'id' | 'title'>;
 }) {
   const [jobs, setJobs] = useState(initialJobs.slice(0, 12)),
