@@ -32,9 +32,20 @@ const matches = (row: Row, query: Query): boolean => Object.entries(query).every
   // while reading the migrated JSON documents from PostgreSQL.
   return Array.isArray(actual) ? actual.includes(value) : actual === value;
 });
-function repository(db: Pool | PoolClient): Repository {
+function repository(db: Pool | PoolClient, keywordCandidates: string[][] = []): Repository {
   const rows = async <T>(collection: string, query: Query) => {
     const filter = postgresReadFilter(query);
+    if (collection === 'jobs' && keywordCandidates.length) {
+      const values = [collection, ...filter.values];
+      const terms = keywordCandidates.map(alternatives => '(' + alternatives.map(word => {
+        values.push('%' + word.replace(/[\\%_]/g, '\\$&') + '%');
+        return `public_job_keyword_text(data) ILIKE $${values.length}`;
+      }).join(' OR ') + ')');
+      return (await db.query<{ data: T }>(
+        `SELECT data FROM app_documents WHERE collection=$1 AND collection='jobs'${filter.sql} AND ${terms.join(' AND ')}`,
+        values,
+      )).rows.map(row => row.data);
+    }
     return (await db.query<{ data: T }>('SELECT data FROM app_documents WHERE collection=$1' + filter.sql, [collection, ...filter.values])).rows.map(row => row.data);
   };
   const put = async (collection: string, value: { id: string }) => db.query('INSERT INTO app_documents(collection,id,data,updated_at) VALUES($1,$2,$3::jsonb,now()) ON CONFLICT(collection,id) DO UPDATE SET data=excluded.data,updated_at=now()', [collection, value.id, JSON.stringify(value)]);
@@ -104,13 +115,13 @@ export async function postgresAdminJobPage<T>(cursor: string, limit: number, sta
 // Public search must never leave an unbounded read running after a browser,
 // proxy, or client disconnects. Keep the limit scoped to this explicit helper;
 // discovery and transactional writes retain their own execution budgets.
-export async function postgresReadWithTimeout<T>(timeoutMs: number, fn: (repo: Repository) => Promise<T>): Promise<T> {
+export async function postgresReadWithTimeout<T>(timeoutMs: number, fn: (repo: Repository) => Promise<T>, keywordCandidates: string[][] = []): Promise<T> {
   const bounded = Math.max(1000, Math.min(30000, Math.floor(timeoutMs)));
   const client = await database().connect();
   try {
     await client.query('BEGIN READ ONLY');
     await client.query(`SET LOCAL statement_timeout = ${bounded}`);
-    const result = await fn(repository(client));
+    const result = await fn(repository(client, keywordCandidates));
     await client.query('COMMIT');
     return result;
   } catch (error) {
