@@ -346,6 +346,7 @@ export async function bootstrapPostgres() {
     // expression index, PostgreSQL must scan the full jobs collection for every
     // pending-review count and can exceed the reverse-proxy timeout.
     await ensurePostgresIndex(db, 'app_documents_collection_status_idx', `CREATE INDEX app_documents_collection_status_idx ON app_documents(collection, (data #> ARRAY['status']))`);
+    await ensurePostgresIndex(db, 'app_documents_collection_employer_idx', `CREATE INDEX app_documents_collection_employer_idx ON app_documents(collection, (data #> ARRAY['employerId']))`);
     // A feed refresh closes only variants for the current source.  This index
     // keeps that reconciliation bounded instead of scanning every historical
     // feed variant on each short-interval discovery run.

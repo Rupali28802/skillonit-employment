@@ -4,8 +4,8 @@ import { postgresReadFilter } from '../src/lib/postgres-read-filter.js';
 
 test('employer owner and association filters are parameterized before fetching documents', () => {
   const filter = postgresReadFilter({ employerId: { $in: ['owner', 'company'] }, status: 'published' });
-  assert.equal(filter.sql, " AND ((data #> $2::text[]) = $3::jsonb OR (data #> $2::text[]) = $4::jsonb) AND ((data #> ARRAY['status']) = $5::jsonb)");
-  assert.deepEqual(filter.values, [['employerId'], '"owner"', '"company"', '"published"']);
+  assert.equal(filter.sql, " AND ((data #> ARRAY['employerId']) = $2::jsonb OR (data #> ARRAY['employerId']) = $3::jsonb) AND ((data #> ARRAY['status']) = $4::jsonb)");
+  assert.deepEqual(filter.values, ['"owner"', '"company"', '"published"']);
   assert.equal(filter.complete, true);
 });
 test('unsupported predicates are retained for the existing matcher; empty membership cannot broaden access', () => {
