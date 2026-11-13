@@ -149,6 +149,14 @@ try {
   const cookie = cookieOf(login);
   const session = await payload('/api/v1/session', cookie);
   assert.equal(session.user.id, registeredUser.id);
+  const jobPath = `/jobs/${feedJob.id}`;
+  const returnQuery = new URLSearchParams({ returnToJob: jobPath });
+  for (const section of ['profile', 'cvs', 'templates', 'mail', 'settings']) {
+    const setupPage = await (await request(`/${section}?${returnQuery}`, 200, cookie)).text();
+    assert.ok(setupPage.includes(`href="${jobPath}">← Return to the job listing`), `/${section} retains the selected job`);
+  }
+  const unsafeReturn = await (await request('/cvs?returnToJob=%2F%2Fexample.org', 200, cookie)).text();
+  assert.ok(!unsafeReturn.includes('← Return to the job listing'), 'External return URLs are ignored');
   for (const path of ['/', '/dashboard', '/onboarding', '/profile', '/preferences', '/automation', '/cvs', '/cv-versions', '/saved', '/alerts', '/notifications', '/assistant', '/taxonomy', '/insights', '/applications', '/billing', '/settings']) await request(path, 200, cookie);
   const onboarding = await payload('/api/v1/me/onboarding', cookie);
   assert.equal(onboarding.profileCreationPath, null);
