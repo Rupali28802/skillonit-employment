@@ -38,8 +38,8 @@ function repository(db: Pool | PoolClient, keywordCandidates: string[][] = []): 
     if (collection === 'jobs' && keywordCandidates.length) {
       const values = [collection, ...filter.values];
       const terms = keywordCandidates.map(alternatives => '(' + alternatives.map(word => {
-        values.push('%' + word.replace(/[\\%_]/g, '\\$&') + '%');
-        return `search_text ILIKE $${values.length}`;
+        values.push(word.toLowerCase().split(/\s+/).map(token => token + ':*').join(' & '));
+        return `to_tsvector('simple', search_text) @@ to_tsquery('simple', $${values.length})`;
       }).join(' OR ') + ')');
       return (await db.query<{ data: T }>(
         `WITH candidates AS MATERIALIZED (
