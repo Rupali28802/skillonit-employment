@@ -93,7 +93,7 @@ export function Discovery({
     [directApplication, setDirectApplication] = useState(false),
     [experience, setExperience] = useState(''),
     [state, setState] = useState(''),
-    [sort, setSort] = useState('discovered'),
+    [sort, setSort] = useState(''),
     [page, setPage] = useState(1),
     [pageSize, setPageSize] = useState(12),
     [filters, setFilters] = useState(false),
@@ -320,7 +320,7 @@ export function Discovery({
           type: jobType,
           experience: activeExperience,
           state,
-          sort: intent.highSalary&&!removed.includes('salary')?'salary':sort,
+          sort: intent.highSalary&&!removed.includes('salary')?'salary':sort || (roleQuery.trim() ? 'relevant' : 'discovered'),
           page: String(page),
           limit: String(pageSize),
           // "Best match" uses the transparent server-side relevance score.
@@ -480,7 +480,7 @@ export function Discovery({
                 <span className="sr-only">Sort jobs</span>
                 <select
                   aria-label="Sort jobs"
-                  value={sort}
+                  value={sort || (roleQuery.trim() ? 'relevant' : 'discovered')}
                   onChange={(e) => { setSort(e.target.value); setPage(1); }}
                 >
                   <option value="discovered">Latest first</option>
