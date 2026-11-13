@@ -671,6 +671,7 @@ export function Discovery({
                       </span>
                       <span><BriefcaseBusiness size={14}/>{job.mode || 'Not specified'}</span>
                       <span><ShieldCheck size={14}/>{job.type || 'Not specified'}</span>
+                      <span>{job.experienceDisclosed === false ? 'Experience not specified' : `${job.experienceMin}–${job.experienceMax} years`}</span>
                     </div>
                     <div className="job-card-salary"><div><small>Salary</small><strong>
                           {job.salaryDisclosed === false ? (job.salaryText || 'Not specified') : <>
