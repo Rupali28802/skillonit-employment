@@ -159,6 +159,42 @@ export async function postgresReadWithTimeout<T>(timeoutMs: number, fn: (repo: R
   }
 }
 
+export async function postgresDiscoveryCounts(now: string, today: string, recent: string, since: string | null) {
+  const client = await database().connect();
+  try {
+    await client.query('BEGIN READ ONLY');
+    await client.query('SET LOCAL statement_timeout = 2500');
+    const count = async (sql: string, values: string[] = []) => {
+      const { rows: [row] } = await client.query<{ count: number }>(sql, values);
+      return row.count;
+    };
+    const published = `
+      SELECT count(*)::int AS count FROM app_documents
+      WHERE collection = 'jobs'
+        AND data #> ARRAY['status'] = '"published"'::jsonb
+        AND (data #> ARRAY['sample'] IS NULL OR data #> ARRAY['sample'] <> 'true'::jsonb)
+        AND data #> ARRAY['expiresAt'] > $1::jsonb`;
+    const windowCount = (start: string) => count(
+      published + " AND data #> ARRAY['discoveredAt'] >= $2::jsonb",
+      [now, start].map(value => JSON.stringify(value)),
+    );
+    const detectedToday = await windowCount(today);
+    const newJobs = await windowCount(recent);
+    const newSince = since === null ? 0 : await count(
+      published + " AND data #> ARRAY['discoveredAt'] > $2::jsonb AND data #> ARRAY['discoveredAt'] <= $1::jsonb",
+      [now, since].map(value => JSON.stringify(value)),
+    );
+    const totalJobs = await count("SELECT count(*)::int AS count FROM app_documents WHERE collection = 'jobs'");
+    await client.query('COMMIT');
+    return { totalJobs, detectedToday, newJobs, newSince };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 /**
  * Public keyword search is deliberately kept in PostgreSQL instead of reading
  * every job document into a Node worker and applying regular expressions there.
