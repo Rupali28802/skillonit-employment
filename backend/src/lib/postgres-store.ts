@@ -77,7 +77,24 @@ function repository(db: Pool | PoolClient, keywordCandidates: string[][] = [], u
   };
   const put = async (collection: string, value: { id: string }) => db.query('INSERT INTO app_documents(collection,id,data,updated_at) VALUES($1,$2,$3::jsonb,now()) ON CONFLICT(collection,id) DO UPDATE SET data=excluded.data,updated_at=now()', [collection, value.id, JSON.stringify(value)]);
   return {
-    async putMany(collection, values) { for (const value of values) await put(collection, value); },
+    async putMany(collection, values) {
+      // PostgreSQL cannot update the same conflict key twice in one statement.
+      // Preserve the input order when callers supply repeated IDs.
+      if (new Set(values.map(value => value.id)).size !== values.length) {
+        for (const value of values) await put(collection, value);
+        return;
+      }
+      for (let offset = 0; offset < values.length; offset += 250) {
+        const batch = values.slice(offset, offset + 250);
+        await db.query(
+          `INSERT INTO app_documents(collection,id,data,updated_at)
+           SELECT $1, item->>'id', item, now()
+           FROM jsonb_array_elements($2::jsonb) AS entries(item)
+           ON CONFLICT(collection,id) DO UPDATE SET data=excluded.data,updated_at=now()`,
+          [collection, JSON.stringify(batch)],
+        );
+      }
+    },
     async page<T>(collection: string, query: Query, sort: Record<string, 1 | -1>, skip: number, limit: number) {
       const filter = postgresReadFilter(query);
       const lexicalSortFields = new Set(['sourcePostedAt','discoveredAt','updatedAt','createdAt','id']);
