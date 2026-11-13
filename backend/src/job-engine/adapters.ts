@@ -100,7 +100,8 @@ const hiringAnnouncement = (body: string) => {
 };
 
 export async function fetchJson(url: string, extraHeaders: Record<string, string> = {}, body?: Record<string, unknown>): Promise<Json | Json[]> {
-  const r = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(20000),
+  const timeout = new URL(url).hostname === 'api.headcountlabs.com' ? 60_000 : 20_000;
+  const r = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(timeout),
     ...(body ? { method: 'POST', body: JSON.stringify(body) } : {}),
     headers: { Accept: 'application/json', 'User-Agent': 'SkillonIT-JobFeed/1.0', ...extraHeaders } });
   if (!r.ok) {
@@ -130,11 +131,8 @@ export async function fetchFeed(source: FeedSource, get = fetchJson, pause = del
     if (!key) throw new FeedError('HEADCOUNT_LABS_API_KEY_REQUIRED');
     const now = Date.now();
     const freshness = 86_400_000;
-    const since = new Date(now - freshness).toISOString();
     const query = new URLSearchParams({
-      currentness: 'current', stale: 'false', posting_status: 'listed',
-      last_fetch_since: since, application_check: 'available', application_check_since: since,
-      has_application_url: 'true', sort: 'updated', limit: '100',
+      application_check: 'available', limit: '25',
       fields: 'job_id,currentness,stale,title,employer_name,work_arrangement,locations,postings',
     });
     if (source.countryCode) query.set('country', source.countryCode.toUpperCase());

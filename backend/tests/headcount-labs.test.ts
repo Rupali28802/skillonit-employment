@@ -31,7 +31,7 @@ test('Headcount Labs follows cursors and requires fresh checks on the same posti
     const url = new URL(raw);
     assert.equal(url.origin, 'https://api.headcountlabs.com');
     assert.equal(headers?.Authorization, 'Bearer fixture-key');
-    assert.equal(url.searchParams.get('application_check_since'), '2026-11-12T12:00:00.000Z');
+    assert.equal(url.searchParams.get('application_check'), 'available');
     return url.searchParams.get('cursor') === 'page-two'
       ? { data: [job], next_cursor: null }
       : { next_cursor: 'page-two', data: [
