@@ -227,7 +227,10 @@ export async function runEngine(discover: (source: FeedSource) => Promise<FeedBa
           });
           results.push({ source: source.id, status: counts.complete ? 'completed' : 'partial', counts });
         } catch (e) {
-          const errorCode = e instanceof FeedError ? e.code : 'SOURCE_UNAVAILABLE';
+          const databaseCode = typeof e === 'object' && e !== null && 'code' in e ? e.code : undefined;
+          const errorCode = e instanceof FeedError ? e.code
+            : databaseCode === '57014' ? 'DATABASE_QUERY_CANCELED'
+            : 'SOURCE_UNAVAILABLE';
           if (errorCode === 'HTTP_429') providerBlocks.set(source.type, Date.now() + Math.max(3600000, e instanceof FeedError ? e.retryAfterMs : 0));
           const failures = (state?.failures || 0) + 1;
           await transaction(async r => {

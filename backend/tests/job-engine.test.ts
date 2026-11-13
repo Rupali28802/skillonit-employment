@@ -297,6 +297,16 @@ test('repeated syncs are idempotent, keep first discovery date and respect sched
   assert.equal(await read(r => r.count('jobs')), 1);
   assert.equal((await read(r => r.get<Job>('jobs', j.id)))!.discoveredAt, j.discoveredAt);
 });
+test('discovery records canceled database queries separately from source outages', async () => {
+  await upsertSource(source);
+  const result = await runEngine(async () => {
+    throw Object.assign(new Error('canceling statement'), { code: '57014' });
+  });
+  assert.equal(result.results[0].errorCode, 'DATABASE_QUERY_CANCELED');
+  const state = await read(r => r.get<{ errorCode: string }>('jobFeedStates', source.id));
+  assert.equal(state?.errorCode, 'DATABASE_QUERY_CANCELED');
+});
+
 test('cross-source duplicates share one job without collapsing different roles on the same board', async () => {
   await upsertSource(source); await upsertSource({ ...source, id: 'second-board' });
   await runEngine(async s => batch([candidate({ externalId: s.id, url: `https://careers.example.com/jobs/${s.id}` })]));
