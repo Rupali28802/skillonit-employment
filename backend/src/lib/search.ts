@@ -155,7 +155,7 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
   // and non-default ordering retain the existing repository matcher because
   // they carry more detailed Mongo-compatible semantics.
   const indexedKeywords = process.env.ENABLE_POSTGRES_KEYWORD_PREFILTER === 'true' && !semantic
-    ? words.filter(word => /^[a-z0-9]{2,}$/i.test(word)).map(word => {
+    ? words.filter(word => /^[a-z0-9]{2,}$/i.test(word) || word === 'c++' || word === 'c#').map(word => {
         const country = normalizeCountry(word);
         return country && /^[a-z]+(?: [a-z]+)*$/i.test(country) && country.toLowerCase() !== word
           ? [word, country]
