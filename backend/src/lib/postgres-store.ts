@@ -180,10 +180,13 @@ export async function postgresDiscoveryCounts(now: string, today: string, recent
     );
     const detectedToday = await windowCount(today);
     const newJobs = await windowCount(recent);
+    // A bitmap scan groups heap reads for the potentially wider refresh window.
+    if (since !== null) await client.query('SET LOCAL enable_indexscan = off');
     const newSince = since === null ? 0 : await count(
       published + " AND data #> ARRAY['discoveredAt'] > $2::jsonb AND data #> ARRAY['discoveredAt'] <= $1::jsonb",
       [now, since].map(value => JSON.stringify(value)),
     );
+    if (since !== null) await client.query('SET LOCAL enable_indexscan = on');
     const totalJobs = await count("SELECT count(*)::int AS count FROM app_documents WHERE collection = 'jobs'");
     await client.query('COMMIT');
     return { totalJobs, detectedToday, newJobs, newSince };
