@@ -277,6 +277,15 @@ async function Candidate({ section, user }: { section: string; user: User }) {
                 {new Date(display(a.createdAt)).toLocaleString('en-IN')}
               </p>
               <p className="small">Company: {display(a.company)} · Method: {display(a.applicationMethod)} · Submission: {display(a.submissionState)} · Submitted: {display(a.submittedAt)} · Updated: {display(a.updatedAt)}</p>
+              {a.status === 'QUEUED' && typeof a.scheduledAt === 'string' && Number.isFinite(Date.parse(a.scheduledAt)) && (
+                <p className="small">
+                  Scheduled for{' '}
+                  <time dateTime={a.scheduledAt}>
+                    {new Date(a.scheduledAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })}
+                  </time>{' '}
+                  UTC
+                </p>
+              )}
               {(a.reasons as {code: string; message: string}[] | undefined)?.map(reason => <p className="notice" key={reason.code}>{reason.message}</p>)}
               <ol>
                 {(a.events as { status: string; at: string }[]).map((e, i) => (
