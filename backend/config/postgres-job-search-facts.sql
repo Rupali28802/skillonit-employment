@@ -49,16 +49,18 @@ RETURNS text LANGUAGE sql AS $$
     SELECT id, data FROM app_documents
     WHERE collection = 'jobs' AND id > after_id
     ORDER BY id LIMIT least(greatest(batch_size, 1), 1000) FOR SHARE
+  ), facts AS MATERIALIZED (
+    SELECT id, public_job_search_facts(data) AS search_facts FROM batch
   ), updated AS (
     UPDATE job_keyword_projection AS projection
-    SET search_facts = public_job_search_facts(batch.data)
-    FROM batch
-    WHERE projection.id = batch.id
-      AND projection.search_facts IS DISTINCT FROM public_job_search_facts(batch.data)
+    SET search_facts = facts.search_facts
+    FROM facts
+    WHERE projection.id = facts.id
+      AND projection.search_facts IS DISTINCT FROM facts.search_facts
   ), inserted AS (
     INSERT INTO job_keyword_projection(id, search_text, search_facts)
-    SELECT batch.id, public_job_keyword_text(batch.data), public_job_search_facts(batch.data)
-    FROM batch
+    SELECT batch.id, public_job_keyword_text(batch.data), facts.search_facts
+    FROM batch JOIN facts USING (id)
     WHERE NOT EXISTS (
       SELECT 1 FROM job_keyword_projection WHERE id = batch.id OFFSET 0
     )
