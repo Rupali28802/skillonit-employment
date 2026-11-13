@@ -2,10 +2,14 @@ import { setTimeout as delay } from 'node:timers/promises';
 import pg from 'pg';
 
 const maxBatches = Number(process.argv[2] ?? 30);
+const initialBatchSize = Number(process.argv[3] ?? 50);
 if (!Number.isSafeInteger(maxBatches) || maxBatches < 1) {
   throw new Error('Supply a positive maximum batch count.');
 }
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required.');
+if (!Number.isSafeInteger(initialBatchSize) || initialBatchSize < 1 || initialBatchSize > 1000) {
+  throw new Error('Supply a batch size from 1 to 1000.');
+}
 
 const client = new pg.Client({
   connectionString: process.env.DATABASE_URL,
@@ -26,7 +30,7 @@ try {
   const version = 1;
   const checkpoint = await client.query('SELECT cursor_id FROM job_search_facts_backfill WHERE version = $1', [version]);
   let cursor = checkpoint.rowCount ? checkpoint.rows[0].cursor_id : '';
-  let batchSize = 50;
+  let batchSize = initialBatchSize;
   let retries = 0;
   while (cursor !== null && committed < maxBatches) {
     try {
@@ -43,7 +47,7 @@ try {
     } catch (error) {
       await client.query('ROLLBACK');
       if (!['57014', '55P03', '40P01'].includes(error.code) || ++retries > 4) throw error;
-      batchSize = Math.max(5, Math.floor(batchSize / 2));
+      batchSize = Math.max(1, Math.floor(batchSize / 2));
       await delay(retries * 2000);
     }
   }
