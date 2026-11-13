@@ -86,17 +86,23 @@ export function JobActions({
         window.location.href = signInUrl;
         return;
       }
-      const j = await readBrowserApiPayload<{ method: string; status: string }>(r);
+      const j = await readBrowserApiPayload<{ method: string; status: string; scheduledAt?: string }>(r);
       if (!r.ok) throw Error(j.error?.message);
       if (!j.data) throw Error('Application could not be completed. Please try again.');
       setExternalPlanSaved(!sample && j.data.method === 'external');
+      const scheduledTime = Date.parse(j.data.scheduledAt ?? '');
+      const sendTime = scheduledTime > Date.now()
+        ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(scheduledTime)
+        : null;
       setMessage(
         sample
           ? 'Demo application recorded. No real employer has been contacted.'
           : j.data.method === 'external'
             ? 'Application plan saved. Open your application tracker to continue on the employer’s website.'
           : j.data.method === 'email' && j.data.status === 'QUEUED'
-            ? 'Application confirmed and queued to send from your connected Gmail.'
+            ? sendTime
+              ? `Application queued to send from your connected Gmail on ${sendTime} (local time).`
+              : 'Application confirmed and queued to send from your connected Gmail.'
             : 'Application recorded: ' + j.data.status.replaceAll('_', ' '),
       );
       setOpen(false);

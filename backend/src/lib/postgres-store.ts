@@ -9,7 +9,12 @@ let pool: Pool | undefined;
 export const postgresConfigured = (env = process.env) => Boolean(env.DATABASE_URL?.trim());
 function database() {
   if (!process.env.DATABASE_URL) throw new Error('PostgreSQL is not configured.');
-  return (pool ??= new Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.DATABASE_POOL_SIZE || 20), ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false } }));
+  return (pool ??= new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: Number(process.env.DATABASE_POOL_SIZE || 20),
+    connectionTimeoutMillis: 10_000,
+    ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
+  }));
 }
 const valueAt = (row: Row, key: string) => key.split('.').reduce<unknown>((value, part) => value && typeof value === 'object' ? (value as Record<string, unknown>)[part] : undefined, row);
 const matches = (row: Row, query: Query): boolean => Object.entries(query).every(([key, value]) => {
@@ -204,7 +209,7 @@ export async function postgresDiscoveryCounts(now: string, today: string, recent
       [now, since].map(value => JSON.stringify(value)),
     );
     if (since !== null) await client.query('SET LOCAL enable_indexscan = on');
-    const totalJobs = await count("SELECT count(*)::int AS count FROM app_documents WHERE collection = 'jobs'");
+    const totalJobs = await count(published, [JSON.stringify(now)]);
     await client.query('COMMIT');
     return { totalJobs, detectedToday, newJobs, newSince };
   } catch (error) {
@@ -464,6 +469,8 @@ export async function bootstrapPostgres() {
     // A feed refresh closes only variants for the current source.  This index
     // keeps that reconciliation bounded instead of scanning every historical
     // feed variant on each short-interval discovery run.
+    await ensurePostgresIndex(db, 'app_documents_bulk_job_references_active_idx', `CREATE INDEX app_documents_bulk_job_references_active_idx ON app_documents ((data #> ARRAY['jobId']), (data #> ARRAY['active'])) WHERE collection='bulkJobReferences'`);
+    await ensurePostgresIndex(db, 'app_documents_feed_variants_job_active_idx', `CREATE INDEX app_documents_feed_variants_job_active_idx ON app_documents ((data #> ARRAY['jobId']), (data #> ARRAY['active'])) WHERE collection='jobFeedVariants'`);
     await ensurePostgresIndex(db, 'app_documents_feed_variants_active_idx', `CREATE INDEX app_documents_feed_variants_active_idx ON app_documents ((data #> ARRAY['sourceId']), (data #> ARRAY['active']), id) WHERE collection='jobFeedVariants'`);
     await ensurePostgresIndex(db, 'app_documents_jobs_public_filter_idx', `CREATE INDEX app_documents_jobs_public_filter_idx ON app_documents ((data #> ARRAY['expiresAt']), (data #> ARRAY['discoveredAt'])) WHERE collection='jobs' AND (data #> ARRAY['status'])='"published"'::jsonb AND ((data #> ARRAY['sample']) IS NULL OR (data #> ARRAY['sample']) <> 'true'::jsonb)`);
     await ensurePostgresIndex(db, 'app_documents_jobs_public_order_idx', `CREATE INDEX app_documents_jobs_public_order_idx ON app_documents ((COALESCE(data #>> ARRAY['sourcePostedAt'],'')) DESC, (COALESCE(data #>> ARRAY['discoveredAt'],'')) DESC, id) WHERE collection='jobs' AND (data #> ARRAY['status'])='"published"'::jsonb AND ((data #> ARRAY['sample']) IS NULL OR (data #> ARRAY['sample']) <> 'true'::jsonb)`);

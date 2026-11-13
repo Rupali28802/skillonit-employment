@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { bootstrapIndexes, closeStore, read, transaction } from '../lib/store.js';
 import { runEngine, upsertSource, engineStatus, setEmployerRefresh } from './engine.js';
-import { publicSources, worldwideSources, configuredJoobleSources, configuredTheMuseSource, sourceSchema } from './sources.js';
+import { publicSources, worldwideSources, configuredJoobleSources, configuredTheMuseSource, configuredHeadcountLabsSource, sourceSchema } from './sources.js';
 import { coverageReport, saveCoverageAudit } from './coverage.js';
 import { indexSemantic } from './semantic.js';
 
@@ -33,7 +33,8 @@ try {
   // A credential-gated seed with no configured credential must be a no-op. It
   // should not require database mutation/index privileges merely to report that
   // the provider is pending activation.
-  const noOpCredentialSeed = command === 'seed-themuse' && !process.env.THEMUSE_API_KEY?.trim();
+  const noOpCredentialSeed = (command === 'seed-themuse' && !process.env.THEMUSE_API_KEY?.trim())
+    || (command === 'seed-headcount-labs' && !process.env.HEADCOUNT_LABS_API_KEY?.trim());
   if (!['coverage', 'status'].includes(command) && !noOpCredentialSeed) await bootstrapIndexes();
   if (command === 'watch-semantic') {
     do {
@@ -68,6 +69,12 @@ try {
       if (!(await read(r => r.get('jobFeedSources', source.id)))) await upsertSource(source);
     }
     console.log(JSON.stringify({ configured: configured.length, message: 'The Muse source configured only when a private registered API key is present; existing settings preserved.' }));
+  } else if (command === 'seed-headcount-labs') {
+    const configured = configuredHeadcountLabsSource();
+    for (const source of configured) {
+      if (!(await read(r => r.get('jobFeedSources', source.id)))) await upsertSource(source);
+    }
+    console.log(JSON.stringify({ configured: configured.length, credentialPresent: configured.length > 0 }));
   } else if (command === 'seed-worldwide') {
     await transaction(async r => {
       const existing = new Set((await r.find<{ id: string }>('jobFeedSources', {}, 1000)).map(s => s.id));
@@ -87,7 +94,7 @@ try {
     console.log(JSON.stringify({ id: source.id, enabled: source.enabled }));
   } else if (command === 'coverage') console.log(JSON.stringify(await coverageReport(), null, 2));
   else if (command === 'status') console.log(JSON.stringify(await engineStatus(), null, 2));
-  else if (command === 'once' || command === 'once-jooble' || command === 'watch') {
+  else if (command === 'once' || command === 'once-jooble' || command === 'once-headcount-labs' || command === 'watch') {
     let recordingHeartbeat=false;
     const heartbeat=async(extra: Record<string, unknown> = {})=>{
       if(recordingHeartbeat)return;
@@ -109,7 +116,8 @@ try {
     try {
     do {
       if(command==='watch') await heartbeat({status:'running',lastCycleStartedAt:new Date().toISOString()});
-      const result = await runEngine(undefined, command === 'once-jooble' ? 'jooble' : undefined);
+      const sourceType = command === 'once-jooble' ? 'jooble' : command === 'once-headcount-labs' ? 'headcount-labs' : undefined;
+      const result = await runEngine(undefined, sourceType);
       if(command==='watch') await heartbeat({
         status: result.status === 'completed' ? 'idle' : result.status,
         lastCycleCompletedAt: new Date().toISOString(),
