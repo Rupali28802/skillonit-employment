@@ -45,8 +45,11 @@ function repository(db: Pool | PoolClient, keywordCandidates: string[][] = []): 
         `WITH candidates AS MATERIALIZED (
           SELECT id FROM job_keyword_projection WHERE ${terms.join(' AND ')}
         )
-        SELECT data FROM candidates JOIN app_documents USING (id)
-        WHERE collection=$1${filter.sql}`,
+        SELECT document.data FROM candidates
+        CROSS JOIN LATERAL (
+          SELECT data FROM app_documents WHERE collection=$1 AND id=candidates.id${filter.sql}
+          LIMIT 1
+        ) AS document`,
         values,
       )).rows.map(row => row.data);
     }
