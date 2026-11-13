@@ -9,7 +9,12 @@ let pool: Pool | undefined;
 export const postgresConfigured = (env = process.env) => Boolean(env.DATABASE_URL?.trim());
 function database() {
   if (!process.env.DATABASE_URL) throw new Error('PostgreSQL is not configured.');
-  return (pool ??= new Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.DATABASE_POOL_SIZE || 20), ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false } }));
+  return (pool ??= new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: Number(process.env.DATABASE_POOL_SIZE || 20),
+    connectionTimeoutMillis: 10_000,
+    ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
+  }));
 }
 const valueAt = (row: Row, key: string) => key.split('.').reduce<unknown>((value, part) => value && typeof value === 'object' ? (value as Record<string, unknown>)[part] : undefined, row);
 const matches = (row: Row, query: Query): boolean => Object.entries(query).every(([key, value]) => {
