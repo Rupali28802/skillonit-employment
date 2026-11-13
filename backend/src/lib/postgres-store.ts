@@ -43,14 +43,21 @@ function repository(db: Pool | PoolClient, keywordCandidates: string[][] = []): 
       const values = [collection, ...filter.values];
       // Give GIN the complete intersection in one tsquery so it can combine
       // posting lists before fetching and rechecking candidate rows.
-      const terms = keywordCandidates.map(alternatives => '(' + alternatives.map(word =>
+      const punctuation = keywordCandidates.flatMap(alternatives =>
+        alternatives.length === 1 && alternatives[0] === 'c++' ? ["search_text ILIKE '%c++%'"] :
+        alternatives.length === 1 && alternatives[0] === 'c#' ? ["search_text ILIKE '%c#%'"] : [],
+      );
+      const terms = keywordCandidates.filter(alternatives => !alternatives.includes('c++') && !alternatives.includes('c#')).map(alternatives => '(' + alternatives.map(word =>
         '(' + word.toLowerCase().split(/\s+/).map(token => token + ':*').join(' & ') + ')',
       ).join(' | ') + ')').join(' & ');
-      values.push(terms);
+      if (terms) {
+        values.push(terms);
+        punctuation.push(`to_tsvector('simple', search_text) @@ to_tsquery('simple', $${values.length})`);
+      }
       const pending = db.query<{ data: Row }>(
         `WITH candidates AS MATERIALIZED (
           SELECT id FROM job_keyword_projection
-          WHERE to_tsvector('simple', search_text) @@ to_tsquery('simple', $${values.length})
+          WHERE ${punctuation.join(' AND ')}
         )
         SELECT document.data FROM candidates
         CROSS JOIN LATERAL (
