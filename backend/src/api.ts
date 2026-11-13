@@ -4,7 +4,7 @@ import { getPreferences } from './lib/student-preferences.js';
 import { randomBytes } from "node:crypto";
 import { profileImage, mediaKinds } from './lib/profile-media.js';
 import { z } from "zod";
-import { read, transaction, demoMode, configuredPlans, type Row } from "./lib/store.js";
+import { read, transaction, demoMode, configuredPlans, type Repository, type Row } from "./lib/store.js";
 import {
   ApiError,
   id,
@@ -40,6 +40,7 @@ import {
   isRecent,
 } from "./lib/domain.js";
 import { searchJobs } from "./lib/search.js";
+import { postgresConfigured, postgresReadWithTimeout } from './lib/postgres-store.js';
 import { isSeoJobEligible, seoPage, seoRegistry } from './lib/seo-registry.js';
 import { engineStatus } from './job-engine/engine.js';
 import { socialSourceSchema, ingestSocial } from './job-engine/social.js';
@@ -435,7 +436,7 @@ export async function handle(
       const now = new Date(), today = new Date(now); today.setUTCHours(0,0,0,0);
       const sinceValue = url.searchParams.get('since');
       const since = sinceValue ? Date.parse(sinceValue) : NaN;
-      return ok(await read(async r=> {
+      const status = async (r: Repository) => {
         const sources = await r.find<{id:string;intervalMinutes:number}>('jobFeedSources',{enabled:true,approved:true},1000);
         const states = new Map((await r.find<{id:string;lastSuccessAt?:string;failures:number;status?:string;errorCode?:string}>('jobFeedStates',{},1000)).map(s=>[s.id,s]));
         const audit = await r.get<{countries:{indexedListings:number}[];generatedAt:string}>('jobEngineState','coverage-latest');
@@ -491,7 +492,8 @@ export async function handle(
           newSince: Number.isFinite(since) && since <= now.getTime() && since >= now.getTime()-86400000
             ? await r.count('jobs',{...base,discoveredAt:{$gt:new Date(since).toISOString(),$lte:now.toISOString()}}) : 0,
           countries:audit?.countries.filter(c=>c.indexedListings>0).length ?? null, measuredAt:now.toISOString(), countryAuditAt:audit?.generatedAt ?? null};
-      }));
+      };
+      return ok(postgresConfigured() ? await postgresReadWithTimeout(2500, status) : await read(status));
     }
     if (p === 'seo/registry' && method === 'GET') {
       const registry = await seoRegistry();
