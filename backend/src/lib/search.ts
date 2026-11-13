@@ -222,6 +222,24 @@ export async function searchJobs(params: URLSearchParams, user: User | null = nu
     : null;
   const plans = await configuredPlans();
   const relevant = !semantic && params.get('sort') === 'relevant' && words.length > 0;
+  if (relevant && indexedKeywords.length && postgresConfigured() && process.env.ENABLE_POSTGRES_SEARCH_FACTS === 'true') {
+    return postgresReadWithTimeout(8000, async r => {
+      const candidates = await r.find<Job>('jobs', filter, 10000);
+      const ranked = candidates.map(job => ({ id: job.id, score: keywordRelevance(job, words, query, now.getTime()) }))
+        .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+      const selected = ranked.slice((page - 1) * limit, page * limit);
+      const documents = selected.length
+        ? await r.page<Job>('jobs', { id: { $in: selected.map(({ id }) => id) } }, { id: 1 }, 0, selected.length)
+        : [];
+      const byId = new Map(documents.map(job => [job.id, job]));
+      const jobs = selected.map(({ id, score }) => {
+        const job = byId.get(id);
+        if (!job) throw new Error('Search projection references a missing job');
+        return { ...publicJob(job, user, plans), relevanceScore: score };
+      });
+      return { jobs, total: ranked.length, page, limit, hasMore: page * limit < ranked.length, searchMode: 'relevant' };
+    }, indexedKeywords, true);
+  }
   if (semantic || relevant) {
     // Apply every eligibility/facet filter before ranking or pagination.
     const find = (r: Parameters<Parameters<typeof read>[0]>[0]) => r.find<Job>('jobs',filter,10000);

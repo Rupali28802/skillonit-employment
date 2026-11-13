@@ -32,7 +32,7 @@ const matches = (row: Row, query: Query): boolean => Object.entries(query).every
   // while reading the migrated JSON documents from PostgreSQL.
   return Array.isArray(actual) ? actual.includes(value) : actual === value;
 });
-function repository(db: Pool | PoolClient, keywordCandidates: string[][] = []): Repository {
+function repository(db: Pool | PoolClient, keywordCandidates: string[][] = [], useSearchFacts = false): Repository {
   // Keyword page and count run against the same filter in one read transaction.
   const keywordRows = new WeakMap<Query, Promise<Row[]>>();
   const rows = async <T>(collection: string, query: Query) => {
@@ -55,7 +55,11 @@ function repository(db: Pool | PoolClient, keywordCandidates: string[][] = []): 
         punctuation.push(`to_tsvector('simple', search_text) @@ to_tsquery('simple', $${values.length})`);
       }
       const pending = db.query<{ data: Row }>(
-        `WITH candidates AS MATERIALIZED (
+        useSearchFacts
+          ? `SELECT search_facts AS data FROM job_keyword_projection
+             WHERE $1::text = 'jobs' AND ${punctuation.join(' AND ')} AND search_facts IS NOT NULL
+             ${filter.sql.replace(/\bdata\b/g, 'search_facts')}`
+          : `WITH candidates AS MATERIALIZED (
           SELECT id FROM job_keyword_projection
           WHERE ${punctuation.join(' AND ')}
         )
@@ -138,13 +142,13 @@ export async function postgresAdminJobPage<T>(cursor: string, limit: number, sta
 // Public search must never leave an unbounded read running after a browser,
 // proxy, or client disconnects. Keep the limit scoped to this explicit helper;
 // discovery and transactional writes retain their own execution budgets.
-export async function postgresReadWithTimeout<T>(timeoutMs: number, fn: (repo: Repository) => Promise<T>, keywordCandidates: string[][] = []): Promise<T> {
+export async function postgresReadWithTimeout<T>(timeoutMs: number, fn: (repo: Repository) => Promise<T>, keywordCandidates: string[][] = [], useSearchFacts = false): Promise<T> {
   const bounded = Math.max(1000, Math.min(30000, Math.floor(timeoutMs)));
   const client = await database().connect();
   try {
-    await client.query('BEGIN READ ONLY');
+    await client.query(useSearchFacts ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY' : 'BEGIN READ ONLY');
     await client.query(`SET LOCAL statement_timeout = ${bounded}`);
-    const result = await fn(repository(client, keywordCandidates));
+    const result = await fn(repository(client, keywordCandidates, useSearchFacts));
     await client.query('COMMIT');
     return result;
   } catch (error) {
