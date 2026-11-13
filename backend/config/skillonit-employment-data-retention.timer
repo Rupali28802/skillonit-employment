@@ -1,0 +1,9 @@
+[Unit]
+Description=Run Skillonit Employment data retention once per minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

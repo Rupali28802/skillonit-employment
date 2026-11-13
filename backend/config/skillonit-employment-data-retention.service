@@ -1,0 +1,14 @@
+[Unit]
+Description=Skillonit Employment data retention
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/skillonit-employment/backend
+EnvironmentFile=/home/ubuntu/skillonit-employment/backend/.env
+ExecStart=/usr/bin/node dist/workers/data-retention.js
+NoNewPrivileges=true
+PrivateTmp=true
+TimeoutStartSec=120
